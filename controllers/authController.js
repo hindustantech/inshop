@@ -1,79 +1,240 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import User from '../models/userModel.js';
-import crypto from 'crypto';
-import { sendEmail } from '../utils/sendEmail.js';
 import { generateToken } from '../config/jwt.js';
+import { sendWhatsAppOtp, verifyWhatsAppOtp } from '../utils/whatapp.js';
+import { generateReferralCode } from '../utils/Referalcode.js';
 import fs from 'fs';
 import path from 'path';
 
-
 const signup = async (req, res) => {
   try {
-    const { name, email, password, type } = req.body;
+    const { name, email, phone, password, referralCode } = req.body;
+
+
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({ message: 'Name, email, phone, and password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+    if (referralCode && !/^(IN\d{6})$/.test(referralCode)) {
+      return res.status(400).json({ message: 'Invalid referral code format' });
+    }
+
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User with this email or phone already exists' });
+    }
+
+    // Generate referral code
+    let uniqueReferralCode = null;
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 5;
+
+    while (!isUnique && attempts < maxAttempts) {
+      uniqueReferralCode = generateReferralCode();
+      const existingCode = await User.findOne({ referalCode: uniqueReferralCode });
+      if (!existingCode) {
+        isUnique = true;
+      }
+      attempts++;
+    }
+
+    if (!isUnique) {
+      return res.status(500).json({ message: 'Could not generate unique referral code' });
+    }
+
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const newUser = new User({ name, email, password: hashedPassword, type });
+    // Create new user
+    const newUser = new User({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+      type: 'user',
+      referalCode: uniqueReferralCode,
+      referredBy: referralCode || null,
+    });
+
+    // Send WhatsApp OTP
+    const otpResponse = await sendWhatsAppOtp(phone);
+    console.log(otpResponse);
+    if (!otpResponse.success) {
+      return res.status(500).json({ message: 'Failed to send OTP', error: otpResponse.error });
+    }
+
+    // Store WhatsApp UID
+    newUser.whatsapp_uid = otpResponse.data || null;
     await newUser.save();
 
-    res.status(201).json({ token: generateToken(newUser._id), message: 'Signup successful' });
+    res.status(201).json({
+      message: 'Signup successful, OTP sent to WhatsApp',
+      userId: newUser._id,
+      whatsapp_uid: newUser.whatsapp_uid
+    });
   } catch (error) {
     res.status(500).json({ message: 'Signup failed', error: error.message });
   }
 };
 
-const login = async (req, res) => {
+const verifyOtp = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const { userId, otp } = req.body;
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json({ token: generateToken(user._id), name: user.name, type: user.type, isApproved: user.isVerified, isProfileCompleted: user.isProfileCompleted, message: 'Login successful' });
+    // Verify WhatsApp OTP
+    const verifyResponse = await verifyWhatsAppOtp(user.whatsapp_uid, otp);
+    if (!verifyResponse.success) {
+      return res.status(400).json({ message: 'Invalid OTP', error: verifyResponse.error });
+    }
+
+    // Update user verification status
+    user.isVerified = true;
+    user.otp = null;
+    await user.save();
+
+    res.json({
+      message: 'OTP verified successfully',
+      token: generateToken(user._id),
+      name: user.name,
+      type: user.type,
+      isVerified: user.isVerified,
+      isProfileCompleted: user.isProfileCompleted
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'OTP verification failed', error: error.message });
+  }
+};
+
+const login = async (req, res) => {
+  try {
+    const { phone, password, deviceToken } = req.body;
+
+    const user = await User.findOne({ phone });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(400).json({ message: 'Invalid phone number or password' });
+    }
+
+    // Update device token
+    if (deviceToken) {
+      user.devicetoken = deviceToken;
+      await user.save();
+    }
+
+    res.json({
+      token: generateToken(user._id),
+      name: user.name,
+      type: user.type,
+      isApproved: user.isVerified,
+      isProfileCompleted: user.isProfileCompleted,
+      message: 'Login successful'
+    });
   } catch (error) {
     res.status(500).json({ message: 'Login failed', error: error.message });
   }
 };
 
-const signout = (req, res) => {
-  // Clear JWT token or user session
-  res.json({ message: 'Signout successful' });
+const resendOtp = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Send new WhatsApp OTP
+    const otpResponse = await sendWhatsAppOtp(user.phone);
+    if (!otpResponse.success) {
+      return res.status(500).json({ message: 'Failed to send OTP', error: otpResponse.error });
+    }
+
+    // Update WhatsApp UID
+    user.whatsapp_uid = otpResponse.data || null;
+    await user.save();
+
+    res.status(200).json({
+      message: 'OTP resent successfully',
+      whatsapp_uid: user.whatsapp_uid
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to resend OTP', error: error.message });
+  }
 };
 
 const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
-    const user = await User.findOne({ email });
-    console.log(user);
+    const { phone } = req.body;
+
+    const user = await User.findOne({ phone });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    const otp = Math.floor(100000 + Math.random() * 900000);
-    user.otp = otp;
+
+    // Send WhatsApp OTP
+    const otpResponse = await sendWhatsAppOtp(phone);
+    if (!otpResponse.success) {
+      return res.status(500).json({ message: 'Failed to send OTP', error: otpResponse.error });
+    }
+
+    // Store WhatsApp UID
+    user.whatsapp_uid = otpResponse.data?.uid || null;
     await user.save();
 
-    // Send OTP via EmailJS
-    console.log(user.email);
-    await sendEmail(user.email, "Reset Password OTP", "Otp to reset pass for your AASH india app is : " + otp);
-
-    res.status(200).json({ message: 'OTP sent to your email' });
+    res.status(200).json({
+      message: 'OTP sent to WhatsApp',
+      userId: user._id,
+      whatsapp_uid: user.whatsapp_uid
+    });
   } catch (error) {
     res.status(500).json({ message: 'Failed to send OTP', error: error.message });
   }
 };
 
 const resetPassword = async (req, res) => {
-  const { email, otp, newPassword } = req.body;
-  const user = await User.findOne({ email, otp });
-  if (!user) return res.status(400).json({ message: 'Invalid OTP' });
+  try {
+    const { userId, otp, newPassword } = req.body;
 
-  user.password = await bcrypt.hash(newPassword, 10);
-  user.otp = null;
-  await user.save();
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-  res.json({ message: 'Password reset successful' });
+    // Verify WhatsApp OTP
+    const verifyResponse = await verifyWhatsAppOtp(user.whatsapp_uid, otp);
+    if (!verifyResponse.success) {
+      return res.status(400).json({ message: 'Invalid OTP', error: verifyResponse.error });
+    }
+
+    // Update password
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.whatsapp_uid = null;
+    await user.save();
+
+    res.json({ message: 'Password reset successful' });
+  } catch (error) {
+    res.status(500).json({ message: 'Password reset failed', error: error.message });
+  }
+};
+
+const signout = (req, res) => {
+  // Clear device token
+  User.findByIdAndUpdate(req.user._id, { devicetoken: null }, { new: true })
+    .then(() => {
+      res.json({ message: 'Signout successful' });
+    })
+    .catch(error => {
+      res.status(500).json({ message: 'Signout failed', error: error.message });
+    });
 };
 
 const updateProfile = async (req, res) => {
@@ -186,6 +347,8 @@ const getProfileImageUrl = async (req, res) => {
 
 export {
   signup,
+  verifyOtp,
+  resendOtp,
   login,
   signout,
   forgotPassword,

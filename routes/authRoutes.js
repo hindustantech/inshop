@@ -1,7 +1,9 @@
 import express from 'express';
 import {
     signup,
+    verifyOtp,
     login,
+    resendOtp,
     signout,
     forgotPassword,
     resetPassword,
@@ -16,14 +18,16 @@ import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
 const router = express.Router();
 
 router.post('/signup', signup);
+router.post('/verifyOtp', verifyOtp);
 router.post('/login', login);
+router.post('/resendOtp', resendOtp);
 router.post('/signout', signout);
 router.post('/signout', signout);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 router.put('/update-profile', authMiddleware, updateProfile);
 router.get('/profile-data', authMiddleware, getProfileData);
-router.get('/getOwner/:ownerId',authMiddleware,getOwner);
+router.get('/getOwner/:ownerId', authMiddleware, getOwner);
 
 router.post('/upload-profile-image', authMiddleware, profileUploadMiddleware, uploadProfileImage);
 router.get('/profile-image-url', authMiddleware, profileUploadMiddleware, getProfileImageUrl);

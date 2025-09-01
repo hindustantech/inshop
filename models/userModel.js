@@ -1,20 +1,78 @@
 // const mongoose = require('mongoose');
 import mongoose from "mongoose";
 const userSchema = new mongoose.Schema({
-  uid: { type: String, unique: true },
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  otp: { type: String, default: null },
-  isVerified: { type: Boolean, default: false },
-  isProfileCompleted: { type: Boolean, default: false },
-  type: { type: String, required: true },
-  data: { type: mongoose.Schema.Types.Mixed, required: false },
-  profileImage: { type: String, required: false, unique: false },
+  uid: {
+    type: String, unique: true
+  },
+  name: {
+    type: String,
+    required: true
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  whatsapp_uid: {
+    type: String,
+    maxlength: 500 // Increased length to handle long UIDs
+  },
+  password: {
+    type: String,
+    required: true
+  },
+  otp: {
+    type: String,
+    default: null
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  referalCode: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  referredBy: {
+    type: String,
+    default: null
+  },
+  referaluseCount: {
+    type: String,
+    default: false
+  },
+  isProfileCompleted: {
+    type: Boolean,
+    default: false
+  },
+  type: {
+    type: String,
+    required: true,
+    enum: ['user', 'partner'],
+    default: 'user'
+  },
+  data: {
+    type: mongoose.Schema.Types.Mixed,
+    required: false
+  },
+  phone: {
+    type: String,
+    required: false,
+    unique: true,
+  },
+  profileImage: {
+    type: String,
+    required: false,
+    unique: false
+  },
   createdCouponsId: {
     type: [mongoose.Schema.Types.ObjectId],
     ref: 'Coupon',
     default: []
+  },
+  devicetoken: {
+    type: String,
   },
   availedCouponsId: [
     {
@@ -42,18 +100,14 @@ const userSchema = new mongoose.Schema({
     type: Number,
     required: true,
     default: 2
-  }, 
-  phone: {
-    type: String,
-    required: false,
-    unique: true,
-  }
+  },
+
 }, {
   timestamps: true
 });
 
 // Generate a unique ID field with format of U-xxxxxx, ensuring both letters and numbers
-userSchema.pre('save', async function(next) {
+userSchema.pre('save', async function (next) {
   let isUnique = false;
   let attempts = 0;
   const maxAttempts = 5;
@@ -61,18 +115,18 @@ userSchema.pre('save', async function(next) {
   const generateAlphanumeric = () => {
     const numbers = '0123456789';
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    
+
     // Ensure at least one number and one letter
     const randomNumber = numbers[Math.floor(Math.random() * numbers.length)];
     const randomLetter = letters[Math.floor(Math.random() * letters.length)];
-    
+
     // Generate the remaining 4 characters
     let remaining = '';
     const allChars = numbers + letters;
-    for(let i = 0; i < 4; i++) {
+    for (let i = 0; i < 4; i++) {
       remaining += allChars[Math.floor(Math.random() * allChars.length)];
     }
-    
+
     // Mix them together randomly
     const combined = randomNumber + randomLetter + remaining;
     return 'U-' + combined.split('').sort(() => Math.random() - 0.5).join('');
@@ -81,7 +135,7 @@ userSchema.pre('save', async function(next) {
   while (!isUnique && attempts < maxAttempts) {
     const generatedUid = generateAlphanumeric();
     const existingUser = await mongoose.model('User').findOne({ uid: generatedUid });
-    
+
     if (!existingUser) {
       this.uid = generatedUid;
       isUnique = true;

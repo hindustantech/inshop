@@ -2,7 +2,7 @@
 import jwt from 'jsonwebtoken';
 
 const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ userId }, process.env.JWT_SECRET);
 };
 
 const verifyToken = (token) => {
@@ -10,3 +10,4 @@ const verifyToken = (token) => {
 };
 
 export { generateToken, verifyToken };
+// module.exports = { generateToken, verifyToken };
