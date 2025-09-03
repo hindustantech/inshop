@@ -187,7 +187,7 @@ const forgotPassword = async (req, res) => {
     }
 
     // Store WhatsApp UID
-    user.whatsapp_uid = otpResponse.data?.uid || null;
+    user.whatsapp_uid = otpResponse.data || null;
     await user.save();
 
     res.status(200).json({
