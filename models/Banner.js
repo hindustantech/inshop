@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 
 const BannerSchema = new mongoose.Schema(
     {
-
         createdBy: {
             id: {
                 type: mongoose.Schema.Types.ObjectId,

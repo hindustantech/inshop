@@ -6,9 +6,20 @@ const couponSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  copuon_image: {
+    type: [String]
+  },
+  copuon_srno: {
+    type: String,
+    require: true,
+  },
   category: {
     type: [String], // list of categories
     required: true
+  },
+  copuon_type: {
+    type: Boolean,
+    default: false, // if False then  not Transfarel
   },
   discountPercentage: {
     type: Number,
@@ -43,16 +54,65 @@ const couponSchema = new mongoose.Schema({
     min: 0,
     required: false
   },
-  currentDistributions:{
+  currentDistributions: {
     type: Number,
     default: 0,
     min: 0,
     required: false
   },
+  fromTime: {
+    type: String,
+    required: function () {
+      return !this.isFullDay; // required only if full day is NOT checked
+    }
+  },
+  toTime: {
+    type: String,
+    required: function () {
+      return !this.isFullDay; // required only if full day is NOT checked
+    }
+  },
+  shope_location: {
+    type: {
+      type: String,
+      enum: ["Point"], // GeoJSON type
+      required: true,
+      default: "Point",
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      required: true,
+      validate: {
+        validator: function (val) {
+          return val.length === 2;
+        },
+        message: "Coordinates must be [longitude, latitude]",
+      },
+    },
+  },
+  isFullDay: {
+    type: Boolean,
+    default: false
+  },
+  termsAndConditions: {
+    type: String,
+    required: true // इसको fill करना जरूरी होगा
+  },
+  is_spacial_copun: {
+    type: Boolean,
+    default: false, //if false  then not a spcical copun
+  },
+  isTransferable: {
+    type: Boolean,
+    default: false // Default: not transferable
+  },
+  tag: {
+    type: [String],
+    require: true,
+  },
   consumersId: {
     type: [mongoose.Schema.Types.ObjectId], // list of consumer ids
     ref: 'User', // assuming you have a 'Consumer' model or similar
-    required: false
   }
 });
 
