@@ -6,9 +6,56 @@ import { generateReferralCode } from '../utils/Referalcode.js';
 import fs from 'fs';
 import path from 'path';
 
+
+
+export const updateUserLocation = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { lat, lng } = req.body;
+
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: "Latitude and Longitude are required",
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      {
+        latestLocation: {
+          type: "Point",
+          coordinates: [parseFloat(lng), parseFloat(lat)],
+          updatedAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "User location updated successfully",
+      data: user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error updating location",
+      error: error.message,
+    });
+  }
+};
+
 const signup = async (req, res) => {
   try {
-    const { name, email, phone, password, referralCode } = req.body;
+    const { name, email, phone, type, password, referralCode } = req.body;
 
 
     if (!name || !email || !phone || !password) {
@@ -21,6 +68,9 @@ const signup = async (req, res) => {
       return res.status(400).json({ message: 'Invalid referral code format' });
     }
 
+    if (!["user", "partner", "agency"].includes(type)) {
+      return res.status(401).json({ success: false, message: "Unauthorized Access Denied" });
+    }
 
     // Check if user already exists
     const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
@@ -54,6 +104,7 @@ const signup = async (req, res) => {
     const newUser = new User({
       name,
       email,
+      type,
       phone,
       password: hashedPassword,
       type: 'user',

@@ -49,7 +49,7 @@ const userSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['user', 'partner'],
+    enum: ['user', 'partner','agency'],
     default: 'user'
   },
   data: {
@@ -101,7 +101,18 @@ const userSchema = new mongoose.Schema({
     required: true,
     default: 2
   },
-
+  // Store latest location in GeoJSON format
+  latestLocation: {
+    type: {
+      type: String,
+      enum: ["Point"],
+      default: "Point",
+    },
+    coordinates: {
+      type: [Number], // [lng, lat]
+      default: [0, 0],
+    },
+  }
 }, {
   timestamps: true
 });
@@ -148,6 +159,8 @@ userSchema.pre('save', async function (next) {
   }
   next();
 });
+
+userSchema.index({ latestLocation: "2dsphere" });
 
 const User = mongoose.model('User', userSchema);
 export default User;

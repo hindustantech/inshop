@@ -25,18 +25,23 @@ app.use(express.json());
 app.use(cors());
 
 // Test route
+// ---------------------------
 app.get('/', (req, res) => {
-  const filePath = path.resolve('public/index.html');
-  res.sendFile(filePath);
+  res.send('inshop is Running Smoothly!');
 });
-app.get('/home', (req, res) => {
-  const filePath = path.resolve('public/index.html'); // Adjust path if necessary
-  res.sendFile(filePath);
-});
-app.get('/reports', (req, res) => {
-  const filePath = path.resolve('public/reports.html'); // Adjust path if necessary
-  res.sendFile(filePath);
-});
+
+// app.get('/', (req, res) => {
+//   const filePath = path.resolve('public/index.html');
+//   res.sendFile(filePath);
+// });
+// app.get('/home', (req, res) => {
+//   const filePath = path.resolve('public/index.html'); // Adjust path if necessary
+//   res.sendFile(filePath);
+// });
+// app.get('/reports', (req, res) => {
+//   const filePath = path.resolve('public/reports.html'); // Adjust path if necessary
+//   res.sendFile(filePath);
+// });
 // AdminJS setup
 
 app.use('/admin', adminRouter);
@@ -54,13 +59,13 @@ app.use('/uploads', express.static('uploads'));
 
 // Create uploads directory if it doesn't exist
 if (!fs.existsSync('uploads/links')) {
-    fs.mkdirSync('uploads/links', { recursive: true });
+  fs.mkdirSync('uploads/links', { recursive: true });
 }
 
-app.get('/link-dashboard', (req, res) => {
-  const filePath = path.resolve('public/linkDashboard.html');
-  res.sendFile(filePath);
-});
+// app.get('/link-dashboard', (req, res) => {
+//   const filePath = path.resolve('public/linkDashboard.html');
+//   res.sendFile(filePath);
+// });
 
 // Start server
 

@@ -498,13 +498,13 @@ const getCouponCount = async (req, res) => {
   try {
     // Get the user from the request (set by auth middleware)
     const user = req.user;
-    
+
     if (!user) {
       return res.status(401).json({ message: 'User not authenticated' });
     }
 
     // Return the coupon count
-    res.status(200).json({ 
+    res.status(200).json({
       couponCount: user.couponCount,
       message: 'Coupon count retrieved successfully'
     });
@@ -516,4 +516,21 @@ const getCouponCount = async (req, res) => {
   }
 };
 
-export { create, getall, deleteCoupon, getbyid, toggleActive, updateCoupon, availCoupon, updateCouponState, getAvailedCoupon, updateAmount, storeUsedCoupon, transferCoupon, transferCouponByPhone, getAllCities, getCouponCount };
+export {
+  create,
+  getall,
+  deleteCoupon,
+  getbyid,
+  toggleActive,
+  updateCoupon,
+  availCoupon,
+  updateCouponState,
+  getAvailedCoupon,
+  updateAmount,
+  storeUsedCoupon,
+  transferCoupon,
+  transferCouponByPhone,
+  getAllCities,
+  getCouponCount
+
+};
