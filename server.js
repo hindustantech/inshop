@@ -12,6 +12,8 @@ import adminRouter from './config/adminPanel.js';
 import downloadRoutes from './routes/downloadRoutes.js';
 import sendnotification from './routes/SendNotificationRoute.js'
 import fs from 'fs';
+import bannerroute from './routes/BannerRoute.js';
+
 
 
 dotenv.config();
@@ -55,6 +57,7 @@ app.use('/api/info', generalRoutes);
 app.use('/api/landing', landingRoutes);
 app.use('/download', downloadRoutes);
 app.use('/api/send', sendnotification);
+app.use('/api/banner', bannerroute);
 
 // Add this after your existing middleware setup
 app.use('/uploads', express.static('uploads'));

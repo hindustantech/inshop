@@ -1,78 +1,89 @@
 import Banner from "../models/Banner.js";
 import User from "../models/userModel.js";
 // Create Banner (default expiry = 15 days, unless specified)
+import { uploadToCloudinary } from "../utils/Cloudinary.js";
+
 export const createBanner = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const userType = req.user.type; // 'partner' | 'agency'
+  try {
+    const userId = req.user.id;
+    const userType = req.user.type; // 'partner' | 'agency'
 
-        const {
-            banner_image,
-            google_location_url,
-            banner_type,
-            lat,
-            lng,
-            title,
-            main_keyword,
-            keyword,
-            search_radius,
-            expiryInDays,
-        } = req.body;
+    let {
+      google_location_url,
+      banner_type,
+      lat,
+      lng,
+      title,
+      main_keyword,
+      keyword,
+      search_radius,
+    } = req.body;
 
-        // Validate user
-        if (!["partner", "agency"].includes(userType)) {
-            return res.status(401).json({
-                success: false,
-                message: "Unauthorized Access Denied",
-            });
-        }
-
-        if (!lat || !lng) {
-            return res.status(400).json({
-                success: false,
-                message: "Latitude and Longitude are required",
-            });
-        }
-
-
-        if (typeof main_keyword === "string") {
-            main_keyword = main_keyword.split(",").map(k => k.trim());
-        }
-        if (typeof keyword === "string") {
-            keyword = keyword.split(",").map(k => k.trim());
-        }
-
-        const expiryAt = expiryInDays
-            ? new Date(Date.now() + expiryInDays * 24 * 60 * 60 * 1000)
-            : new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
-
-        const banner = new Banner({
-            createdBy: { id: userId, type: userType },
-            banner_image,
-            google_location_url,
-            banner_type,
-            search_radius: search_radius || 100000,
-            location: {
-                type: "Point",
-                coordinates: [lng, lat],
-            },
-            title,
-            main_keyword: Array.isArray(main_keyword) ? main_keyword : [main_keyword],
-            keyword: Array.isArray(keyword) ? keyword : [keyword],
-            expiryAt,
-        });
-
-        await banner.save();
-
-        res.status(201).json({
-            success: true,
-            message: "Banner created successfully",
-            data: banner,
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
+    // ✅ Validate user
+    if (!["partner", "agency"].includes(userType)) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized Access Denied",
+      });
     }
+
+    // ✅ Validate coordinates
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: "Latitude and Longitude are required",
+      });
+    }
+
+    // ✅ Handle image upload (Cloudinary)
+    let banner_image = null;
+    if (req.file) {
+      const uploadResult = await uploadToCloudinary(req.file.buffer, "banners");
+      banner_image = uploadResult.secure_url;
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Banner image is required",
+      });
+    }
+
+    // ✅ Convert keywords into arrays
+    if (typeof main_keyword === "string") {
+      main_keyword = main_keyword.split(",").map((k) => k.trim());
+    }
+    if (typeof keyword === "string") {
+      keyword = keyword.split(",").map((k) => k.trim());
+    }
+
+    // ✅ Create new banner
+    const banner = new Banner({
+      createdBy: { id: userId, type: userType },
+      banner_image,
+      google_location_url,
+      banner_type,
+      search_radius: search_radius || 100000,
+      location: {
+        type: "Point",
+        coordinates: [parseFloat(lng), parseFloat(lat)],
+      },
+      title,
+      main_keyword: Array.isArray(main_keyword) ? main_keyword : [],
+      keyword: Array.isArray(keyword) ? keyword : [],
+    });
+
+    await banner.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Banner created successfully",
+      data: banner,
+    });
+  } catch (error) {
+    console.error("CreateBanner Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
+
 
 // Update expiry date (Admin only)
 export const updateBannerExpiry = async (req, res) => {
