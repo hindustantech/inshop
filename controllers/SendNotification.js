@@ -13,7 +13,7 @@ export const SendNotification = async (req, res) => {
     }
 
     // Ensure user has a device token
-    if (!user.deviceToken) {
+    if (!user.devicetoken) {
       return res.status(400).json({ message: "User does not have a device token" });
     }
 
