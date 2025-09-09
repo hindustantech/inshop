@@ -122,8 +122,9 @@ export const updateBannerExpiry = async (req, res) => {
 
 
 export const getUserNearestBanners = async (req, res) => {
-    try {
-        const { userId } = req.params;
+    try {   
+        // const { userId } = req.params;
+        const userId=req.user.id;
         const { radius = 100000, search = "", page = 1, limit = 50 } = req.query;
 
         // 🔹 1. Get user location
