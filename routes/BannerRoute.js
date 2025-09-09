@@ -11,6 +11,6 @@ const upload = multer({ storage });
 
 
 router.post('/createbanner', authMiddleware, upload.single("images"), createBanner);
-router.post('/createbanner', authMiddleware, getUserNearestBanners);
+router.get('/getbanner', authMiddleware, getUserNearestBanners);
 
 export default router;
