@@ -10,6 +10,7 @@ import generalRoutes from './routes/generalRoutes.js';
 import landingRoutes from './routes/landingRoutes.js';
 import adminRouter from './config/adminPanel.js';
 import downloadRoutes from './routes/downloadRoutes.js';
+import sendnotification from './routes/SendNotificationRoute.js'
 import fs from 'fs';
 
 
@@ -53,6 +54,7 @@ app.use('/api/link', linkRoutes);
 app.use('/api/info', generalRoutes);
 app.use('/api/landing', landingRoutes);
 app.use('/download', downloadRoutes);
+app.use('/api/send', sendnotification);
 
 // Add this after your existing middleware setup
 app.use('/uploads', express.static('uploads'));

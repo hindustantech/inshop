@@ -23,6 +23,7 @@
     "express": "^4.21.0",
     "express-formidable": "^1.2.0",
     "express-session": "^1.18.1",
+    "firebase-admin": "^13.5.0",
     "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.7.1",
