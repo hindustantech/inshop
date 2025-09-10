@@ -78,87 +78,74 @@ export const createBanner = async (req, res) => {
 
 
 
-
 export const getUserNearestBanners = async (req, res) => {
     try {
+        const userId = req.user.id;
         const { radius = 100000, search = "", page = 1, limit = 50, manualCode } = req.query;
-        const skip = (page - 1) * limit;
 
-        let mode = "user";
-        let baseLocation = null;
-        let effectiveRadius = Number(radius);
-
-        // 1️⃣ Logged-in user
-        if (req.user?.id) {
-            const user = await User.findById(req.user.id).select("latestLocation");
-            if (user?.latestLocation?.coordinates) {
-                const [userLng, userLat] = user.latestLocation.coordinates;
-                baseLocation = { type: "Point", coordinates: [userLng, userLat] };
-            }
+        // Get user location
+        const user = await User.findById(userId).select("latestLocation");
+        if (!user?.latestLocation?.coordinates) {
+            return res.status(404).json({ success: false, message: "User location not found" });
         }
 
-        // 2️⃣ Manual location (or fallback)
+        const [userLng, userLat] = user.latestLocation.coordinates;
+        const skip = (page - 1) * limit;
+
+        // Default mode
+        let mode = "user";
+        let baseLocation = { type: "Point", coordinates: [userLng, userLat] };
+        let effectiveRadius = Number(radius);
+
+        // Manual location
         let manualLocation = null;
         if (manualCode) {
             manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select("city state location");
 
             if (manualLocation?.location?.coordinates) {
-                if (!baseLocation) {
-                    // guest user → use manual location as base
-                    baseLocation = manualLocation.location;
-                    mode = "manual";
-                    effectiveRadius = null; // no radius limit
-                } else {
-                    // logged-in user → check distance from manual location
-                    const check = await ManualAddress.aggregate([
-                        {
-                            $geoNear: {
-                                near: baseLocation,
-                                distanceField: "distance",
-                                spherical: true,
-                                query: { uniqueCode: manualCode },
-                                limit: 1,
-                            },
+                const check = await ManualAddress.aggregate([
+                    {
+                        $geoNear: {
+                            near: { type: "Point", coordinates: [userLng, userLat] },
+                            distanceField: "distance",
+                            spherical: true,
+                            query: { uniqueCode: manualCode },
+                            limit: 1,
                         },
-                        { $project: { distance: 1 } },
-                    ]);
+                    },
+                    { $project: { distance: 1 } },
+                ]);
 
-                    const distance = check[0]?.distance || 0;
-                    if (distance > 100000) {
-                        mode = "manual";
-                        baseLocation = manualLocation.location;
-                        effectiveRadius = null;
-                    }
+                const distance = check[0]?.distance || 0;
+                if (distance > 100000) {
+                    mode = "manual";
+                    baseLocation = manualLocation.location;
+                    effectiveRadius = null;
                 }
             }
         }
 
-        // 3️⃣ Fallback for guest with no manualCode → use some default location
-        if (!baseLocation) {
-            // Example: center of India (can customize)
-            baseLocation = { type: "Point", coordinates: [78.9629, 20.5937] };
-            mode = "default";
-        }
-
-        // 4️⃣ Build aggregation pipeline
-        const dataPipeline = [
+        // Base pipeline
+        const pipeline = [
             {
                 $geoNear: {
                     near: baseLocation,
                     distanceField: "distance",
                     ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
                     spherical: true,
-                    query: { expiryAt: { $gt: new Date() } },
+                    query: { expiryAt: { $gt: new Date() } }, // ignore expired banners
                 },
             },
         ];
 
+        // Manual mode → city filter
         if (mode === "manual" && manualLocation?.city) {
-            dataPipeline.push({ $match: { manual_address: manualLocation.city } });
+            pipeline.push({ $match: { manual_address: manualLocation.city } });
         }
 
+        // Search filter (text index)
         if (search.trim()) {
-            dataPipeline.push({
+            pipeline.push({
                 $match: {
                     $or: [
                         { title: { $regex: search, $options: "i" } },
@@ -168,7 +155,8 @@ export const getUserNearestBanners = async (req, res) => {
             });
         }
 
-        dataPipeline.push(
+        // Sort + pagination + projection
+        pipeline.push(
             { $sort: { distance: 1 } },
             { $skip: skip },
             { $limit: Number(limit) },
@@ -184,56 +172,36 @@ export const getUserNearestBanners = async (req, res) => {
             }
         );
 
-        const data = await Banner.aggregate(dataPipeline);
-
-        // Count total
-        const countPipeline = [
+        // Run aggregation (facet for data + total)
+        const [result] = await Banner.aggregate([
             {
-                $geoNear: {
-                    near: baseLocation,
-                    distanceField: "distance",
-                    ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-                    spherical: true,
-                    query: { expiryAt: { $gt: new Date() } },
-                },
-            },
-        ];
-
-        if (mode === "manual" && manualLocation?.city) {
-            countPipeline.push({ $match: { manual_address: manualLocation.city } });
-        }
-
-        if (search.trim()) {
-            countPipeline.push({
-                $match: {
-                    $or: [
-                        { title: { $regex: search, $options: "i" } },
-                        { keyword: { $regex: search, $options: "i" } },
+                $facet: {
+                    data: pipeline,
+                    totalCount: [
+                        ...pipeline.filter(
+                            stage => !("$skip" in stage) && !("$limit" in stage) && !("$project" in stage) && !("$sort" in stage)
+                        ),
+                        { $count: "total" },
                     ],
                 },
-            });
-        }
+            },
+        ]);
 
-        countPipeline.push({ $count: "total" });
-        const totalResult = await Banner.aggregate(countPipeline);
-        const total = totalResult[0]?.total || 0;
+        const total = result.totalCount[0]?.total || 0;
 
-        // Send response
         res.json({
             success: true,
             mode,
             total,
             page: Number(page),
             pages: Math.ceil(total / limit),
-            data,
+            data: result.data,
         });
+
     } catch (err) {
-        console.error("Error fetching nearest banners:", err);
         res.status(500).json({ success: false, message: "Error fetching nearest banners", error: err.message });
     }
 };
-
-
 
 
 
