@@ -81,7 +81,7 @@ export const createBanner = async (req, res) => {
 
 export const getUserNearestBanners = async (req, res) => {
     try {
-        const { radius = 100000, search = "", page = 1, limit = 50, manualCode } = req.query;
+        const { radius = 100000, search = "", page = 1, limit = 50, manualCode, lat, lng } = req.query;
         const skip = (page - 1) * limit;
 
         let mode = "user";
@@ -91,6 +91,7 @@ export const getUserNearestBanners = async (req, res) => {
         // 1️⃣ Logged-in user
         if (req.user?.id) {
             const user = await User.findById(req.user.id).select("latestLocation");
+            
             if (user?.latestLocation?.coordinates) {
                 const [userLng, userLat] = user.latestLocation.coordinates;
                 baseLocation = { type: "Point", coordinates: [userLng, userLat] };
@@ -133,14 +134,23 @@ export const getUserNearestBanners = async (req, res) => {
             }
         }
 
-        // 3️⃣ Fallback for guest with no manualCode → use some default location
+        // 3️⃣ Custom location from query params (lat, lng)
+        if (lat && lng) {
+            baseLocation = { type: "Point", coordinates: [Number(lng), Number(lat)] };
+            mode = "custom";
+            effectiveRadius = Number(radius) || 100000; // Use provided radius or default
+        }
+
+        // 4️⃣ Fallback for guest with no manualCode or custom location → use some default location
         if (!baseLocation) {
             // Example: center of India (can customize)
             baseLocation = { type: "Point", coordinates: [78.9629, 20.5937] };
             mode = "default";
         }
 
-        // 4️⃣ Build aggregation pipeline
+        // 5️⃣ Build aggregation pipeline
+        const expiryQuery = { $or: [{ expiryAt: { $gt: new Date() } }, { expiryAt: null }] };
+
         const dataPipeline = [
             {
                 $geoNear: {
@@ -148,7 +158,7 @@ export const getUserNearestBanners = async (req, res) => {
                     distanceField: "distance",
                     ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
                     spherical: true,
-                    query: { expiryAt: { $gt: new Date() } },
+                    query: expiryQuery,
                 },
             },
         ];
@@ -163,6 +173,7 @@ export const getUserNearestBanners = async (req, res) => {
                     $or: [
                         { title: { $regex: search, $options: "i" } },
                         { keyword: { $regex: search, $options: "i" } },
+                        { main_keyword: { $regex: search, $options: "i" } },
                     ],
                 },
             });
@@ -194,7 +205,7 @@ export const getUserNearestBanners = async (req, res) => {
                     distanceField: "distance",
                     ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
                     spherical: true,
-                    query: { expiryAt: { $gt: new Date() } },
+                    query: expiryQuery,
                 },
             },
         ];
@@ -209,6 +220,7 @@ export const getUserNearestBanners = async (req, res) => {
                     $or: [
                         { title: { $regex: search, $options: "i" } },
                         { keyword: { $regex: search, $options: "i" } },
+                        { main_keyword: { $regex: search, $options: "i" } },
                     ],
                 },
             });
