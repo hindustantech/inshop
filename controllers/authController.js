@@ -53,6 +53,44 @@ export const updateUserLocation = async (req, res) => {
   }
 };
 
+
+
+
+export const UpdateManualAddress = async (req, res) => {
+  try {
+    const { manul_address } = req.body;
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId, // the user to update
+      { manul_address }, // update this field
+      { new: true } // return the updated document
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Manual address updated successfully",
+      data: updatedUser,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+
 const signup = async (req, res) => {
   try {
     const { name, email, phone, type, password, referralCode } = req.body;

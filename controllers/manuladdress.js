@@ -61,153 +61,41 @@ export const createManualAddress = async (req, res) => {
 
 
 
-export const getUserNearestBanners = async (req, res) => {
+export const getAllManualAddresses = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const { radius = 100000, search = "", page = 1, limit = 50, manualCode } = req.query;
-
-        // 1️⃣ Get user location
-        const user = await User.findById(userId).select("latestLocation");
-        if (!user?.latestLocation?.coordinates) {
-            return res.status(404).json({ success: false, message: "User location not found" });
-        }
-
-        const [userLng, userLat] = user.latestLocation.coordinates;
+        // Get page from query params (default 1)
+        const page = parseInt(req.query.page) || 1;
+        const limit = 50;
         const skip = (page - 1) * limit;
 
-        // 2️⃣ Default mode = user
-        let mode = "user";
-        let baseLocation = { type: "Point", coordinates: [userLng, userLat] };
-        let effectiveRadius = Number(radius);
+        // Query with projection + lean + pagination
+        const addresses = await ManualAddress.find(
+            {},
+            { state: 1, city: 1, uniqueCode: 1, country: 1, location: 1, _id: 0 }
+        )
+            .sort({ state: 1, city: 1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
 
-        // 3️⃣ Manual location (optional)
-        let manualLocation = null;
-        if (manualCode) {
-            manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select("city state location");
+        // Total count for pagination metadata
+        const total = await ManualAddress.countDocuments();
 
-            if (manualLocation?.location?.coordinates) {
-                const check = await ManualAddress.aggregate([
-                    {
-                        $geoNear: {
-                            near: { type: "Point", coordinates: [userLng, userLat] },
-                            distanceField: "distance",
-                            spherical: true,
-                            query: { uniqueCode: manualCode },
-                            limit: 1,
-                        },
-                    },
-                    { $project: { distance: 1 } },
-                ]);
-
-                const distance = check[0]?.distance || 0;
-                if (distance > 100000) {
-                    mode = "manual";
-                    baseLocation = manualLocation.location;
-                    effectiveRadius = null; // manual mode → no radius limit
-                }
-            } else {
-                // Invalid manualCode → fallback to user
-                manualLocation = null;
-                mode = "user";
-                baseLocation = { type: "Point", coordinates: [userLng, userLat] };
-                effectiveRadius = 100000; // default radius
-            }
+        if (!addresses || addresses.length === 0) {
+            return res.status(404).json({ message: "No manual addresses found" });
         }
 
-        // 4️⃣ Build base pipeline for data
-        const dataPipeline = [
-            {
-                $geoNear: {
-                    near: baseLocation,
-                    distanceField: "distance",
-                    ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-                    spherical: true,
-                    query: { expiryAt: { $gt: new Date() } }, // ignore expired
-                },
-            },
-        ];
-
-        if (mode === "manual" && manualLocation?.city) {
-            dataPipeline.push({ $match: { manual_address: manualLocation.city } });
-        }
-
-        if (search.trim()) {
-            dataPipeline.push({
-                $match: {
-                    $or: [
-                        { title: { $regex: search, $options: "i" } },
-                        { keyword: { $regex: search, $options: "i" } },
-                    ],
-                },
-            });
-        }
-
-        dataPipeline.push(
-            { $sort: { distance: 1 } },
-            { $skip: skip },
-            { $limit: Number(limit) },
-            {
-                $project: {
-                    banner_image: 1,
-                    title: 1,
-                    keyword: 1,
-                    manual_address: 1,
-                    location: 1,
-                    distanceInKm: { $round: [{ $divide: ["$distance", 1000] }, 2] },
-                },
-            }
-        );
-
-        const data = await Banner.aggregate(dataPipeline);
-
-        // 5️⃣ Count total (without skip/limit/project)
-        const countPipeline = [
-            {
-                $geoNear: {
-                    near: baseLocation,
-                    distanceField: "distance",
-                    ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-                    spherical: true,
-                    query: { expiryAt: { $gt: new Date() } },
-                },
-            },
-        ];
-
-        if (mode === "manual" && manualLocation?.city) {
-            countPipeline.push({ $match: { manual_address: manualLocation.city } });
-        }
-
-        if (search.trim()) {
-            countPipeline.push({
-                $match: {
-                    $or: [
-                        { title: { $regex: search, $options: "i" } },
-                        { keyword: { $regex: search, $options: "i" } },
-                    ],
-                },
-            });
-        }
-
-        countPipeline.push({ $count: "total" });
-        const totalResult = await Banner.aggregate(countPipeline);
-        const total = totalResult[0]?.total || 0;
-
-        // 6️⃣ Send response
-        res.json({
-            success: true,
-            mode,
+        res.status(200).json({
             total,
-            page: Number(page),
+            page,
             pages: Math.ceil(total / limit),
-            data,
+            count: addresses.length,
+            addresses,
         });
-
-    } catch (err) {
-        console.error("Error fetching nearest banners:", err);
-        res.status(500).json({ success: false, message: "Error fetching nearest banners", error: err.message });
+    } catch (error) {
+        console.error("Error fetching manual addresses:", error);
+        res.status(500).json({ message: "Server error", error });
     }
 };
-
-
 
 

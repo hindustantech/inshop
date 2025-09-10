@@ -13,8 +13,7 @@ import downloadRoutes from './routes/downloadRoutes.js';
 import sendnotification from './routes/SendNotificationRoute.js'
 import fs from 'fs';
 import banner from './routes/BannerRoute.js'
-
-
+import manuladdress from './routes/manullocationroute.js';
 
 dotenv.config();
 connectDB();
@@ -58,6 +57,8 @@ app.use('/api/landing', landingRoutes);
 app.use('/download', downloadRoutes);
 app.use('/api/send', sendnotification);
 app.use('/api/banner', banner);
+
+app.use('/api/manul', manuladdress);
 
 // Add this after your existing middleware setup
 app.use('/uploads', express.static('uploads'));
