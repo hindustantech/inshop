@@ -46,5 +46,4 @@ const ManualAddressSchema = new Schema(
 // 🔑 GeoSpatial Index (for near queries)
 ManualAddressSchema.index({ location: "2dsphere" });
 
-db.manualaddresses.createIndex({ state: 1, city: 1 })
 export default model("ManualAddress", ManualAddressSchema);
