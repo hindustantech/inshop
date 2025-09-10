@@ -49,7 +49,7 @@ const userSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['user', 'partner','agency'],
+    enum: ['user', 'partner', 'agency'],
     default: 'user'
   },
   data: {
@@ -96,10 +96,19 @@ const userSchema = new mongoose.Schema({
       }
     }
   ],
+
   couponCount: {
     type: Number,
     required: true,
     default: 2
+  },
+
+  manul_address: {
+    type: String,
+    required: true,
+    trim: true,
+    index: true, // 🔑 fast lookup
+
   },
   // Store latest location in GeoJSON format
   latestLocation: {
@@ -113,6 +122,7 @@ const userSchema = new mongoose.Schema({
       default: [0, 0],
     },
   }
+
 }, {
   timestamps: true
 });

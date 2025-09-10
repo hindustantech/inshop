@@ -9,6 +9,13 @@ const couponSchema = new mongoose.Schema({
   copuon_image: {
     type: [String]
   },
+  manul_address: {
+    type: String,
+    required: true,
+    trim: true,
+    index: true, // 🔑 fast lookup
+
+  },
   copuon_srno: {
     type: String,
     require: true,
@@ -90,6 +97,7 @@ const couponSchema = new mongoose.Schema({
       },
     },
   },
+
   isFullDay: {
     type: Boolean,
     default: false
