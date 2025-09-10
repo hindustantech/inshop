@@ -78,60 +78,69 @@ export const createBanner = async (req, res) => {
 
 
 
+
 export const getUserNearestBanners = async (req, res) => {
     try {
-        const userId = req.user.id;
         const { radius = 100000, search = "", page = 1, limit = 50, manualCode } = req.query;
-
-        // 1️⃣ Get user location
-        const user = await User.findById(userId).select("latestLocation");
-        if (!user?.latestLocation?.coordinates) {
-            return res.status(404).json({ success: false, message: "User location not found" });
-        }
-
-        const [userLng, userLat] = user.latestLocation.coordinates;
         const skip = (page - 1) * limit;
 
-        // 2️⃣ Default mode = user
         let mode = "user";
-        let baseLocation = { type: "Point", coordinates: [userLng, userLat] };
+        let baseLocation = null;
         let effectiveRadius = Number(radius);
 
-        // 3️⃣ Manual location (optional)
+        // 1️⃣ Logged-in user
+        if (req.user?.id) {
+            const user = await User.findById(req.user.id).select("latestLocation");
+            if (user?.latestLocation?.coordinates) {
+                const [userLng, userLat] = user.latestLocation.coordinates;
+                baseLocation = { type: "Point", coordinates: [userLng, userLat] };
+            }
+        }
+
+        // 2️⃣ Manual location (or fallback)
         let manualLocation = null;
         if (manualCode) {
             manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select("city state location");
 
             if (manualLocation?.location?.coordinates) {
-                const check = await ManualAddress.aggregate([
-                    {
-                        $geoNear: {
-                            near: { type: "Point", coordinates: [userLng, userLat] },
-                            distanceField: "distance",
-                            spherical: true,
-                            query: { uniqueCode: manualCode },
-                            limit: 1,
-                        },
-                    },
-                    { $project: { distance: 1 } },
-                ]);
-
-                const distance = check[0]?.distance || 0;
-                if (distance > 100000) {
-                    mode = "manual";
+                if (!baseLocation) {
+                    // guest user → use manual location as base
                     baseLocation = manualLocation.location;
-                    effectiveRadius = null; // manual mode → no radius limit
+                    mode = "manual";
+                    effectiveRadius = null; // no radius limit
+                } else {
+                    // logged-in user → check distance from manual location
+                    const check = await ManualAddress.aggregate([
+                        {
+                            $geoNear: {
+                                near: baseLocation,
+                                distanceField: "distance",
+                                spherical: true,
+                                query: { uniqueCode: manualCode },
+                                limit: 1,
+                            },
+                        },
+                        { $project: { distance: 1 } },
+                    ]);
+
+                    const distance = check[0]?.distance || 0;
+                    if (distance > 100000) {
+                        mode = "manual";
+                        baseLocation = manualLocation.location;
+                        effectiveRadius = null;
+                    }
                 }
-            } else {
-                // Invalid manualCode → fallback to user
-                manualLocation = null;
-                mode = "user";
-                baseLocation = { type: "Point", coordinates: [userLng, userLat] };
-                effectiveRadius = 100000; // default radius
             }
         }
 
-        // 4️⃣ Build base pipeline for data
+        // 3️⃣ Fallback for guest with no manualCode → use some default location
+        if (!baseLocation) {
+            // Example: center of India (can customize)
+            baseLocation = { type: "Point", coordinates: [78.9629, 20.5937] };
+            mode = "default";
+        }
+
+        // 4️⃣ Build aggregation pipeline
         const dataPipeline = [
             {
                 $geoNear: {
@@ -139,7 +148,7 @@ export const getUserNearestBanners = async (req, res) => {
                     distanceField: "distance",
                     ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
                     spherical: true,
-                    query: { expiryAt: { $gt: new Date() } }, // ignore expired
+                    query: { expiryAt: { $gt: new Date() } },
                 },
             },
         ];
@@ -177,7 +186,7 @@ export const getUserNearestBanners = async (req, res) => {
 
         const data = await Banner.aggregate(dataPipeline);
 
-        // 5️⃣ Count total (without skip/limit/project)
+        // Count total
         const countPipeline = [
             {
                 $geoNear: {
@@ -209,7 +218,7 @@ export const getUserNearestBanners = async (req, res) => {
         const totalResult = await Banner.aggregate(countPipeline);
         const total = totalResult[0]?.total || 0;
 
-        // 6️⃣ Send response
+        // Send response
         res.json({
             success: true,
             mode,
@@ -218,12 +227,12 @@ export const getUserNearestBanners = async (req, res) => {
             pages: Math.ceil(total / limit),
             data,
         });
-
     } catch (err) {
         console.error("Error fetching nearest banners:", err);
         res.status(500).json({ success: false, message: "Error fetching nearest banners", error: err.message });
     }
 };
+
 
 
 
