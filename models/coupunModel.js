@@ -1,9 +1,13 @@
 // const mongoose = require('mongoose');
 import mongoose from 'mongoose';
-
 const couponSchema = new mongoose.Schema({
   title: {
     type: String,
+    required: true
+  },
+  createdby: {
+    type: mongoose.Schema.Types.ObjectId, // references id from another table
+    ref: 'User', // assuming you have an 'Owner' model or similar
     required: true
   },
   copuon_image: {
@@ -16,13 +20,15 @@ const couponSchema = new mongoose.Schema({
     index: true, // 🔑 fast lookup
 
   },
+
   copuon_srno: {
     type: String,
     require: true,
   },
   category: {
-    type: [String], // list of categories
-    required: true
+    type: mongoose.Schema.Types.ObjectId, // references id from another table
+    ref: 'Category', // assuming you have an 'Owner' model or similar
+    required: true,
   },
   copuon_type: {
     type: Boolean,

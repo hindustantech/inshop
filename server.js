@@ -14,6 +14,7 @@ import sendnotification from './routes/SendNotificationRoute.js'
 import fs from 'fs';
 import banner from './routes/BannerRoute.js'
 import manuladdress from './routes/manullocationroute.js';
+import Categoryroute from './routes/Category.js'
 
 dotenv.config();
 connectDB();
@@ -59,6 +60,7 @@ app.use('/api/send', sendnotification);
 app.use('/api/banner', banner);
 
 app.use('/api/manul', manuladdress);
+app.use('/api/category', Categoryroute);
 
 // Add this after your existing middleware setup
 app.use('/uploads', express.static('uploads'));

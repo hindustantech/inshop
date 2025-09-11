@@ -6,6 +6,7 @@ import { uploadToCloudinary } from '../utils/Cloudinary.js';
 import mongoose from 'mongoose';
 import ManualAddress from '../models/ManualAddress.js';
 import Salse from '../models/Sales.js'
+import Category from '../models/CategoryCopun.js';
 
 const statesAndUTs = [
   'Andhra Pradesh',
@@ -47,14 +48,15 @@ const statesAndUTs = [
 ];
 
 
-// Create a new coupon
-export const create = async (req, res) => {
+// helper for image upload
+
+export const createCoupon = async (req, res) => {
   try {
     const {
       title,
       manul_address,
       copuon_srno,
-      category,
+      categoryId, // user pass karela
       discountPercentage,
       validTill,
       style,
@@ -70,87 +72,112 @@ export const create = async (req, res) => {
       shope_location,
     } = req.body;
 
-    // Validate required fields
-    if (!title || !manul_address || !copuon_srno || !category || !discountPercentage || !validTill || !termsAndConditions) {
+    const { createdBy, ownerId, partnerId } = req.ownership; // middleware से आयल
+
+    // ✅ Validate required fields
+    if (
+      !title ||
+      !manul_address ||
+      !copuon_srno ||
+      !categoryId ||
+      discountPercentage == null ||
+      !validTill ||
+      !termsAndConditions
+    ) {
       return res.status(400).json({
-        message: 'Missing required fields: title, manul_address, copuon_srno, category, discountPercentage, validTill, termsAndConditions',
+        message:
+          "Missing required fields: title, manul_address, copuon_srno, categoryId, discountPercentage, validTill, termsAndConditions",
       });
     }
 
-    // Validate shope_location (GeoJSON format: [lng, lat])
+    // ✅ Validate shope_location (GeoJSON format: [lng, lat])
     let location = null;
     if (shope_location) {
       try {
         const parsedLocation = JSON.parse(shope_location);
         if (
-          parsedLocation.type !== 'Point' ||
+          parsedLocation.type !== "Point" ||
           !Array.isArray(parsedLocation.coordinates) ||
           parsedLocation.coordinates.length !== 2 ||
           isNaN(parsedLocation.coordinates[0]) ||
           isNaN(parsedLocation.coordinates[1])
         ) {
-          return res.status(400).json({ message: 'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat] }' });
+          return res.status(400).json({
+            message:
+              'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat] }',
+          });
         }
         location = parsedLocation;
       } catch (error) {
-        return res.status(400).json({ message: 'Invalid shope_location JSON' });
+        return res.status(400).json({ message: "Invalid shope_location JSON" });
       }
     } else {
-      return res.status(400).json({ message: 'shope_location is required' });
+      return res
+        .status(400)
+        .json({ message: "shope_location is required" });
     }
 
-    // Validate fromTime and toTime if isFullDay is false
+    // ✅ Validate fromTime and toTime if isFullDay is false
     if (!isFullDay && (!fromTime || !toTime)) {
-      return res.status(400).json({ message: 'fromTime and toTime are required when isFullDay is false' });
+      return res
+        .status(400)
+        .json({ message: "fromTime and toTime are required when isFullDay is false" });
     }
 
-    // Validate tag
+    // ✅ Validate tag
     if (!tag || !Array.isArray(tag) || tag.length === 0) {
-      return res.status(400).json({ message: 'At least one tag is required' });
+      return res
+        .status(400)
+        .json({ message: "At least one tag is required" });
     }
 
-    // Validate discountPercentage
+    // ✅ Validate discountPercentage
     if (discountPercentage < 0 || discountPercentage > 100) {
-      return res.status(400).json({ message: 'discountPercentage must be between 0 and 100' });
+      return res.status(400).json({
+        message: "discountPercentage must be between 0 and 100",
+      });
     }
 
-    // Validate validTill
+    // ✅ Validate validTill (future date only)
     if (new Date(validTill) <= new Date()) {
-      return res.status(400).json({ message: 'validTill must be a future date' });
+      return res.status(400).json({ message: "validTill must be a future date" });
     }
 
-    // Validate category
-    if (!Array.isArray(category) || category.length === 0) {
-      return res.status(400).json({ message: 'At least one category is required' });
+    // ✅ Validate category
+    if (!mongoose.Types.ObjectId.isValid(categoryId)) {
+      return res.status(400).json({ message: "Invalid categoryId" });
     }
 
-    // Handle image uploads
+    const categoryDoc = await Category.findById(categoryId);
+    if (!categoryDoc) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+
+    // ✅ Handle image uploads
     let copuon_image = [];
     if (req.files && req.files.length > 0) {
       try {
         const uploadPromises = req.files.map((file) =>
-          uploadToCloudinary(file.buffer, 'coupons') // Upload to 'coupons' folder in Cloudinary
+          uploadToCloudinary(file.buffer, "coupons") // Upload to 'coupons' folder in Cloudinary
         );
         const uploadResults = await Promise.all(uploadPromises);
         copuon_image = uploadResults.map((result) => result.secure_url); // Store secure URLs
       } catch (error) {
-        return res.status(500).json({ message: 'Error uploading images to Cloudinary', error: error.message });
+        return res.status(500).json({
+          message: "Error uploading images to Cloudinary",
+          error: error.message,
+        });
       }
     }
 
-    // Get ownerId from authenticated user
-    const ownerId = req.user._id;
-    if (!mongoose.Types.ObjectId.isValid(ownerId)) {
-      return res.status(401).json({ message: 'Invalid user ID' });
-    }
-
-    // Create new coupon
+    // ✅ Coupon create
     const newCoupon = new Coupon({
       title,
       manul_address,
       copuon_srno,
-      category,
+      category: categoryDoc._id,
       discountPercentage,
+      createdBy,
       ownerId,
       validTill: new Date(validTill),
       style,
@@ -169,48 +196,61 @@ export const create = async (req, res) => {
       consumersId: [],
     });
 
-    // Save coupon
     const savedCoupon = await newCoupon.save();
 
-    // Update user's createdCouponsId
-    const currentUser = await User.findById(ownerId);
-    if (!currentUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    currentUser.createdCouponsId.push(savedCoupon._id);
-    await currentUser.save();
-
-    // Send response
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: 'Coupon created successfully',
+      message: "Coupon created successfully",
       coupon: savedCoupon,
     });
-  } catch (error) {
-    console.error('Error creating coupon:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating coupon',
-      error: error.message,
-    });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ message: "Error creating coupon", error: err.message });
   }
 };
 
 
 
+
+
+
 // export const getAllCouponsWithStatusTag = async (req, res) => {
 //   try {
-//     const userId = mongoose.Types.ObjectId(req.user.id); // Logged-in user
-//     const { radius = 100000, search = '', page = 1, limit = 50, manualCode, lat, lng } = req.query;
-//     const skip = (page - 1) * limit;
+//     // Determine user ID (null for guests)
+//     let userId = null;
+//     if (req.user?.id && mongoose.isValidObjectId(req.user.id)) {
+//       userId = mongoose.Types.ObjectId(req.user.id);
+//     }
 
-//     let mode = 'user';
+//     // Validate query parameters
+//     const { radius = 100000, search = '', page = 1, limit = 50, manualCode, lat, lng } = req.query;
+//     const parsedPage = parseInt(page);
+//     const parsedLimit = parseInt(limit);
+//     const parsedRadius = parseInt(radius);
+
+//     if (isNaN(parsedPage) || parsedPage < 1) {
+//       return res.status(400).json({ success: false, message: 'Invalid page number' });
+//     }
+//     if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+//       return res.status(400).json({ success: false, message: 'Invalid limit, must be between 1 and 100' });
+//     }
+//     if ((lat && isNaN(Number(lat))) || (lng && isNaN(Number(lng)))) {
+//       return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
+//     }
+//     if (isNaN(parsedRadius) || parsedRadius < 0) {
+//       return res.status(400).json({ success: false, message: 'Invalid radius' });
+//     }
+
+//     const skip = (parsedPage - 1) * parsedLimit;
+
+//     let mode = userId ? 'user' : 'guest';
 //     let baseLocation = null;
-//     let effectiveRadius = Number(radius);
+//     let effectiveRadius = parsedRadius;
 
 //     // 1️⃣ Logged-in user: Get latestLocation
-//     if (req.user?.id) {
-//       const user = await User.findById(req.user.id).select('latestLocation');
+//     if (userId) {
+//       const user = await User.findById(userId).select('latestLocation');
 //       if (user?.latestLocation?.coordinates && user.latestLocation.coordinates[0] !== 0 && user.latestLocation.coordinates[1] !== 0) {
 //         const [userLng, userLat] = user.latestLocation.coordinates;
 //         baseLocation = { type: 'Point', coordinates: [userLng, userLat] };
@@ -223,7 +263,7 @@ export const create = async (req, res) => {
 //       manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('city state location');
 //       if (manualLocation?.location?.coordinates) {
 //         if (!baseLocation) {
-//           // Guest user: Use manual location as base
+//           // Guest or no user location: Use manual location as base
 //           baseLocation = manualLocation.location;
 //           mode = 'manual';
 //           effectiveRadius = null; // No radius limit for manual location
@@ -256,7 +296,7 @@ export const create = async (req, res) => {
 //     if (lat && lng) {
 //       baseLocation = { type: 'Point', coordinates: [Number(lng), Number(lat)] };
 //       mode = 'custom';
-//       effectiveRadius = Number(radius) || 100000; // Use provided radius or default
+//       effectiveRadius = parsedRadius || 100000;
 //     }
 
 //     // 4️⃣ Fallback: Default location (center of India)
@@ -265,8 +305,8 @@ export const create = async (req, res) => {
 //       mode = 'default';
 //     }
 
-//     // 5️⃣ Build search regex
-//     const searchRegex = new RegExp(search, 'i');
+//     // 5️⃣ Build search regex (sanitize input)
+//     const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
 //     // 6️⃣ Build aggregation pipeline
 //     const dataPipeline = [
@@ -293,18 +333,18 @@ export const create = async (req, res) => {
 //       // Search filter
 //       ...(search.trim()
 //         ? [
-//             {
-//               $match: {
-//                 $or: [
-//                   { manul_address: searchRegex },
-//                   { title: searchRegex },
-//                   { tag: searchRegex },
-//                 ],
-//               },
+//           {
+//             $match: {
+//               $or: [
+//                 { manual_address: searchRegex },
+//                 { title: searchRegex },
+//                 { tag: searchRegex },
+//               ],
 //             },
-//           ]
+//           },
+//         ]
 //         : []),
-//       // Lookup user coupon status
+//       // Lookup user coupon status (skip for guests)
 //       {
 //         $lookup: {
 //           from: 'usercoupons',
@@ -312,7 +352,12 @@ export const create = async (req, res) => {
 //           pipeline: [
 //             {
 //               $match: {
-//                 $expr: { $and: [{ $eq: ['$couponId', '$$couponId'] }, { $eq: ['$userId', userId] }] },
+//                 $expr: {
+//                   $and: [
+//                     { $eq: ['$couponId', '$$couponId'] },
+//                     ...(userId ? [{ $eq: ['$userId', userId] }] : []),
+//                   ],
+//                 },
 //               },
 //             },
 //             { $project: { status: 1, _id: 0 } },
@@ -322,7 +367,7 @@ export const create = async (req, res) => {
 //       },
 //       // Flatten userStatus array
 //       { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-//       // Add displayTag based on userStatus or fallback to first tag
+//       // Add displayTag based on userStatus or fallback to 'Not Claimed'
 //       {
 //         $addFields: {
 //           displayTag: {
@@ -333,7 +378,7 @@ export const create = async (req, res) => {
 //                 { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
 //                 { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
 //               ],
-//               default: { $arrayElemAt: ['$tag', 0] },
+//               default: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
 //             },
 //           },
 //         },
@@ -342,9 +387,9 @@ export const create = async (req, res) => {
 //       {
 //         $project: {
 //           title: 1,
-//           copuon_image: 1,
-//           manul_address: 1,
-//           copuon_srno: 1,
+//           coupon_image: 1,
+//           manual_address: 1,
+//           coupon_srno: 1,
 //           discountPercentage: 1,
 //           validTill: 1,
 //           displayTag: 1,
@@ -354,8 +399,8 @@ export const create = async (req, res) => {
 //       // Sort by distance and validTill
 //       { $sort: { distance: 1, validTill: -1 } },
 //       // Pagination
-//       { $skip: parseInt(skip) },
-//       { $limit: parseInt(limit) },
+//       { $skip: skip },
+//       { $limit: parsedLimit },
 //     ];
 
 //     const coupons = await Coupon.aggregate(dataPipeline);
@@ -382,16 +427,16 @@ export const create = async (req, res) => {
 //       },
 //       ...(search.trim()
 //         ? [
-//             {
-//               $match: {
-//                 $or: [
-//                   { manul_address: searchRegex },
-//                   { title: searchRegex },
-//                   { tag: searchRegex },
-//                 ],
-//               },
+//           {
+//             $match: {
+//               $or: [
+//                 { manual_address: searchRegex },
+//                 { title: searchRegex },
+//                 { tag: searchRegex },
+//               ],
 //             },
-//           ]
+//           },
+//         ]
 //         : []),
 //       { $count: 'total' },
 //     ];
@@ -404,17 +449,16 @@ export const create = async (req, res) => {
 //       success: true,
 //       mode,
 //       data: coupons,
-//       page: parseInt(page),
-//       limit: parseInt(limit),
+//       page: parsedPage,
+//       limit: parsedLimit,
 //       total,
-//       pages: Math.ceil(total / limit),
+//       pages: Math.ceil(total / parsedLimit),
 //     });
 //   } catch (error) {
 //     console.error('Error fetching coupons:', error);
-//     res.status(500).json({ success: false, message: 'Server error', error: error.message });
+//     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
 //   }
 // };
-
 
 
 
@@ -427,7 +471,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     }
 
     // Validate query parameters
-    const { radius = 100000, search = '', page = 1, limit = 50, manualCode, lat, lng } = req.query;
+    const { radius = 100000, search = '', page = 1, limit = 50, manualCode, lat, lng, category } = req.query;
     const parsedPage = parseInt(page);
     const parsedLimit = parseInt(limit);
     const parsedRadius = parseInt(radius);
@@ -443,6 +487,9 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     }
     if (isNaN(parsedRadius) || parsedRadius < 0) {
       return res.status(400).json({ success: false, message: 'Invalid radius' });
+    }
+    if (category && !mongoose.isValidObjectId(category)) {
+      return res.status(400).json({ success: false, message: 'Invalid category ID' });
     }
 
     const skip = (parsedPage - 1) * parsedLimit;
@@ -513,7 +560,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     // 6️⃣ Build aggregation pipeline
     const dataPipeline = [
-      // Match active coupons and validTill in the future or null
+      // Match active coupons, validTill in the future or null, and category if provided
       {
         $match: {
           active: true,
@@ -521,6 +568,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
             { validTill: { $gt: new Date() } },
             { validTill: null },
           ],
+          ...(category ? { category: mongoose.Types.ObjectId(category) } : {}),
         },
       },
       // GeoNear for location-based filtering
@@ -617,6 +665,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
             { validTill: { $gt: new Date() } },
             { validTill: null },
           ],
+          ...(category ? { category: mongoose.Types.ObjectId(category) } : {}),
         },
       },
       {
@@ -662,8 +711,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
-
-
 
 
 
