@@ -51,7 +51,7 @@ app.use('/admin', adminRouter);
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/coupon', couponRoutes);
-app.use('/api/link', linkRoutes);
+app.use('/api/link', linkRoutes); 
 app.use('/api/info', generalRoutes);
 app.use('/api/landing', landingRoutes);
 app.use('/download', downloadRoutes);
