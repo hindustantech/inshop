@@ -224,9 +224,189 @@ export const createBanner = async (req, res) => {
   }
 };/*  */
 
+// export const getUserNearestBanners = async (req, res) => {
+//     try {
+//         const { radius = 100000, search = "", page = 1, limit = 50, manualCode, lat, lng } = req.query;
+//         const skip = (page - 1) * limit;
+
+//         let mode = "user";
+//         let baseLocation = null;
+//         let effectiveRadius = Number(radius);
+
+//         // 1️⃣ Logged-in user
+//         if (req.user?.id) {
+//             const user = await User.findById(req.user.id).select("latestLocation");
+            
+//             if (user?.latestLocation?.coordinates) {
+//                 const [userLng, userLat] = user.latestLocation.coordinates;
+//                 baseLocation = { type: "Point", coordinates: [userLng, userLat] };
+//             }
+//         }
+
+//         // 2️⃣ Manual location (or fallback)
+//         let manualLocation = null;
+//         if (manualCode) {
+//             manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select("city state location");
+
+//             if (manualLocation?.location?.coordinates) {
+//                 if (!baseLocation) {
+//                     // guest user → use manual location as base
+//                     baseLocation = manualLocation.location;
+//                     mode = "manual";
+//                     effectiveRadius = null; // no radius limit
+//                 } else {
+//                     // logged-in user → check distance from manual location
+//                     const check = await ManualAddress.aggregate([
+//                         {
+//                             $geoNear: {
+//                                 near: baseLocation,
+//                                 distanceField: "distance",
+//                                 spherical: true,
+//                                 query: { uniqueCode: manualCode },
+//                                 limit: 1,
+//                             },
+//                         },
+//                         { $project: { distance: 1 } },
+//                     ]);
+
+//                     const distance = check[0]?.distance || 0;
+//                     if (distance > 100000) {
+//                         mode = "manual";
+//                         baseLocation = manualLocation.location;
+//                         effectiveRadius = null;
+//                     }
+//                 }
+//             }
+//         }
+
+//         // 3️⃣ Custom location from query params (lat, lng)
+//         if (lat && lng) {
+//             baseLocation = { type: "Point", coordinates: [Number(lng), Number(lat)] };
+//             mode = "custom";
+//             effectiveRadius = Number(radius) || 100000; // Use provided radius or default
+//         }
+
+//         // 4️⃣ Fallback for guest with no manualCode or custom location → use some default location
+//         if (!baseLocation) {
+//             // Example: center of India (can customize)
+//             baseLocation = { type: "Point", coordinates: [78.9629, 20.5937] };
+//             mode = "default";
+//         }
+
+//         // 5️⃣ Build aggregation pipeline
+//         const expiryQuery = { $or: [{ expiryAt: { $gt: new Date() } }, { expiryAt: null }] };
+
+//         const dataPipeline = [
+//             {
+//                 $geoNear: {
+//                     near: baseLocation,
+//                     distanceField: "distance",
+//                     ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+//                     spherical: true,
+//                     query: expiryQuery,
+//                 },
+//             },
+//         ];
+
+//         if (mode === "manual" && manualLocation?.city) {
+//             dataPipeline.push({ $match: { manual_address: manualLocation.city } });
+//         }
+
+//         if (search.trim()) {
+//             dataPipeline.push({
+//                 $match: {
+//                     $or: [
+//                         { title: { $regex: search, $options: "i" } },
+//                         { keyword: { $regex: search, $options: "i" } },
+//                         { main_keyword: { $regex: search, $options: "i" } },
+//                     ],
+//                 },
+//             });
+//         }
+
+//         dataPipeline.push(
+//             { $sort: { distance: 1 } },
+//             { $skip: skip },
+//             { $limit: Number(limit) },
+//             {
+//                 $project: {
+//                     banner_image: 1,
+//                     title: 1,
+//                     keyword: 1,
+//                     manual_address: 1,
+//                     location: 1,
+//                     distanceInKm: { $round: [{ $divide: ["$distance", 1000] }, 2] },
+//                 },
+//             }
+//         );
+
+//         const data = await Banner.aggregate(dataPipeline);
+
+//         // Count total
+//         const countPipeline = [
+//             {
+//                 $geoNear: {
+//                     near: baseLocation,
+//                     distanceField: "distance",
+//                     ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+//                     spherical: true,
+//                     query: expiryQuery,
+//                 },
+//             },
+//         ];
+
+//         if (mode === "manual" && manualLocation?.city) {
+//             countPipeline.push({ $match: { manual_address: manualLocation.city } });
+//         }
+
+//         if (search.trim()) {
+//             countPipeline.push({
+//                 $match: {
+//                     $or: [
+//                         { title: { $regex: search, $options: "i" } },
+//                         { keyword: { $regex: search, $options: "i" } },
+//                         { main_keyword: { $regex: search, $options: "i" } },
+//                     ],
+//                 },
+//             });
+//         }
+
+//         countPipeline.push({ $count: "total" });
+//         const totalResult = await Banner.aggregate(countPipeline);
+//         const total = totalResult[0]?.total || 0;
+
+//         // Send response
+//         res.json({
+//             success: true,
+//             mode,
+//             total,
+//             page: Number(page),
+//             pages: Math.ceil(total / limit),
+//             data,
+//         });
+//     } catch (err) {
+//         console.error("Error fetching nearest banners:", err);
+//         res.status(500).json({ success: false, message: "Error fetching nearest banners", error: err.message });
+//     }
+// };
+
+
+
+
+
 export const getUserNearestBanners = async (req, res) => {
     try {
-        const { radius = 100000, search = "", page = 1, limit = 50, manualCode, lat, lng } = req.query;
+        const { 
+            radius = 100000, 
+            search = "", 
+            page = 1, 
+            limit = 50, 
+            manualCode, 
+            lat, 
+            lng,
+            category // ✅ Added category filter parameter
+        } = req.query;
+        
         const skip = (page - 1) * limit;
 
         let mode = "user";
@@ -293,9 +473,35 @@ export const getUserNearestBanners = async (req, res) => {
             mode = "default";
         }
 
-        // 5️⃣ Build aggregation pipeline
+        // 5️⃣ Build expiry query (already exists in your code)
         const expiryQuery = { $or: [{ expiryAt: { $gt: new Date() } }, { expiryAt: null }] };
 
+        // 6️⃣ Build category filter if provided
+        let categoryFilter = {};
+        if (category) {
+            // Convert category string to ObjectId if it's a valid MongoDB ID
+            if (mongoose.Types.ObjectId.isValid(category)) {
+                categoryFilter = { category: new mongoose.Types.ObjectId(category) };
+            } else {
+                // If category is not a valid ObjectId, you might want to handle it differently
+                // For example, search by category name if you have that field
+                // Or return an error
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "Invalid category ID format" 
+                });
+            }
+        }
+
+        // 7️⃣ Combine all filters
+        const mainQuery = {
+            $and: [
+                expiryQuery, // Expiry filter
+                categoryFilter, // Category filter (empty object if no category provided)
+            ].filter(condition => Object.keys(condition).length > 0) // Remove empty conditions
+        };
+
+        // 8️⃣ Build aggregation pipeline
         const dataPipeline = [
             {
                 $geoNear: {
@@ -303,7 +509,7 @@ export const getUserNearestBanners = async (req, res) => {
                     distanceField: "distance",
                     ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
                     spherical: true,
-                    query: expiryQuery,
+                    query: mainQuery, // ✅ Use combined query instead of just expiryQuery
                 },
             },
         ];
@@ -335,6 +541,7 @@ export const getUserNearestBanners = async (req, res) => {
                     keyword: 1,
                     manual_address: 1,
                     location: 1,
+                    category: 1, // ✅ Include category in response
                     distanceInKm: { $round: [{ $divide: ["$distance", 1000] }, 2] },
                 },
             }
@@ -342,7 +549,7 @@ export const getUserNearestBanners = async (req, res) => {
 
         const data = await Banner.aggregate(dataPipeline);
 
-        // Count total
+        // 9️⃣ Count total with same filters
         const countPipeline = [
             {
                 $geoNear: {
@@ -350,7 +557,7 @@ export const getUserNearestBanners = async (req, res) => {
                     distanceField: "distance",
                     ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
                     spherical: true,
-                    query: expiryQuery,
+                    query: mainQuery, // ✅ Use combined query
                 },
             },
         ];
@@ -375,7 +582,7 @@ export const getUserNearestBanners = async (req, res) => {
         const totalResult = await Banner.aggregate(countPipeline);
         const total = totalResult[0]?.total || 0;
 
-        // Send response
+        // 🔟 Send response
         res.json({
             success: true,
             mode,
@@ -383,6 +590,11 @@ export const getUserNearestBanners = async (req, res) => {
             page: Number(page),
             pages: Math.ceil(total / limit),
             data,
+            filters: {
+                category: category || null, // Show applied category filter in response
+                search: search || null,
+                radius: effectiveRadius
+            }
         });
     } catch (err) {
         console.error("Error fetching nearest banners:", err);
