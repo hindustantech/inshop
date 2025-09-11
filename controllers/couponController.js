@@ -1347,33 +1347,33 @@ const storeUsedCoupon = async (req, res) => {
   }
 }
 
-const transferCoupon = async (req, res) => {
-  try {
-    const senderId = req.user._id;
-    const { reciverId, transferCount } = req.body;
+// const transferCoupon = async (req, res) => {
+//   try {
+//     const senderId = req.user._id;
+//     const { reciverId, transferCount } = req.body;
 
-    // Fetch the sender and receiver by their IDs
-    const sender = await User.findById(senderId);
-    const reciver = await User.findById(reciverId);
+//     // Fetch the sender and receiver by their IDs
+//     const sender = await User.findById(senderId);
+//     const reciver = await User.findById(reciverId);
 
-    // Ensure sender has enough coupons and prevent couponCount from going below 1
-    if (sender.couponCount < transferCount + 1) {
-      return res.status(400).json({ message: 'Insufficient coupons to transfer' });
-    }
+//     // Ensure sender has enough coupons and prevent couponCount from going below 1
+//     if (sender.couponCount < transferCount + 1) {
+//       return res.status(400).json({ message: 'Insufficient coupons to transfer' });
+//     }
 
-    // Update coupon counts
-    sender.couponCount -= transferCount;
-    reciver.couponCount += transferCount;
+//     // Update coupon counts
+//     sender.couponCount -= transferCount;
+//     reciver.couponCount += transferCount;
 
-    // Save the updated users
-    await sender.save();
-    await reciver.save();
+//     // Save the updated users
+//     await sender.save();
+//     await reciver.save();
 
-    res.status(200).json({ message: 'Coupon(s) transferred successfully' });
-  } catch (error) {
-    res.status(500).json({ message: 'Error transferring coupons', error });
-  }
-};
+//     res.status(200).json({ message: 'Coupon(s) transferred successfully' });
+//   } catch (error) {
+//     res.status(500).json({ message: 'Error transferring coupons', error });
+//   }
+// };
 
 const transferCouponByPhone = async (req, res) => {
   try {
@@ -1476,7 +1476,6 @@ export {
   getAvailedCoupon,
   updateAmount,
   storeUsedCoupon,
-  transferCoupon,
   transferCouponByPhone,
   getAllCities,
   getCouponCount
