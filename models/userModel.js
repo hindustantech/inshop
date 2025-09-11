@@ -49,7 +49,7 @@ const userSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['user', 'partner', 'agency'],
+    enum: ['user', 'partner', 'agency','super_admin'],
     default: 'user'
   },
   data: {

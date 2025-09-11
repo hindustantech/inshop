@@ -5,10 +5,8 @@ const userCouponSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Coupon',
         required: true
-
     },
     userId: {
-
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
@@ -18,25 +16,29 @@ const userCouponSchema = new mongoose.Schema({
         enum: ['available', 'used', 'transferred', 'cancelled'],
         default: 'available'
     },
-    transferredTo: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-
+    senders: [
+        {
+            senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            sentAt: { type: Date, default: Date.now }
+        }
+    ],
+    count: {
+        type: Number,
+        default: 1
     },
+
     transferDate: {
         type: Date
-
     },
-    useDate: { 
+    useDate: {
         type: Date
-
-     },
-    qrCode: { 
-        type: String, 
-        required: true 
     },
-    qrScanDate: { 
-        type: Date 
+    qrCode: {
+        type: String,
+        required: true
+    },
+    qrScanDate: {
+        type: Date
     }
 }, { timestamps: true });
 
