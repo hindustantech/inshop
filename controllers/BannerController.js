@@ -2,82 +2,227 @@ import Banner from "../models/Banner.js";
 import User from "../models/userModel.js";
 // Create Banner (default expiry = 15 days, unless specified)
 import { uploadToCloudinary } from "../utils/Cloudinary.js";
+import { exportToCSV } from "../utils/exportcsv.js";
+import Category from "../models/CategoryCopun.js";
+import mongoose from "mongoose";
+
+
+// export const createBanner = async (req, res) => {
+//     try {
+//         const userId = req.user?.id;
+//         const userType = req.user?.type; // 'partner' | 'agency'
+
+//         let {
+//             google_location_url,
+//             banner_type,
+//             lat,
+//             lng,
+//             title,
+//             main_keyword,
+//             keyword,
+//             search_radius,
+//             manual_address,
+//             expiryDays // number of days to expire
+//         } = req.body;
+
+//         // Validate user
+//         if (!["partner", "agency"].includes(userType)) {
+//             return res.status(401).json({ success: false, message: "Unauthorized Access Denied" });
+//         }
+
+//         // Validate coordinates
+//         if (!lat || !lng) {
+//             return res.status(400).json({ success: false, message: "Latitude and Longitude are required" });
+//         }
+
+//         // Handle image upload
+//         let banner_image = null;
+//         if (req.file) {
+//             const uploadResult = await uploadToCloudinary(req.file.buffer, "banners");
+//             banner_image = uploadResult.secure_url;
+//         } else {
+//             return res.status(400).json({ success: false, message: "Banner image is required" });
+//         }
+
+//         // Convert keywords into arrays
+//         if (typeof main_keyword === "string") main_keyword = main_keyword.split(",").map(k => k.trim());
+//         if (typeof keyword === "string") keyword = keyword.split(",").map(k => k.trim());
+
+//         // Set expiryAt
+//         let expiryAt = null;
+//         if (expiryDays && !isNaN(expiryDays)) {
+//             expiryAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
+//         }
+
+//         // Create banner
+//         const banner = new Banner({
+//             createdBy: { id: userId, type: userType },
+//             banner_image,
+//             google_location_url,
+//             banner_type,
+//             manual_address,
+//             search_radius: search_radius || 100000,
+//             location: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
+//             title,
+//             main_keyword: Array.isArray(main_keyword) ? main_keyword : [],
+//             keyword: Array.isArray(keyword) ? keyword : [],
+//             expiryAt,
+//         });
+
+//         await banner.save();
+
+//         res.status(201).json({ success: true, message: "Banner created successfully", data: banner });
+
+//     } catch (error) {
+//         console.error("CreateBanner Error:", error);
+//         res.status(500).json({ success: false, message: error.message });
+//     }
+// };
 
 
 export const createBanner = async (req, res) => {
-    try {
-        const userId = req.user?.id;
-        const userType = req.user?.type; // 'partner' | 'agency'
+  try {
+    const userId = req.user?._id;
+    const userType = req.user?.type; // partner | agency | super_admin
 
-        let {
-            google_location_url,
-            banner_type,
-            lat,
-            lng,
-            title,
-            main_keyword,
-            keyword,
-            search_radius,
-            manual_address,
-            expiryDays // number of days to expire
-        } = req.body;
+    let {
+      google_location_url,
+      banner_type,
+      lat,
+      lng,
+      title,
+      main_keyword,
+      keyword,
+      search_radius,
+      manual_address,
+      expiryDays, // number of days
+      category,   // categoryId
+      ownerId,    // only agency/super_admin can pass this
+    } = req.body;
 
-        // Validate user
-        if (!["partner", "agency"].includes(userType)) {
-            return res.status(401).json({ success: false, message: "Unauthorized Access Denied" });
-        }
-
-        // Validate coordinates
-        if (!lat || !lng) {
-            return res.status(400).json({ success: false, message: "Latitude and Longitude are required" });
-        }
-
-        // Handle image upload
-        let banner_image = null;
-        if (req.file) {
-            const uploadResult = await uploadToCloudinary(req.file.buffer, "banners");
-            banner_image = uploadResult.secure_url;
-        } else {
-            return res.status(400).json({ success: false, message: "Banner image is required" });
-        }
-
-        // Convert keywords into arrays
-        if (typeof main_keyword === "string") main_keyword = main_keyword.split(",").map(k => k.trim());
-        if (typeof keyword === "string") keyword = keyword.split(",").map(k => k.trim());
-
-        // Set expiryAt
-        let expiryAt = null;
-        if (expiryDays && !isNaN(expiryDays)) {
-            expiryAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
-        }
-
-        // Create banner
-        const banner = new Banner({
-            createdBy: { id: userId, type: userType },
-            banner_image,
-            google_location_url,
-            banner_type,
-            manual_address,
-            search_radius: search_radius || 100000,
-            location: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
-            title,
-            main_keyword: Array.isArray(main_keyword) ? main_keyword : [],
-            keyword: Array.isArray(keyword) ? keyword : [],
-            expiryAt,
-        });
-
-        await banner.save();
-
-        res.status(201).json({ success: true, message: "Banner created successfully", data: banner });
-
-    } catch (error) {
-        console.error("CreateBanner Error:", error);
-        res.status(500).json({ success: false, message: error.message });
+    /* ======================
+       🔹 Role Validation
+    ====================== */
+    if (!["partner", "agency", "super_admin"].includes(userType)) {
+      return res.status(401).json({ success: false, message: "Unauthorized Access" });
     }
-};
 
+    /* ======================
+       🔹 Required Fields Validation
+    ====================== */
+    if (!title || !manual_address || !banner_type || !category || !lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: title, manual_address, banner_type, category, lat, lng",
+      });
+    }
 
+    /* ======================
+       🔹 Category Validation
+    ====================== */
+    if (!mongoose.Types.ObjectId.isValid(category)) {
+      return res.status(400).json({ success: false, message: "Invalid category ID" });
+    }
 
+    const categoryExists = await Category.findById(category);
+    if (!categoryExists) {
+      return res.status(404).json({ success: false, message: "Category not found" });
+    }
+
+    /* ======================
+       🔹 Image Validation
+    ====================== */
+    let banner_image = null;
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "Banner image is required" });
+    }
+    try {
+      const uploadResult = await uploadToCloudinary(req.file.buffer, "banners");
+      banner_image = uploadResult.secure_url;
+    } catch (err) {
+      return res.status(500).json({ success: false, message: "Error uploading image", error: err.message });
+    }
+
+    /* ======================
+       🔹 Keywords Formatting
+    ====================== */
+    if (typeof main_keyword === "string")
+      main_keyword = main_keyword.split(",").map((k) => k.trim());
+
+    if (typeof keyword === "string")
+      keyword = keyword.split(",").map((k) => k.trim());
+
+    /* ======================
+       🔹 Expiry Calculation
+    ====================== */
+    let expiryAt = null;
+    if (expiryDays && !isNaN(expiryDays)) {
+      expiryAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
+    }
+
+    /* ======================
+       🔹 Handle createdBy & ownerId
+    ====================== */
+    let finalCreatedBy = userId;
+    let finalOwnerId = userId;
+
+    if (userType === "partner") {
+      // Partner → createdBy = ownerId = self
+      finalCreatedBy = userId;
+      finalOwnerId = userId;
+    } else if (["agency", "super_admin"].includes(userType)) {
+      // Agency/SuperAdmin → createdBy = self, ownerId = provided or fallback to self
+      finalCreatedBy = userId;
+
+      if (ownerId) {
+        if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+          return res.status(400).json({ success: false, message: "Invalid ownerId" });
+        }
+        const ownerExists = await User.findById(ownerId);
+        if (!ownerExists) {
+          return res.status(404).json({ success: false, message: "Owner user not found" });
+        }
+        finalOwnerId = ownerId;
+      } else {
+        // fallback: if no ownerId passed, store own userId
+        finalOwnerId = userId;
+      }
+    }
+
+    /* ======================
+       🔹 Create Banner
+    ====================== */
+    const banner = new Banner({
+      createdby: finalCreatedBy,
+      ownerId: finalOwnerId,
+      banner_image,
+      google_location_url,
+      banner_type,
+      manual_address,
+      search_radius: search_radius || 100000,
+      location: {
+        type: "Point",
+        coordinates: [parseFloat(lng), parseFloat(lat)],
+      },
+      title,
+      main_keyword: Array.isArray(main_keyword) ? main_keyword : [],
+      keyword: Array.isArray(keyword) ? keyword : [],
+      expiryAt,
+      category,
+    });
+
+    await banner.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Banner created successfully",
+      data: banner,
+    });
+  } catch (error) {
+    console.error("CreateBanner Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};/*  */
 
 export const getUserNearestBanners = async (req, res) => {
     try {
@@ -246,9 +391,6 @@ export const getUserNearestBanners = async (req, res) => {
 };
 
 
-
-
-
 // Update expiry date (Admin only)
 export const updateBannerExpiry = async (req, res) => {
     try {
@@ -286,8 +428,6 @@ export const updateBannerExpiry = async (req, res) => {
 
 
 
-
-
 export const getBannerById = async (req, res) => {
     try {
         const { bannerId } = req.params;
@@ -320,3 +460,145 @@ export const getBannerById = async (req, res) => {
         });
     }
 };
+
+
+
+
+
+
+/* ===================================================
+   1. Get My Banners (Partner/Agency/SuperAdmin)
+   - Supports search, pagination, CSV export
+=================================================== */
+export const getMyBanners = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const userType = req.user.type;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      tag,
+      category,
+      exportCSV // if true → export
+    } = req.query;
+
+    let filter = {};
+
+    if (userType === "partner") {
+      filter.ownerId = userId;
+    } else if (["agency", "super_admin"].includes(userType)) {
+      filter.createdby = userId;
+    }
+
+    if (search) {
+      filter.$or = [
+        { title: new RegExp(search, "i") },
+        { main_keyword: { $in: [search] } },
+        { keyword: { $in: [search] } },
+      ];
+    }
+
+    if (tag) filter.keyword = { $in: [tag] };
+    if (category && mongoose.Types.ObjectId.isValid(category)) filter.category = category;
+
+    const skip = (page - 1) * limit;
+
+    let query = Banner.find(filter).populate("category", "name");
+    const total = await Banner.countDocuments(filter);
+
+    if (!exportCSV) {
+      const banners = await query.skip(skip).limit(Number(limit)).lean();
+      return res.status(200).json({
+        success: true,
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        data: banners,
+      });
+    }
+
+    // Export CSV
+    const allBanners = await query.lean();
+    const exportData = allBanners.map(b => ({
+      Title: b.title,
+      Address: b.manual_address,
+      BannerType: b.banner_type,
+      Category: b.category?.name,
+      CreatedAt: b.createdAt,
+    }));
+    return exportToCSV(res, exportData, "my_banners.csv");
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ===================================================
+   2. Get All Banners (SuperAdmin)
+   - Full details + search + pagination + CSV export
+=================================================== */
+export const getAllBannersForAdmin = async (req, res) => {
+  try {
+    if (req.user.type !== "super_admin") {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      tag,
+      category,
+      exportCSV
+    } = req.query;
+
+    let filter = {};
+    if (search) {
+      filter.$or = [
+        { title: new RegExp(search, "i") },
+        { main_keyword: { $in: [search] } },
+        { keyword: { $in: [search] } },
+      ];
+    }
+    if (tag) filter.keyword = { $in: [tag] };
+    if (category && mongoose.Types.ObjectId.isValid(category)) filter.category = category;
+
+    const skip = (page - 1) * limit;
+
+    let query = Banner.find(filter)
+      .populate("category", "name")
+      .populate("createdby", "name email type")
+      .populate("ownerId", "name email type");
+
+    const total = await Banner.countDocuments(filter);
+
+    if (!exportCSV) {
+      const banners = await query.skip(skip).limit(Number(limit)).lean();
+      return res.status(200).json({
+        success: true,
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        data: banners,
+      });
+    }
+
+    const allBanners = await query.lean();
+    const exportData = allBanners.map(b => ({
+      Title: b.title,
+      Address: b.manual_address,
+      BannerType: b.banner_type,
+      Category: b.category?.name,
+      CreatedBy: b.createdby?.name,
+      OwnerBy: b.ownerId?.name,
+      CreatedAt: b.createdAt,
+    }));
+    return exportToCSV(res, exportData, "all_banners.csv");
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+

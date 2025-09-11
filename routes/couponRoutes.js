@@ -1,6 +1,6 @@
 import express from 'express';
 import {
-    create,
+    createCoupon,
     getall,
     deleteCoupon,
     getbyid,
@@ -14,11 +14,27 @@ import {
     transferCoupon,
     transferCouponByPhone,
     getAllCities,
-    getCouponCount
+    getCouponCount,
+    getMyCoupons,
+    getAllCouponsForAdmin
 } from '../controllers/couponController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
+import { roleBasedOwnership } from '../middlewares/rolebasedownership.js';
+import multer from 'multer';
 
 const router = express.Router();
+const storage = multer.memoryStorage(); // ✅ stores buffer in memory
+
+const upload = multer({ storage });
+
+router.post('/create', authMiddleware, roleBasedOwnership, upload.single("images"), createCoupon);
+
+
+router.get("/coupons/my", authMiddleware, getMyCoupons);
+router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
+
+
+
 
 // Public routes (no authentication required)
 router.get('/getall', authMiddleware, getall);
@@ -27,7 +43,6 @@ router.get('/get-cities', authMiddleware, getAllCities);
 
 // Protected routes (authentication required)
 router.get('/coupon-count', authMiddleware, getCouponCount);
-router.post('/create', authMiddleware, create);
 router.get('/availed', authMiddleware, getAvailedCoupon);
 router.get('/store-used-coupon', authMiddleware, storeUsedCoupon);
 router.delete('/delete/:id', authMiddleware, deleteCoupon);

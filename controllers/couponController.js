@@ -7,6 +7,7 @@ import mongoose from 'mongoose';
 import ManualAddress from '../models/ManualAddress.js';
 import Salse from '../models/Sales.js'
 import Category from '../models/CategoryCopun.js';
+import { exportToCSV } from '../utils/exportcsv.js';
 
 const statesAndUTs = [
   'Andhra Pradesh',
@@ -1070,6 +1071,136 @@ export const cancelSale = async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+/* 1. Get My Coupons */
+export const getMyCoupons = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const userType = req.user.type;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      tag,
+      category,
+      exportCSV
+    } = req.query;
+
+    let filter = {};
+    if (userType === "partner") {
+      filter.ownerId = userId;
+    } else if (["agency", "super_admin"].includes(userType)) {
+      filter.createdby = userId;
+    }
+
+    if (search) {
+      filter.$or = [
+        { title: new RegExp(search, "i") },
+        { tags: { $in: [search] } }
+      ];
+    }
+
+    if (tag) filter.tags = { $in: [tag] };
+    if (category && mongoose.Types.ObjectId.isValid(category)) filter.category = category;
+
+    const skip = (page - 1) * limit;
+
+    let query = Coupon.find(filter).populate("category", "name");
+    const total = await Coupon.countDocuments(filter);
+
+    if (!exportCSV) {
+      const coupons = await query.skip(skip).limit(Number(limit)).lean();
+      return res.status(200).json({
+        success: true,
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        data: coupons,
+      });
+    }
+
+    const allCoupons = await query.lean();
+    const exportData = allCoupons.map(c => ({
+      Title: c.title,
+      Discount: c.discount,
+      Category: c.category?.name,
+      CreatedAt: c.createdAt,
+    }));
+    return exportToCSV(res, exportData, "my_coupons.csv");
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* 2. Get All Coupons (SuperAdmin) */
+export const getAllCouponsForAdmin = async (req, res) => {
+  try {
+    if (req.user.type !== "super_admin") {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      tag,
+      category,
+      exportCSV
+    } = req.query;
+
+    let filter = {};
+    if (search) {
+      filter.$or = [
+        { title: new RegExp(search, "i") },
+        { tags: { $in: [search] } }
+      ];
+    }
+    if (tag) filter.tags = { $in: [tag] };
+    if (category && mongoose.Types.ObjectId.isValid(category)) filter.category = category;
+
+    const skip = (page - 1) * limit;
+
+    let query = Coupon.find(filter)
+      .populate("category", "name")
+      .populate("createdby", "name email type")
+      .populate("ownerId", "name email type");
+
+    const total = await Coupon.countDocuments(filter);
+
+    if (!exportCSV) {
+      const coupons = await query.skip(skip).limit(Number(limit)).lean();
+      return res.status(200).json({
+        success: true,
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        data: coupons,
+      });
+    }
+
+    const allCoupons = await query.lean();
+    const exportData = allCoupons.map(c => ({
+      Title: c.title,
+      Discount: c.discount,
+      Category: c.category?.name,
+      CreatedBy: c.createdby?.name,
+      OwnerBy: c.ownerId?.name,
+      CreatedAt: c.createdAt,
+    }));
+    return exportToCSV(res, exportData, "all_coupons.csv");
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 
 const getall = async (req, res) => {

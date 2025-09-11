@@ -15,7 +15,7 @@
     "@adminjs/mongoose": "^4.1.0",
     "@adminjs/themes": "^1.0.1",
     "adminjs": "^7.8.13",
-    "axios": "^1.7.7",
+    "axios": "^1.11.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.7.0",
     "cors": "^2.8.5",

@@ -2,21 +2,55 @@ import mongoose from "mongoose";
 
 const BannerSchema = new mongoose.Schema(
   {
-    createdBy: {
-      id: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-      type: { type: String, enum: ["partner", "agency"], required: true, index: true },
+
+    createdby: {
+      type: mongoose.Schema.Types.ObjectId, // references id from another table
+      ref: 'User', // assuming you have an 'Owner' model or similar
+      required: true
     },
 
-    manual_address: { type: String, required: true, trim: true, index: true },
+    ownerId: {
+       type: mongoose.Schema.Types.ObjectId, // references id from another table
+       ref: 'User', // assuming you have an 'Owner' model or similar
+       required: true
+     },
 
-    banner_image: { type: String, required: true },
 
-    google_location_url: { type: String },
 
-    banner_type: { type: String, enum: ["Changeable", "Unchangeable"], default: "Unchangeable", index: true },
 
-    search_radius: { type: Number, default: 100000 }, // meters
+    manual_address: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true
+    },
 
+    banner_image: {
+      type: String,
+      required: true
+
+    },
+
+    google_location_url: {
+      type: String
+
+    },
+
+    banner_type: {
+      type: String,
+      enum: ["Changeable", "Unchangeable"],
+      default: "Unchangeable", index: true
+    },
+
+    search_radius: {
+      type: Number,
+      default: 100000
+    }, // meters
+    category: {
+      type: mongoose.Schema.Types.ObjectId, // references id from another table
+      ref: 'Category', // assuming you have an 'Owner' model or similar
+      required: true,
+    },
     location: {
       type: { type: String, enum: ["Point"], required: true, default: "Point" },
       coordinates: {

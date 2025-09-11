@@ -1,5 +1,6 @@
 import express from 'express';
 import CouponService from '../controllers/CouponServices.js';
+
 const router = express.Router();
 
 // Create a new coupon

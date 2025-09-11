@@ -12,18 +12,21 @@ import {
     getProfileData,
     uploadProfileImage,
     getOwner,
+    findUserByPhone,
     getProfileImageUrl
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
 const router = express.Router();
+router.post('/updateUserLocation', authMiddleware, updateUserLocation);
+// router.post('/signout', signout);
 
 router.post('/signup', signup);
-router.post('/updateUserLocation', authMiddleware, updateUserLocation);
+router.post("/find-by-phone", findUserByPhone);
+
 router.post('/verifyOtp', verifyOtp);
 router.post('/login', login);
 router.post('/resendOtp', resendOtp);
-router.post('/signout', signout);
 router.post('/signout', signout);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
