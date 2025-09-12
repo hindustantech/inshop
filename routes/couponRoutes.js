@@ -1,6 +1,7 @@
 import express from 'express';
 import {
     createCoupon,
+    getAllCouponsWithStatusTag,
     getall,
     deleteCoupon,
     getbyid,
@@ -28,6 +29,8 @@ const storage = multer.memoryStorage(); // ✅ stores buffer in memory
 const upload = multer({ storage });
 
 router.post('/create', authMiddleware, roleBasedOwnership, upload.single("images"), createCoupon);
+
+router.get('/getAllCouponsWithStatusTag', authMiddleware, getAllCouponsWithStatusTag);
 
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);

@@ -2,6 +2,7 @@ import express from 'express';
 import {
     signup,
     updateUserLocation,
+    UpdateManualAddress,
     verifyOtp,
     login,
     resendOtp,
@@ -18,7 +19,12 @@ import {
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
 const router = express.Router();
+
+
 router.post('/updateUserLocation', authMiddleware, updateUserLocation);
+
+router.post('/UpdateManualAddress', authMiddleware, UpdateManualAddress);
+
 // router.post('/signout', signout);
 
 router.post('/signup', signup);
