@@ -184,7 +184,8 @@ export const createCoupon = async (req, res) => {
       category: categoryDoc._id,
       discountPercentage: parsedDiscount,
       createdBy,
-      ownerId,
+      ownerId: ownerId || partnerId,   // ✅ agar ownerId na ho to partnerId
+
       createdBy: userId,   // ✅ fix
       // partnerId: partnerId || undefined,
       validTill: new Date(validTill),
