@@ -7,7 +7,7 @@ import {
   updateCategory,
   toggleCategory,
 } from "../controllers/category.js";
-import optionalAuth from "../middleware/auth.js"; // Import the middleware
+import optionalAuth from "../middlewares/optionalAuth.js";
 
 const router = express.Router();
 

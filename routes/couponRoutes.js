@@ -28,7 +28,7 @@ const storage = multer.memoryStorage(); // ✅ stores buffer in memory
 
 const upload = multer({ storage });
 
-    router.post('/create', authMiddleware, roleBasedOwnership, upload.single("images"), createCoupon);
+router.post('/create', authMiddleware, roleBasedOwnership, upload.single("images"), createCoupon);
 
 router.get('/getAllCouponsWithStatusTag', authMiddleware, getAllCouponsWithStatusTag);
 
