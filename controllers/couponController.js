@@ -51,13 +51,14 @@ const statesAndUTs = [
 
 // helper for image upload
 
+
 export const createCoupon = async (req, res) => {
   try {
     const {
       title,
       manul_address,
       copuon_srno,
-      categoryId, // user pass karela
+      categoryId,
       discountPercentage,
       validTill,
       style,
@@ -73,11 +74,17 @@ export const createCoupon = async (req, res) => {
       shope_location,
     } = req.body;
 
-    const user=req.user.id;
-    console.log(user);
-    const { createdBy, ownerId, partnerId } = req.ownership; // middleware से आयल
+    // ✅ req.user.id -> mongoose document hota hai, isliye use _id karo
+    const userId = req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized: user missing" });
+    }
 
-    // ✅ Validate required fields
+    // ✅ roleBasedOwnership se aaya
+    const { createdBy, ownerId, partnerId } = req.ownership || {};
+
+    // ------------------ Validations ------------------
+
     if (
       !title ||
       !manul_address ||
@@ -93,11 +100,15 @@ export const createCoupon = async (req, res) => {
       });
     }
 
-    // ✅ Validate shope_location (GeoJSON format: [lng, lat])
+    // ✅ Validate shope_location
     let location = null;
     if (shope_location) {
       try {
-        const parsedLocation = JSON.parse(shope_location);
+        const parsedLocation =
+          typeof shope_location === "string"
+            ? JSON.parse(shope_location)
+            : shope_location;
+
         if (
           parsedLocation.type !== "Point" ||
           !Array.isArray(parsedLocation.coordinates) ||
@@ -112,26 +123,24 @@ export const createCoupon = async (req, res) => {
         }
         location = parsedLocation;
       } catch (error) {
-        return res.status(400).json({ message: "Invalid shope_location JSON" });
+        return res
+          .status(400)
+          .json({ message: "Invalid shope_location JSON", error: error.message });
       }
     } else {
-      return res
-        .status(400)
-        .json({ message: "shope_location is required" });
+      return res.status(400).json({ message: "shope_location is required" });
     }
 
-    // ✅ Validate fromTime and toTime if isFullDay is false
+    // ✅ Time check
     if (!isFullDay && (!fromTime || !toTime)) {
-      return res
-        .status(400)
-        .json({ message: "fromTime and toTime are required when isFullDay is false" });
+      return res.status(400).json({
+        message: "fromTime and toTime are required when isFullDay is false",
+      });
     }
 
     // ✅ Validate tag
     if (!tag || !Array.isArray(tag) || tag.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "At least one tag is required" });
+      return res.status(400).json({ message: "At least one tag is required" });
     }
 
     // ✅ Validate discountPercentage
@@ -143,7 +152,9 @@ export const createCoupon = async (req, res) => {
 
     // ✅ Validate validTill (future date only)
     if (new Date(validTill) <= new Date()) {
-      return res.status(400).json({ message: "validTill must be a future date" });
+      return res
+        .status(400)
+        .json({ message: "validTill must be a future date" });
     }
 
     // ✅ Validate category
@@ -156,15 +167,15 @@ export const createCoupon = async (req, res) => {
       return res.status(404).json({ message: "Category not found" });
     }
 
-    // ✅ Handle image uploads
+    // ------------------ Handle Images ------------------
     let copuon_image = [];
     if (req.files && req.files.length > 0) {
       try {
         const uploadPromises = req.files.map((file) =>
-          uploadToCloudinary(file.buffer, "coupons") // Upload to 'coupons' folder in Cloudinary
+          uploadToCloudinary(file.buffer, "coupons")
         );
         const uploadResults = await Promise.all(uploadPromises);
-        copuon_image = uploadResults.map((result) => result.secure_url); // Store secure URLs
+        copuon_image = uploadResults.map((result) => result.secure_url);
       } catch (error) {
         return res.status(500).json({
           message: "Error uploading images to Cloudinary",
@@ -173,7 +184,7 @@ export const createCoupon = async (req, res) => {
       }
     }
 
-    // ✅ Coupon create
+    // ------------------ Save Coupon ------------------
     const newCoupon = new Coupon({
       title,
       manul_address,
@@ -182,6 +193,7 @@ export const createCoupon = async (req, res) => {
       discountPercentage,
       createdBy,
       ownerId,
+      partnerId: partnerId || undefined,
       validTill: new Date(validTill),
       style,
       active,
@@ -207,9 +219,11 @@ export const createCoupon = async (req, res) => {
       coupon: savedCoupon,
     });
   } catch (err) {
-    return res
-      .status(500)
-      .json({ message: "Error creating coupon", error: err.message });
+    console.error("Create coupon error:", err);
+    return res.status(500).json({
+      message: "Error creating coupon",
+      error: err.message,
+    });
   }
 };
 
@@ -968,7 +982,7 @@ export const completeSale = async (req, res) => {
     if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
     const increment = (user.usercount - usedCount) + usedCount + 1;
     await user.save();
-    
+
     // Calculate discount and final amount
     const totalDiscountPercentage = sale.usedCount * coupon.discountPercentage;
     const discountAmount = (totalAmount * totalDiscountPercentage) / 100;
