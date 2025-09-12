@@ -73,6 +73,8 @@ export const createCoupon = async (req, res) => {
       shope_location,
     } = req.body;
 
+    const user=req.user.id;
+    console.log(user);
     const { createdBy, ownerId, partnerId } = req.ownership; // middleware से आयल
 
     // ✅ Validate required fields
