@@ -186,7 +186,7 @@ export const createCoupon = async (req, res) => {
       createdBy,
       ownerId: ownerId || partnerId,   // ✅ agar ownerId na ho to partnerId
 
-      createdBy: userId,   // ✅ fix
+      createdby: userId,   // ✅ fix
       // partnerId: partnerId || undefined,
       validTill: new Date(validTill),
       style,
