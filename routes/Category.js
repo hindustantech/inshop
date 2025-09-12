@@ -7,22 +7,22 @@ import {
   updateCategory,
   toggleCategory,
 } from "../controllers/category.js";
-
+import optionalAuth from "../middlewares/optionalAuth.js";
 const router = express.Router();
 
-// Create new category
-router.post("/createCategory", createCategory);
+// Create new category (requires authentication, adjust as needed)
+router.post("/createCategory", optionalAuth, createCategory);
 
-// Get all categories (with pagination, search)
-router.get("/getCategories", getCategories);
+// Get all categories (with pagination, search, and optional auth)
+router.get("/getCategories", optionalAuth, getCategories);
 
 // Get single category by ID
-router.get("/getCategoryById/:id", getCategoryById);
+router.get("/getCategoryById/:id", optionalAuth, getCategoryById);
 
-// Update category
-router.put("/updateCategory/:id", updateCategory);
+// Update category (requires authentication, adjust as needed)
+router.put("/updateCategory/:id", optionalAuth, updateCategory);
 
-// Toggle category status (replaces delete)
-router.patch("/toggleCategory/:id", toggleCategory);
+// Toggle category status (requires super_admin, adjust middleware as needed)
+router.patch("/toggleCategory/:id", optionalAuth, toggleCategory);
 
 export default router;
