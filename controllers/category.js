@@ -1,7 +1,8 @@
+// controllers/category.js
 import Category from "../models/CategoryCopun.js";
 import mongoose from "mongoose";
 
-// Create Category
+// Create Category (unchanged)
 export const createCategory = async (req, res) => {
   try {
     const { name, slug, description, tags } = req.body;
@@ -16,7 +17,7 @@ export const createCategory = async (req, res) => {
       slug,
       description,
       tags,
-      createdBy: req.user ? req.user._id : null, // If user is authenticated
+      createdBy: req.user ? req.user._id : null,
     });
 
     await category.save();
@@ -26,10 +27,10 @@ export const createCategory = async (req, res) => {
   }
 };
 
-// Get All Categories (with pagination, search, active filter)
+// Get All Categories (with pagination, search, and access control)
 export const getCategories = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "", active } = req.query;
+    const { page = 1, limit = 10, search = "" } = req.query;
 
     const query = {};
     if (search) {
@@ -40,8 +41,10 @@ export const getCategories = async (req, res) => {
         { tags: { $regex: search, $options: "i" } },
       ];
     }
-    if (active !== undefined) {
-      query.isActive = active === "true";
+
+    // If user is not authenticated or not super_admin, only fetch active categories
+    if (!req.user || req.user.userType !== "super_admin") {
+      query.isActive = true;
     }
 
     const categories = await Category.find(query)
@@ -62,7 +65,7 @@ export const getCategories = async (req, res) => {
   }
 };
 
-// Get Single Category
+// Get Single Category (restrict inactive categories to super_admin)
 export const getCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -76,13 +79,18 @@ export const getCategoryById = async (req, res) => {
       return res.status(404).json({ message: "Category not found" });
     }
 
+    // Restrict inactive category access to super_admin
+    if (!category.isActive && (!req.user || req.user.userType !== "super_admin")) {
+      return res.status(403).json({ message: "Access denied: Inactive category" });
+    }
+
     res.status(200).json(category);
   } catch (error) {
     res.status(500).json({ message: "Error fetching category", error: error.message });
   }
 };
 
-// Update Category
+// Update Category (unchanged)
 export const updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
@@ -103,9 +111,8 @@ export const updateCategory = async (req, res) => {
   }
 };
 
-// Delete Category
-// Deactivate Category (Soft Delete)
-export const deleteCategory = async (req, res) => {
+// Toggle Category Status (replaces deleteCategory)
+export const toggleCategory = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -113,20 +120,24 @@ export const deleteCategory = async (req, res) => {
       return res.status(400).json({ message: "Invalid category ID" });
     }
 
+    // Restrict toggle to super_admin
+    if (!req.user || req.user.userType !== "super_admin") {
+      return res.status(403).json({ message: "Access denied: Super admin only" });
+    }
+
     const category = await Category.findById(id);
     if (!category) {
       return res.status(404).json({ message: "Category not found" });
     }
 
-    if (!category.isActive) {
-      return res.status(400).json({ message: "Category is already deactivated" });
-    }
-
-    category.isActive = false;
+    category.isActive = !category.isActive;
     await category.save();
 
-    res.status(200).json({ message: "Category deactivated successfully", category });
+    res.status(200).json({
+      message: `Category ${category.isActive ? "activated" : "deactivated"} successfully`,
+      category,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Error deactivating category", error: error.message });
+    res.status(500).json({ message: "Error toggling category status", error: error.message });
   }
 };
