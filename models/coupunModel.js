@@ -86,6 +86,9 @@ const couponSchema = new mongoose.Schema({
     }
   },
   shope_location: {
+    address:{
+      type:String
+    },
     type: {
       type: String,
       enum: ["Point"], // GeoJSON type

@@ -120,7 +120,8 @@ export const createCoupon = async (req, res) => {
         !Array.isArray(parsedLocation.coordinates) ||
         parsedLocation.coordinates.length !== 2 ||
         isNaN(parsedLocation.coordinates[0]) ||
-        isNaN(parsedLocation.coordinates[1])
+        isNaN(parsedLocation.coordinates[1])||
+        !parsedLocation.address?.trim()
       ) {
         return res.status(400).json({
           message:
