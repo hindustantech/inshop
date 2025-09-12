@@ -179,13 +179,14 @@ export const createCoupon = async (req, res) => {
     // Save Coupon
     const newCoupon = new Coupon({
       title,
-      manual_address,
+      manul_address: manual_address,
       copuon_srno,
       category: categoryDoc._id,
       discountPercentage: parsedDiscount,
       createdBy,
       ownerId,
-      partnerId: partnerId || undefined,
+      createdBy: userId,   // ✅ fix
+      // partnerId: partnerId || undefined,
       validTill: new Date(validTill),
       style,
       active,
@@ -972,7 +973,7 @@ export const completeSale = async (req, res) => {
     if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
     const increment = (user.usercount - usedCount) + usedCount + 1;
     await user.save();
-    
+
     // Calculate discount and final amount
     const totalDiscountPercentage = sale.usedCount * coupon.discountPercentage;
     const discountAmount = (totalAmount * totalDiscountPercentage) / 100;
