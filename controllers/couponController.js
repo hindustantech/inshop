@@ -51,12 +51,11 @@ const statesAndUTs = [
 
 // helper for image upload
 
-
 export const createCoupon = async (req, res) => {
   try {
     const {
       title,
-      manul_address,
+      manual_address, // Fixed typo
       copuon_srno,
       categoryId,
       discountPercentage,
@@ -74,90 +73,83 @@ export const createCoupon = async (req, res) => {
       shope_location,
     } = req.body;
 
-    // ✅ req.user.id -> mongoose document hota hai, isliye use _id karo
     const userId = req.user?._id;
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized: user missing" });
     }
 
-    // ✅ roleBasedOwnership se aaya
     const { createdBy, ownerId, partnerId } = req.ownership || {};
 
     // ------------------ Validations ------------------
 
     if (
-      !title ||
-      !manul_address ||
-      !copuon_srno ||
-      !categoryId ||
-      discountPercentage == null ||
-      !validTill ||
-      !termsAndConditions
+      !title?.trim() ||
+      !manual_address?.trim() ||
+      !copuon_srno?.trim() ||
+      !categoryId?.trim() ||
+      isNaN(parseFloat(discountPercentage)) ||
+      !validTill?.trim() ||
+      !termsAndConditions?.trim()
     ) {
       return res.status(400).json({
         message:
-          "Missing required fields: title, manul_address, copuon_srno, categoryId, discountPercentage, validTill, termsAndConditions",
+          "Missing or invalid required fields: title, manual_address, copuon_srno, categoryId, discountPercentage, validTill, termsAndConditions",
       });
     }
 
-    // ✅ Validate shope_location
-    let location = null;
-    if (shope_location) {
-      try {
-        const parsedLocation =
-          typeof shope_location === "string"
-            ? JSON.parse(shope_location)
-            : shope_location;
-
-        if (
-          parsedLocation.type !== "Point" ||
-          !Array.isArray(parsedLocation.coordinates) ||
-          parsedLocation.coordinates.length !== 2 ||
-          isNaN(parsedLocation.coordinates[0]) ||
-          isNaN(parsedLocation.coordinates[1])
-        ) {
-          return res.status(400).json({
-            message:
-              'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat] }',
-          });
-        }
-        location = parsedLocation;
-      } catch (error) {
-        return res
-          .status(400)
-          .json({ message: "Invalid shope_location JSON", error: error.message });
-      }
-    } else {
-      return res.status(400).json({ message: "shope_location is required" });
+    // Parse discountPercentage
+    const parsedDiscount = parseFloat(discountPercentage);
+    if (parsedDiscount < 0 || parsedDiscount > 100) {
+      return res.status(400).json({
+        message: "discountPercentage must be between 0 and 100",
+      });
     }
 
-    // ✅ Time check
+    // Validate shope_location
+    let location = null;
+    if (!shope_location) {
+      return res.status(400).json({ message: "shope_location is required" });
+    }
+    try {
+      const parsedLocation = typeof shope_location === "string"
+        ? JSON.parse(shope_location)
+        : shope_location;
+
+      if (
+        parsedLocation.type !== "Point" ||
+        !Array.isArray(parsedLocation.coordinates) ||
+        parsedLocation.coordinates.length !== 2 ||
+        isNaN(parsedLocation.coordinates[0]) ||
+        isNaN(parsedLocation.coordinates[1])
+      ) {
+        return res.status(400).json({
+          message:
+            'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat] }',
+        });
+      }
+      location = parsedLocation;
+    } catch (error) {
+      return res.status(400).json({ message: "Invalid shope_location JSON", error: error.message });
+    }
+
+    // Time check
     if (!isFullDay && (!fromTime || !toTime)) {
       return res.status(400).json({
         message: "fromTime and toTime are required when isFullDay is false",
       });
     }
 
-    // ✅ Validate tag
+    // Validate tag
     if (!tag || !Array.isArray(tag) || tag.length === 0) {
       return res.status(400).json({ message: "At least one tag is required" });
     }
 
-    // ✅ Validate discountPercentage
-    if (discountPercentage < 0 || discountPercentage > 100) {
-      return res.status(400).json({
-        message: "discountPercentage must be between 0 and 100",
-      });
+    // Validate validTill
+    if (new Date(validTill) <= new Date() || isNaN(new Date(validTill).getTime())) {
+      return res.status(400).json({ message: "validTill must be a valid future date" });
     }
 
-    // ✅ Validate validTill (future date only)
-    if (new Date(validTill) <= new Date()) {
-      return res
-        .status(400)
-        .json({ message: "validTill must be a future date" });
-    }
-
-    // ✅ Validate category
+    // Validate category
     if (!mongoose.Types.ObjectId.isValid(categoryId)) {
       return res.status(400).json({ message: "Invalid categoryId" });
     }
@@ -167,7 +159,7 @@ export const createCoupon = async (req, res) => {
       return res.status(404).json({ message: "Category not found" });
     }
 
-    // ------------------ Handle Images ------------------
+    // Handle Images
     let copuon_image = [];
     if (req.files && req.files.length > 0) {
       try {
@@ -184,13 +176,13 @@ export const createCoupon = async (req, res) => {
       }
     }
 
-    // ------------------ Save Coupon ------------------
+    // Save Coupon
     const newCoupon = new Coupon({
       title,
-      manul_address,
+      manual_address,
       copuon_srno,
       category: categoryDoc._id,
-      discountPercentage,
+      discountPercentage: parsedDiscount,
       createdBy,
       ownerId,
       partnerId: partnerId || undefined,
@@ -226,8 +218,6 @@ export const createCoupon = async (req, res) => {
     });
   }
 };
-
-
 
 
 
@@ -982,7 +972,7 @@ export const completeSale = async (req, res) => {
     if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
     const increment = (user.usercount - usedCount) + usedCount + 1;
     await user.save();
-
+    
     // Calculate discount and final amount
     const totalDiscountPercentage = sale.usedCount * coupon.discountPercentage;
     const discountAmount = (totalAmount * totalDiscountPercentage) / 100;
