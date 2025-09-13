@@ -86,8 +86,8 @@ const couponSchema = new mongoose.Schema({
     }
   },
   shope_location: {
-    address:{
-      type:String
+    address: {
+      type: String
     },
     type: {
       type: String,
@@ -139,6 +139,7 @@ const couponSchema = new mongoose.Schema({
   }
 });
 
-const Coupon = mongoose.model('Coupon', couponSchema);
+couponSchema.index({ shope_location: '2dsphere' });
 
+const Coupon = mongoose.model('Coupon', couponSchema);
 export default Coupon;
