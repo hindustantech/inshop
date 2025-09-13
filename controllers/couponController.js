@@ -470,14 +470,12 @@ export const createCoupon = async (req, res) => {
 //   }
 // };
 
-
-
 export const getAllCouponsWithStatusTag = async (req, res) => {
   try {
     // Determine user ID (null for guests)
     let userId = null;
     if (req.user?.id && mongoose.isValidObjectId(req.user.id)) {
-      userId = mongoose.Types.ObjectId(req.user.id);
+      userId = new mongoose.Types.ObjectId(req.user.id);
     }
 
     // Validate query parameters
@@ -568,20 +566,19 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     // 5️⃣ Build search regex (sanitize input)
     const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-    // 6️⃣ Build aggregation pipeline
+    // 6️⃣ Build match query for geoNear
+    const geoQuery = {
+      active: true,
+      $or: [
+        { validTill: { $gt: new Date() } },
+        { validTill: null },
+      ],
+      ...(category ? { category: new mongoose.Types.ObjectId(category) } : {}),
+    };
+
+    // 7️⃣ Build aggregation pipeline
     const dataPipeline = [
-      // Match active coupons, validTill in the future or null, and category if provided
-      {
-        $match: {
-          active: true,
-          $or: [
-            { validTill: { $gt: new Date() } },
-            { validTill: null },
-          ],
-          ...(category ? { category: mongoose.Types.ObjectId(category) } : {}),
-        },
-      },
-      // GeoNear for location-based filtering
+      // GeoNear as first stage with query
       {
         $geoNear: {
           near: baseLocation,
@@ -589,6 +586,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
           spherical: true,
           key: 'shope_location',
+          query: geoQuery,
         },
       },
       // Search filter
@@ -599,13 +597,13 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               $or: [
                 { manual_address: searchRegex },
                 { title: searchRegex },
-                { tag: searchRegex },
+                { tag: { $elemMatch: { $regex: searchRegex } } }, // Fixed for array of strings
               ],
             },
           },
         ]
         : []),
-      // Lookup user coupon status (skip for guests)
+      // Lookup user coupon status
       {
         $lookup: {
           from: 'usercoupons',
@@ -616,7 +614,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 $expr: {
                   $and: [
                     { $eq: ['$couponId', '$$couponId'] },
-                    ...(userId ? [{ $eq: ['$userId', userId] }] : []),
+                    { $eq: ['$userId', userId] }, // Always include; if userId null, no match
                   ],
                 },
               },
@@ -666,18 +664,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     const coupons = await Coupon.aggregate(dataPipeline);
 
-    // 7️⃣ Count total for pagination
+    // 8️⃣ Count total for pagination
     const countPipeline = [
-      {
-        $match: {
-          active: true,
-          $or: [
-            { validTill: { $gt: new Date() } },
-            { validTill: null },
-          ],
-          ...(category ? { category: mongoose.Types.ObjectId(category) } : {}),
-        },
-      },
       {
         $geoNear: {
           near: baseLocation,
@@ -685,6 +673,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
           spherical: true,
           key: 'shope_location',
+          query: geoQuery,
         },
       },
       ...(search.trim()
@@ -694,7 +683,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               $or: [
                 { manual_address: searchRegex },
                 { title: searchRegex },
-                { tag: searchRegex },
+                { tag: { $elemMatch: { $regex: searchRegex } } }, // Fixed for array of strings
               ],
             },
           },
@@ -706,7 +695,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     const totalResult = await Coupon.aggregate(countPipeline);
     const total = totalResult[0]?.total || 0;
 
-    // 8️⃣ Send response
+    // 9️⃣ Send response
     res.status(200).json({
       success: true,
       mode,
@@ -721,7 +710,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
-
 
 
 export const transferCoupon = async (req, res) => {
