@@ -392,12 +392,6 @@ export const createBanner = async (req, res) => {
 
 
 
-
-const mongoose = require('mongoose');
-const User = require('../models/User'); // Adjust path to your User model
-const ManualAddress = require('../models/ManualAddress'); // Adjust path to your ManualAddress model
-const Banner = require('../models/Banner'); // Adjust path to your Banner model
-
 export const getUserNearestBanners = async (req, res) => {
     try {
         const { 
