@@ -603,45 +603,54 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           },
         ]
         : []),
-      // Lookup user coupon status
-      {
-        $lookup: {
-          from: 'usercoupons',
-          let: { couponId: '$_id' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$couponId', '$$couponId'] },
-                    { $eq: ['$userId', userId] }, // Always include; if userId null, no match
-                  ],
+      // Lookup user coupon status (skip if no userId)
+      ...(userId ? [
+        {
+          $lookup: {
+            from: 'usercoupons',
+            let: { couponId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$couponId', '$$couponId'] },
+                      { $eq: ['$userId', userId] },
+                    ],
+                  },
                 },
               },
-            },
-            { $project: { status: 1, _id: 0 } },
-          ],
-          as: 'userStatus',
+              { $project: { status: 1, _id: 0 } },
+            ],
+            as: 'userStatus',
+          },
         },
-      },
-      // Flatten userStatus array
-      { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-      // Add displayTag based on userStatus or fallback to 'Not Claimed'
-      {
-        $addFields: {
-          displayTag: {
-            $switch: {
-              branches: [
-                { case: { $eq: ['$userStatus.status', 'used'] }, then: 'Used' },
-                { case: { $eq: ['$userStatus.status', 'transferred'] }, then: 'Transferred' },
-                { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
-                { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
-              ],
-              default: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
+        // Flatten userStatus array
+        { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+        // Add displayTag based on userStatus or fallback to 'Not Claimed'
+        {
+          $addFields: {
+            displayTag: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$userStatus.status', 'used'] }, then: 'Used' },
+                  { case: { $eq: ['$userStatus.status', 'transferred'] }, then: 'Transferred' },
+                  { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
+                  { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
+                ],
+                default: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
+              },
             },
           },
         },
-      },
+      ] : [
+        // For guests/default mode: Set displayTag to first tag or 'Not Claimed'
+        {
+          $addFields: {
+            displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
+          },
+        },
+      ]),
       // Project necessary fields
       {
         $project: {
