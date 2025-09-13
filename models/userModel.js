@@ -105,7 +105,6 @@ const userSchema = new mongoose.Schema({
 
   manul_address: {
     type: String,
-    required: true,
     trim: true,
     index: true, // 🔑 fast lookup
 

@@ -39,7 +39,8 @@ const BannerSchema = new mongoose.Schema(
     banner_type: {
       type: String,
       enum: ["Changeable", "Unchangeable"],
-      default: "Unchangeable", index: true
+      default: "Unchangeable", 
+      index: true
     },
 
     search_radius: {
@@ -60,6 +61,7 @@ const BannerSchema = new mongoose.Schema(
       },
     },
 
+    
     title: { type: String },
     main_keyword: { type: [String], index: true },
     keyword: { type: [String], index: true },
