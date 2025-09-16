@@ -9,6 +9,7 @@ import Salse from '../models/Sales.js'
 import Category from '../models/CategoryCopun.js';
 import { exportToCSV } from '../utils/exportcsv.js';
 import jwt from "jsonwebtoken";
+import QRCode from "qrcode";
 
 const statesAndUTs = [
   'Andhra Pradesh',
