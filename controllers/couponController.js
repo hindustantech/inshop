@@ -496,8 +496,18 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     if (isNaN(parsedRadius) || parsedRadius < 0) {
       return res.status(400).json({ success: false, message: 'Invalid radius' });
     }
-    if (category && !mongoose.isValidObjectId(category)) {
-      return res.status(400).json({ success: false, message: 'Invalid category ID' });
+    // Enhanced category validation
+    let categoryId = null;
+    if (category) {
+      if (!mongoose.isValidObjectId(category)) {
+        return res.status(400).json({ success: false, message: 'Invalid category ID' });
+      }
+      // Optional: Verify category exists in the Category collection
+      const categoryExists = await Category.findById(category).select('_id');
+      if (!categoryExists) {
+        return res.status(400).json({ success: false, message: 'Category not found' });
+      }
+      categoryId = new mongoose.Types.ObjectId(category);
     }
 
     const skip = (parsedPage - 1) * parsedLimit;
@@ -505,6 +515,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     let mode = userId ? 'user' : 'guest';
     let baseLocation = null;
     let effectiveRadius = parsedRadius;
+    let sortByLatest = false; // Flag to sort by latest in default case
 
     // 1️⃣ Logged-in user: Get latestLocation
     if (userId) {
@@ -521,12 +532,10 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
       manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('city state location');
       if (manualLocation?.location?.coordinates) {
         if (!baseLocation) {
-          // Guest or no user location: Use manual location as base
           baseLocation = manualLocation.location;
           mode = 'manual';
           effectiveRadius = null; // No radius limit for manual location
         } else {
-          // Logged-in user: Check distance from manual location
           const check = await ManualAddress.aggregate([
             {
               $geoNear: {
@@ -557,10 +566,12 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
       effectiveRadius = parsedRadius || 100000;
     }
 
-    // 4️⃣ Fallback: Default location (center of India)
+    // 4️⃣ Fallback: Default location (center of India) with no radius for latest coupons
     if (!baseLocation) {
       baseLocation = { type: 'Point', coordinates: [78.9629, 20.5937] };
       mode = 'default';
+      effectiveRadius = null; // No radius limit to show all active coupons
+      sortByLatest = true; // Prioritize latest coupons
     }
 
     // 5️⃣ Build search regex (sanitize input)
@@ -573,7 +584,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         { validTill: { $gt: new Date() } },
         { validTill: null },
       ],
-      ...(category ? { category: new mongoose.Types.ObjectId(category) } : {}),
+      ...(categoryId ? { category: categoryId } : {}), // Use validated categoryId
     };
 
     // 7️⃣ Build aggregation pipeline
@@ -597,7 +608,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               $or: [
                 { manual_address: searchRegex },
                 { title: searchRegex },
-                { tag: { $elemMatch: { $regex: searchRegex } } }, // Fixed for array of strings
+                { tag: { $elemMatch: { $regex: searchRegex } } },
               ],
             },
           },
@@ -625,9 +636,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
             as: 'userStatus',
           },
         },
-        // Flatten userStatus array
         { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-        // Add displayTag based on userStatus or fallback to 'Not Claimed'
         {
           $addFields: {
             displayTag: {
@@ -644,7 +653,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           },
         },
       ] : [
-        // For guests/default mode: Set displayTag to first tag or 'Not Claimed'
         {
           $addFields: {
             displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
@@ -664,8 +672,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
         },
       },
-      // Sort by distance and validTill
-      { $sort: { distance: 1, validTill: -1 } },
+      // Sort by latest (validTill or createdAt) for default mode, else by distance
+      { $sort: sortByLatest ? { validTill: -1, createdAt: -1 } : { distance: 1, validTill: -1 } },
       // Pagination
       { $skip: skip },
       { $limit: parsedLimit },
@@ -692,7 +700,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               $or: [
                 { manual_address: searchRegex },
                 { title: searchRegex },
-                { tag: { $elemMatch: { $regex: searchRegex } } }, // Fixed for array of strings
+                { tag: { $elemMatch: { $regex: searchRegex } } },
               ],
             },
           },
@@ -1254,31 +1262,48 @@ const getall = async (req, res) => {
   }
 };
 
-
-const getbyid = async (req, res) => {
+export const getById = async (req, res) => {
   try {
-    const user = req.user.id;
+    const userId = req.user.id; // Middleware se aayega
     const { couponId } = req.params;
 
-    // Find the coupon by ID
-    const coupon = await UserCoupon.findOne({
+    // Find the userCoupon entry
+    const userCoupon = await UserCoupon.findOne({
       couponId,
-      userId: user._id,
-      status: 'claim'
+      userId,
+      status: { $in: ["available", "used", "transferred"] } // claim ke jagah enums use kiye hain
+    }).populate({
+      path: "couponId",
+      model: Coupon,
+      populate: [
+        { path: "createdby", select: "name email" },
+        { path: "category", select: "name" }
+      ]
     });
-    if (coupon) {
-      res
+
+    if (!userCoupon) {
+      return res.status(404).json({
+        success: false,
+        message: "Coupon not found or not assigned to this user",
+      });
     }
 
-
-    res.status(200).json(coupon);
+    res.status(200).json({
+      success: true,
+      message: "Coupon fetched successfully",
+      data: userCoupon,
+    });
   } catch (error) {
+    console.error("Error fetching coupon:", error);
     res.status(500).json({
-      message: 'Error fetching coupon',
-      error: error.message
+      success: false,
+      message: "Error fetching coupon",
+      error: error.message,
     });
   }
-}
+};
+
+
 
 const deleteCoupon = async (req, res) => {
   try {
@@ -1652,7 +1677,6 @@ const getCouponCount = async (req, res) => {
 export {
   getall,
   deleteCoupon,
-  getbyid,
   toggleActive,
   updateCoupon,
   availCoupon,

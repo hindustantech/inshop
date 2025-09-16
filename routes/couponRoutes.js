@@ -4,7 +4,7 @@ import {
     getAllCouponsWithStatusTag,
     getall,
     deleteCoupon,
-    getbyid,
+    getById,
     toggleActive,
     updateCoupon,
     availCoupon,
@@ -42,7 +42,7 @@ router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
 
 // Public routes (no authentication required)
 router.get('/getall', authMiddleware, getall);
-router.get('/get/:id', getbyid);
+router.get('/get/:id', getById);
 router.get('/get-cities', authMiddleware, getAllCities);
 
 // Protected routes (authentication required)
