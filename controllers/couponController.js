@@ -585,7 +585,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 distanceField: 'distance',
                 spherical: true,
                 query: { uniqueCode: manualCode },
-                limit: 1,
               },
             },
             { $project: { distance: 1 } },

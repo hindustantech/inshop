@@ -26,11 +26,12 @@ const ManualAddressSchema = new Schema(
             default: "India", // default country
         },
 
-       isActive: {
-      type: Boolean,
-      default: true, // active by default
-      index: true,
-    },
+        isActive: {
+            type: Boolean,
+            default: true, // active by default
+            index: true,
+        },
+
         location: {
             type: {
                 type: String,
