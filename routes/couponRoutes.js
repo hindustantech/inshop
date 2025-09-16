@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+    generateTheQRCode,
     createCoupon,
     getAllCouponsWithStatusTag,
     getall,
@@ -36,6 +37,7 @@ router.get('/getAllCouponsWithStatusTag', authMiddleware, getAllCouponsWithStatu
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);
 router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
+router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
 
 
 

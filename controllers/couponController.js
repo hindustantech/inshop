@@ -49,6 +49,40 @@ const statesAndUTs = [
 ];
 
 
+export const generateTheQRCode = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const user = await User.findById(userId);
+    if (!user || user.type !== "partner") {
+      return res.status(404).json({
+        success: false,
+        message: "User not found or not a partner"
+      });
+    }
+
+    // Data to encode in QR code (you can customize)
+    const qrData = `USER-${user._id}-${Date.now()}`;
+
+    // Generate QR code as a base64 string
+    const qrCodeUrl = await QRCode.toDataURL(qrData);
+
+    return res.status(200).json({
+      success: true,
+      message: "QR Code generated successfully",
+      data: { qrCodeUrl }
+    });
+
+  } catch (error) {
+    console.error("Error generating QR code:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error generating QR code",
+      error: error.message
+    });
+  }
+};
+
 // helper for image upload
 
 export const createCoupon = async (req, res) => {
@@ -120,7 +154,7 @@ export const createCoupon = async (req, res) => {
         !Array.isArray(parsedLocation.coordinates) ||
         parsedLocation.coordinates.length !== 2 ||
         isNaN(parsedLocation.coordinates[0]) ||
-        isNaN(parsedLocation.coordinates[1])||
+        isNaN(parsedLocation.coordinates[1]) ||
         !parsedLocation.address?.trim()
       ) {
         return res.status(400).json({
@@ -871,16 +905,20 @@ export const transferCoupon = async (req, res) => {
 export const claimCoupon = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { couponId, useCount = 1 } = req.body;
+    const { couponId, useCount = 1, ownerId } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(couponId)) {
       return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
     }
+    if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+      return res.status(400).json({ success: false, message: "Invalid owner ID" });
+    }
 
-    const coupon = await Coupon.findById(couponId);
+    const coupon = await Coupon.findOne({ _id: couponId, ownerId });
+
     if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
 
-    if (new Date() > coupon.validTill) return res.status(400).json({ success: false, message: "Coupon expired" });
+    if (new Date() > coupon.validTill) return res.statu(400).json({ success: false, message: "Coupon expired" });
 
     if (coupon.maxDistributions > 0 && coupon.currentDistributions >= coupon.maxDistributions) {
       return res.status(400).json({
@@ -907,7 +945,7 @@ export const claimCoupon = async (req, res) => {
         await existingClaim.save();
 
         // Create ongoing sale (amount will be charged later)
-        const sale = new Sales({
+        const sale = new sale({
           couponId,
           userId,
           serviceStartTime,
@@ -932,7 +970,7 @@ export const claimCoupon = async (req, res) => {
     });
     await userCoupon.save();
 
-    const sale = new Sales({
+    const sale = new sale({
       couponId,
       userId,
       serviceStartTime,
@@ -1088,8 +1126,26 @@ export const cancelSale = async (req, res) => {
 
 
 
+export const getParticularUserCoupon = async (req, res) => {
+  try {
+    const ownerId = req.user.id;
 
+    const coupons = await Coupon.find({ ownerId }).lean().exec();
 
+    if (!coupons || coupons.length === 0) {
+      return res.status(404).json({
+        message: "No coupons found for this user."
+      });
+    }
+
+    res.status(200).json(coupons);
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
 
 
 
