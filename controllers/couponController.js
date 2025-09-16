@@ -49,6 +49,8 @@ const statesAndUTs = [
 ];
 
 
+const JWT_SECRET = process.env.JWT_SECRET || "your_super_secret_key"; // keep this secret in env
+
 export const generateTheQRCode = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -61,11 +63,15 @@ export const generateTheQRCode = async (req, res) => {
       });
     }
 
-    // Data to encode in QR code (you can customize)
-    const qrData = `USER-${user._id}-${Date.now()}`;
+    // Generate a JWT token that expires in 10 minutes
+    const token = jwt.sign(
+      { userId: user._id },
+      JWT_SECRET,
+      { expiresIn: "10m" } // 10 minutes
+    );
 
-    // Generate QR code as a base64 string
-    const qrCodeUrl = await QRCode.toDataURL(qrData);
+    // Generate QR code from the token
+    const qrCodeUrl = await QRCode.toDataURL(token);
 
     return res.status(200).json({
       success: true,
