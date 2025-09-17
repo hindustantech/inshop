@@ -324,7 +324,6 @@ export const createCoupon = async (req, res) => {
 
 
 
-
 /* 1. Get My Coupons */
 export const getMyCoupons = async (req, res) => {
   try {
@@ -393,7 +392,7 @@ export const getMyCoupons = async (req, res) => {
 /* 2. Get All Coupons (SuperAdmin) */
 export const getAllCouponsForAdmin = async (req, res) => {
   try {
-    if (req.user.role !== "super_admin") {
+    if (req.user.type !== "super_admin") {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 

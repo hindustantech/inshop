@@ -391,7 +391,6 @@ export const createBanner = async (req, res) => {
 // };
 
 
-
 export const getUserNearestBanners = async (req, res) => {
     try {
         const { 
