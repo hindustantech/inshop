@@ -2,38 +2,47 @@ import jwt from 'jsonwebtoken';
 import User from '../models/userModel.js';
 import { verifyToken } from '../config/jwt.js';
 
+
 const authMiddleware = async (req, res, next) => {
   try {
-    // Get the token from the Authorization header
-    const token = req.headers.authorization && req.headers.authorization.split(' ')[1];
-
-    if (!token) {
-      // If no token, set user as null and continue
-      req.user = null;
-      return next();
+    // 1) Get token from header or cookie
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      token = req.headers.authorization.split(' ')[1];
+    } else if (req.cookies && req.cookies.token) {
+      token = req.cookies.token;
     }
 
-    // Verify the token
-    const decoded = verifyToken(token);
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided, authorization denied' });
+    }
 
-    // Fetch the user from the database using the decoded user ID
-    const user = await User.findById(decoded.userId);
+    // 2) Verify token
+    const decoded = verifyToken(token); // { id, type, iat } if valid
+    if (!decoded || !decoded.id) {
+      return res.status(401).json({ message: 'Invalid or expired token' });
+    }
 
+    // 3) Fetch user from DB
+    const user = await User.findById(decoded.id).select('-password -otp -__v');
     if (!user) {
       return res.status(401).json({ message: 'User not found, authorization denied' });
     }
 
-    // Attach the user to the request object for later use in the route handler
-    req.user = user;
-    
-    // Proceed to the next middleware or route handler
+    // 4) Attach user object (safe + token info)
+    req.user = {
+      _id: user._id,
+      name: user.name,
+      phone: user.phone,
+      type: decoded.type,        // type from JWT payload
+      isVerified: user.isVerified,
+    };
+
     next();
   } catch (error) {
-    // If token verification fails, set user as null and continue
-    req.user = null;
-    next();
+    console.error('Auth Middleware Error:', error.message);
+    return res.status(500).json({ message: 'Authentication error' });
   }
 };
 
 export default authMiddleware;
-

@@ -456,8 +456,8 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
 export const getById = async (req, res) => {
   try {
-    const userId = req.user.userId;
-    const { couponId } = req.params;
+    const userId = req.user.id;
+    const { couponId } = req.params;S
 
     // Find the userCoupon entry
     const userCoupon = await UserCoupon.findOne({

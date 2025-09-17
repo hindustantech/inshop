@@ -318,7 +318,7 @@ const verifyOtp = async (req, res) => {
 
     res.json({
       message: 'OTP verified successfully',
-      token: generateToken(user._id),
+      token: generateToken(user._id,user.type),
       name: user.name,
       type: user.type,
       isVerified: user.isVerified,
@@ -345,7 +345,7 @@ const login = async (req, res) => {
     }
 
     res.json({
-      token: generateToken(user._id),
+      token: generateToken(user._id,user.type),
       name: user.name,
       type: user.type,
       isApproved: user.isVerified,
