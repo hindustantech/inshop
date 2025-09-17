@@ -453,12 +453,13 @@ export const getAllCouponsForAdmin = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 export const getById = async (req, res) => {
   try {
-    const { couponId } = req.params;
+    const { id } = req.params; // 👈 FIXED here
 
     // Fetch coupon with details, only phone + name for users
-    const coupon = await Coupon.findById(couponId)
+    const coupon = await Coupon.findById(id)
       .populate("createdby", "name phone")
       .populate("category", "name")
       .populate("ownerId", "name phone")
