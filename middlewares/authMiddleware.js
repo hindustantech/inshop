@@ -1,8 +1,7 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/userModel.js';
-import { verifyToken } from '../config/jwt.js';
 
-
+const JWTS = process.env.JWT_SECRET;
 const authMiddleware = async (req, res, next) => {
   try {
     // 1) Get token from header or cookie
@@ -18,7 +17,8 @@ const authMiddleware = async (req, res, next) => {
     }
 
     // 2) Verify token
-    const decoded = verifyToken(token); // { id, type, iat } if valid
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (!decoded || !decoded.id) {
       return res.status(401).json({ message: 'Invalid or expired token' });
     }
@@ -30,13 +30,7 @@ const authMiddleware = async (req, res, next) => {
     }
 
     // 4) Attach user object (safe + token info)
-    req.user = {
-      _id: user._id,
-      name: user.name,
-      phone: user.phone,
-      type: decoded.type,        // type from JWT payload
-      isVerified: user.isVerified,
-    };
+    req.user = user;
 
     next();
   } catch (error) {
