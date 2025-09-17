@@ -2,6 +2,8 @@
 import jwt from 'jsonwebtoken';
 // utils/jwt.js
 
+import dotenv from 'dotenv';
+dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
 // const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -14,7 +16,7 @@ const generateToken = (userId, type) => {
   );
 };
 
- const verifyToken = (token) => {
+const verifyToken = (token) => {
   try {
     return jwt.verify(token, JWT_SECRET);
   } catch (err) {
@@ -23,5 +25,5 @@ const generateToken = (userId, type) => {
 };
 
 
-export { generateToken,verifyToken };
+export { generateToken, verifyToken };
 // module.exports = { generateToken, verifyToken };
