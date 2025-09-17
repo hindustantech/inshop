@@ -456,7 +456,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
 export const getById = async (req, res) => {
   try {
-    const userId = req.user.id; // Middleware se aayega
+    const userId = req.user.userId;
     const { couponId } = req.params;
 
     // Find the userCoupon entry
