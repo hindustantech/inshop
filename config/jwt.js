@@ -14,14 +14,14 @@ const generateToken = (userId, type) => {
   );
 };
 
-// export const verifyToken = (token) => {
-//   try {
-//     return jwt.verify(token, JWT_SECRET);
-//   } catch (err) {
-//     return null;
-//   }
-// };
+ const verifyToken = (token) => {
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    return null;
+  }
+};
 
 
-export { generateToken, verifyToken };
+export { generateToken,verifyToken };
 // module.exports = { generateToken, verifyToken };
