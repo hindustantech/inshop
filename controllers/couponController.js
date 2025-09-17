@@ -453,37 +453,27 @@ export const getAllCouponsForAdmin = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 export const getById = async (req, res) => {
   try {
-    const userId = req.user.id;
     const { couponId } = req.params;
 
-    // Find the userCoupon entry
-    const userCoupon = await UserCoupon.findOne({
-      couponId,
-      userId,
-      status: { $in: ["available", "used", "transferred"] } // claim ke jagah enums use kiye hain
-    }).populate({
-      path: "couponId",
-      model: Coupon,
-      populate: [
-        { path: "createdby", select: "name email" },
-        { path: "category", select: "name" }
-      ]
-    });
+    // Fetch coupon with details, only phone + name for users
+    const coupon = await Coupon.findById(couponId)
+      .populate("createdby", "name phone")
+      .populate("category", "name")
+      .populate("ownerId", "name phone")
 
-    if (!userCoupon) {
+    if (!coupon) {
       return res.status(404).json({
         success: false,
-        message: "Coupon not found or not assigned to this user",
+        message: "Coupon not found",
       });
     }
 
     res.status(200).json({
       success: true,
       message: "Coupon fetched successfully",
-      data: userCoupon,
+      data: coupon,
     });
   } catch (error) {
     console.error("Error fetching coupon:", error);
@@ -494,7 +484,6 @@ export const getById = async (req, res) => {
     });
   }
 };
-
 
 
 
