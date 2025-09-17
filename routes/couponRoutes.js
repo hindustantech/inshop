@@ -44,7 +44,7 @@ router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
 
 // Public routes (no authentication required)
 router.get('/getall', authMiddleware, getall);
-router.get('/get/:id', getById);
+router.get('/get/:id',authMiddleware, getById);
 router.get('/get-cities', authMiddleware, getAllCities);
 
 // Protected routes (authentication required)
