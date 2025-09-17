@@ -5,6 +5,102 @@ import { sendWhatsAppOtp, verifyWhatsAppOtp } from '../utils/whatapp.js';
 import { generateReferralCode } from '../utils/Referalcode.js';
 import fs from 'fs';
 import path from 'path';
+import admin from 'firebase-admin'
+
+
+
+// Controller function to broadcast notifications using Promise.all for parallel processing
+export const broadcastNotification = async (req, res) => {
+  try {
+    const { address, title, body } = req.body;
+
+    // Validate input
+    if (!address || !title || !body) {
+      return res.status(400).json({
+        success: false,
+        message: 'Address, title, and body are required',
+      });
+    }
+
+    // Find users with the specified manul_address and valid devicetoken
+    const users = await User.find(
+      { manul_address: address, devicetoken: { $ne: null } },
+      { uid: 1, name: 1, devicetoken: 1, _id: 0 }
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `No users found with address "${address}" or valid device tokens`,
+      });
+    }
+
+    // Batch tokens into groups of 500 (Firebase limit)
+    const batchSize = 500;
+    const tokenBatches = [];
+    for (let i = 0; i < users.length; i += batchSize) {
+      tokenBatches.push(users.slice(i, i + batchSize).map(user => user.devicetoken));
+    }
+
+    // Prepare notification payload for each batch
+    const messages = tokenBatches.map(tokens => ({
+      notification: {
+        title,
+        body,
+      },
+      tokens,
+    }));
+
+    // Send all batches concurrently using Promise.all
+    const responses = await Promise.all(
+      messages.map(async (message, index) => {
+        try {
+          const response = await admin.messaging().sendMulticast(message);
+          return { index, response };
+        } catch (error) {
+          console.error(`Error sending batch ${index}:`, error);
+          return { index, error };
+        }
+      })
+    );
+
+    // Aggregate results
+    let totalSuccessCount = 0;
+    let totalFailureCount = 0;
+    responses.forEach(({ index, response, error }) => {
+      if (error) {
+        console.error(`Batch ${index} failed: ${error.message}`);
+        return;
+      }
+      totalSuccessCount += response.successCount;
+      totalFailureCount += response.failureCount;
+      if (response.failureCount > 0) {
+        console.log(`Batch ${index} failed for ${response.failureCount} devices:`);
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success) {
+            console.log(`Error for user ${users[idx + index * batchSize].uid}: ${resp.error.message}`);
+          }
+        });
+      }
+    });
+
+    // Return response
+    return res.status(200).json({
+      success: true,
+      successCount: totalSuccessCount,
+      failureCount: totalFailureCount,
+      message: `Notification sent to ${totalSuccessCount} users`,
+    });
+  } catch (error) {
+    console.error('Error broadcasting notification:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+    });
+  }
+};
+
 
 
 

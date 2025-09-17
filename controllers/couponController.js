@@ -5,12 +5,12 @@ import UserCoupon from '../models/UserCoupon.js';
 import { uploadToCloudinary } from '../utils/Cloudinary.js';
 import mongoose from 'mongoose';
 import ManualAddress from '../models/ManualAddress.js';
-import Salse from '../models/Sales.js'
+import Salses from '../models/Sales.js'
 import Category from '../models/CategoryCopun.js';
 import { exportToCSV } from '../utils/exportcsv.js';
 import jwt from "jsonwebtoken";
 import QRCode from "qrcode";
-
+import admin from '../utils/firebaseadmin.js'
 const statesAndUTs = [
   'Andhra Pradesh',
   'Arunachal Pradesh',
@@ -250,6 +250,63 @@ export const createCoupon = async (req, res) => {
 
     const savedCoupon = await newCoupon.save();
 
+    // Broadcast notification to users within 50 km
+    try {
+      const users = await User.find(
+        {
+          latestLocation: {
+            $near: {
+              $geometry: { type: 'Point', coordinates: location.coordinates },
+              $maxDistance: 50 * 1000, // 50 km in meters
+            },
+          },
+          devicetoken: { $ne: null },
+        },
+        { uid: 1, name: 1, devicetoken: 1, _id: 0 }
+      );
+
+      if (users.length > 0) {
+        const batchSize = 500; // Firebase multicast limit
+        const batches = [];
+        for (let i = 0; i < users.length; i += batchSize) {
+          const batchTokens = users.slice(i, i + batchSize).map(user => user.devicetoken);
+          batches.push({
+            notification: {
+              title: `New Coupon: ${title}`,
+              body: `A new ${parsedDiscount}% off coupon is available near you! Valid until ${new Date(validTill).toLocaleDateString()}.`,
+            },
+            tokens: batchTokens,
+          });
+        }
+
+        // Send all batches concurrently using Promise.all
+        const responses = await Promise.all(
+          batches.map(batch => admin.messaging().sendMulticast(batch))
+        );
+
+        // Aggregate results
+        let successCount = 0;
+        let failureCount = 0;
+        responses.forEach((response, idx) => {
+          successCount += response.successCount;
+          failureCount += response.failureCount;
+          if (response.failureCount > 0) {
+            response.responses.forEach((resp, j) => {
+              if (!resp.success) {
+                console.log(`Error for user ${users[idx * batchSize + j]?.uid}: ${resp.error?.message}`);
+              }
+            });
+          }
+        });
+
+        console.log(`Notifications sent: ${successCount} successes, ${failureCount} failures`);
+      } else {
+        console.log('No users found within 50 km with valid device tokens');
+      }
+    } catch (notificationError) {
+      console.error('Error sending notifications:', notificationError);
+      // Continue with coupon creation response even if notifications fail
+    }
     return res.status(201).json({
       success: true,
       message: "Coupon created successfully",
@@ -511,6 +568,8 @@ export const createCoupon = async (req, res) => {
 //     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
 //   }
 // };
+
+
 
 export const getAllCouponsWithStatusTag = async (req, res) => {
   try {
@@ -952,7 +1011,7 @@ export const claimCoupon = async (req, res) => {
         await existingClaim.save();
 
         // Create ongoing sale (amount will be charged later)
-        const sale = new sale({
+        const sale = new Salses({
           couponId,
           userId,
           serviceStartTime,
@@ -977,7 +1036,7 @@ export const claimCoupon = async (req, res) => {
     });
     await userCoupon.save();
 
-    const sale = new sale({
+    const sale = new Salses({
       couponId,
       userId,
       serviceStartTime,
@@ -1015,7 +1074,7 @@ export const completeSale = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid Sale ID" });
     }
 
-    const sale = await Sales.findById(saleId);
+    const sale = await Salses.findById(saleId);
 
     if (!sale) return res.status(404).json({ success: false, message: "Sale not found" });
     if (sale.status === "completed") return res.status(400).json({ success: false, message: "Sale already completed" });
@@ -1075,7 +1134,7 @@ export const cancelSale = async (req, res) => {
     if (!saleId) return res.status(400).json({ success: false, message: "Sale ID is required" });
     if (!mongoose.Types.ObjectId.isValid(saleId)) return res.status(400).json({ success: false, message: "Invalid Sale ID" });
 
-    const sale = await Sales.findById(saleId);
+    const sale = await Salses.findById(saleId);
     if (!sale) return res.status(404).json({ success: false, message: "Sale not found" });
 
     if (sale.userId.toString() !== userId.toString()) {
