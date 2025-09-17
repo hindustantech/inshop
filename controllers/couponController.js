@@ -392,9 +392,9 @@ export const getMyCoupons = async (req, res) => {
 /* 2. Get All Coupons (SuperAdmin) */
 export const getAllCouponsForAdmin = async (req, res) => {
   try {
-    if (req.user.type !== "super_admin") {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
+    // if (req.user.type !== "super_admin") {
+    //   return res.status(403).json({ success: false, message: "Access denied" });
+    // }
 
     const {
       page = 1,
@@ -419,8 +419,8 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
     let query = Coupon.find(filter)
       .populate("category", "name")
-      .populate("createdby", "name email type")
-      .populate("ownerId", "name email type");
+      .populate("createdby", "name phone type")
+      .populate("ownerId", "name phone type");
 
     const total = await Coupon.countDocuments(filter);
 
