@@ -324,6 +324,203 @@ export const createCoupon = async (req, res) => {
 
 
 
+
+/* 1. Get My Coupons */
+export const getMyCoupons = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const userType = req.user.type;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      tag,
+      category,
+      exportCSV
+    } = req.query;
+
+    let filter = {};
+    if (userType === "partner") {
+      filter.ownerId = userId;
+    } else if (["agency", "super_admin"].includes(userType)) {
+      filter.createdby = userId;
+    }
+
+    if (search) {
+      filter.$or = [
+        { title: new RegExp(search, "i") },
+        { tags: { $in: [search] } }
+      ];
+    }
+
+    if (tag) filter.tags = { $in: [tag] };
+    if (category && mongoose.Types.ObjectId.isValid(category)) filter.category = category;
+
+    const skip = (page - 1) * limit;
+
+    let query = Coupon.find(filter).populate("category", "name");
+    const total = await Coupon.countDocuments(filter);
+
+    if (!exportCSV) {
+      let coupons = await query.skip(skip).limit(Number(limit)).lean();
+      // Add used count for each coupon (assuming UserCoupon model exists)
+      for (const coupon of coupons) {
+        coupon.used = await UserCoupon.countDocuments({ couponId: coupon._id, status: "used" });
+      }
+      return res.status(200).json({
+        success: true,
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        data: coupons,
+      });
+    }
+
+    let allCoupons = await query.lean();
+    // Add used count for export if needed, but skipping for now
+    const exportData = allCoupons.map(c => ({
+      Title: c.title,
+      Discount: c.discount,
+      Category: c.category?.name,
+      CreatedAt: c.createdAt,
+    }));
+    return exportToCSV(res, exportData, "my_coupons.csv");
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* 2. Get All Coupons (SuperAdmin) */
+export const getAllCouponsForAdmin = async (req, res) => {
+  try {
+    if (req.user.type !== "super_admin") {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      tag,
+      category,
+      exportCSV
+    } = req.query;
+
+    let filter = {};
+    if (search) {
+      filter.$or = [
+        { title: new RegExp(search, "i") },
+        { tags: { $in: [search] } }
+      ];
+    }
+    if (tag) filter.tags = { $in: [tag] };
+    if (category && mongoose.Types.ObjectId.isValid(category)) filter.category = category;
+
+    const skip = (page - 1) * limit;
+
+    let query = Coupon.find(filter)
+      .populate("category", "name")
+      .populate("createdby", "name email type")
+      .populate("ownerId", "name email type");
+
+    const total = await Coupon.countDocuments(filter);
+
+    if (!exportCSV) {
+      let coupons = await query.skip(skip).limit(Number(limit)).lean();
+      // Add used count for each coupon (assuming UserCoupon model exists)
+      for (const coupon of coupons) {
+        coupon.used = await UserCoupon.countDocuments({ couponId: coupon._id, status: "used" });
+      }
+      return res.status(200).json({
+        success: true,
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        data: coupons,
+      });
+    }
+
+    let allCoupons = await query.lean();
+    const exportData = allCoupons.map(c => ({
+      Title: c.title,
+      Discount: c.discount,
+      Category: c.category?.name,
+      CreatedBy: c.createdby?.name,
+      OwnerBy: c.ownerId?.name,
+      CreatedAt: c.createdAt,
+    }));
+    return exportToCSV(res, exportData, "all_coupons.csv");
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getById = async (req, res) => {
+  try {
+    const userId = req.user.id; // Middleware se aayega
+    const { couponId } = req.params;
+
+    // Find the userCoupon entry
+    const userCoupon = await UserCoupon.findOne({
+      couponId,
+      userId,
+      status: { $in: ["available", "used", "transferred"] } // claim ke jagah enums use kiye hain
+    }).populate({
+      path: "couponId",
+      model: Coupon,
+      populate: [
+        { path: "createdby", select: "name email" },
+        { path: "category", select: "name" }
+      ]
+    });
+
+    if (!userCoupon) {
+      return res.status(404).json({
+        success: false,
+        message: "Coupon not found or not assigned to this user",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Coupon fetched successfully",
+      data: userCoupon,
+    });
+  } catch (error) {
+    console.error("Error fetching coupon:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching coupon",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
+const toggleActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const coupon = await Coupon.findById(id);
+    if (!coupon) {
+      return res.status(404).json({ message: 'Coupon not found' });
+    }
+    coupon.active = !coupon.active;
+    await coupon.save();
+    res.status(200).json({ message: 'Coupon status toggled successfully', coupon });
+  } catch (error) {
+    res.status(500).json({
+      message: 'Error toggling coupon status',
+      error: error.message
+    });
+  }
+}
+
+
+
+
 // export const getAllCouponsWithStatusTag = async (req, res) => {
 //   try {
 //     // Determine user ID (null for guests)
@@ -1217,126 +1414,7 @@ export const getParticularUserCoupon = async (req, res) => {
 
 
 
-/* 1. Get My Coupons */
-export const getMyCoupons = async (req, res) => {
-  try {
-    const userId = req.user._id;
-    const userType = req.user.type;
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      tag,
-      category,
-      exportCSV
-    } = req.query;
 
-    let filter = {};
-    if (userType === "partner") {
-      filter.ownerId = userId;
-    } else if (["agency", "super_admin"].includes(userType)) {
-      filter.createdby = userId;
-    }
-
-    if (search) {
-      filter.$or = [
-        { title: new RegExp(search, "i") },
-        { tags: { $in: [search] } }
-      ];
-    }
-
-    if (tag) filter.tags = { $in: [tag] };
-    if (category && mongoose.Types.ObjectId.isValid(category)) filter.category = category;
-
-    const skip = (page - 1) * limit;
-
-    let query = Coupon.find(filter).populate("category", "name");
-    const total = await Coupon.countDocuments(filter);
-
-    if (!exportCSV) {
-      const coupons = await query.skip(skip).limit(Number(limit)).lean();
-      return res.status(200).json({
-        success: true,
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        data: coupons,
-      });
-    }
-
-    const allCoupons = await query.lean();
-    const exportData = allCoupons.map(c => ({
-      Title: c.title,
-      Discount: c.discount,
-      Category: c.category?.name,
-      CreatedAt: c.createdAt,
-    }));
-    return exportToCSV(res, exportData, "my_coupons.csv");
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-/* 2. Get All Coupons (SuperAdmin) */
-export const getAllCouponsForAdmin = async (req, res) => {
-  try {
-    if (req.user.type !== "super_admin") {
-      return res.status(403).json({ success: false, message: "Access denied" });
-    }
-
-    const {
-      page = 1,
-      limit = 10,
-      search,
-      tag,
-      category,
-      exportCSV
-    } = req.query;
-
-    let filter = {};
-    if (search) {
-      filter.$or = [
-        { title: new RegExp(search, "i") },
-        { tags: { $in: [search] } }
-      ];
-    }
-    if (tag) filter.tags = { $in: [tag] };
-    if (category && mongoose.Types.ObjectId.isValid(category)) filter.category = category;
-
-    const skip = (page - 1) * limit;
-
-    let query = Coupon.find(filter)
-      .populate("category", "name")
-      .populate("createdby", "name email type")
-      .populate("ownerId", "name email type");
-
-    const total = await Coupon.countDocuments(filter);
-
-    if (!exportCSV) {
-      const coupons = await query.skip(skip).limit(Number(limit)).lean();
-      return res.status(200).json({
-        success: true,
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        data: coupons,
-      });
-    }
-
-    const allCoupons = await query.lean();
-    const exportData = allCoupons.map(c => ({
-      Title: c.title,
-      Discount: c.discount,
-      Category: c.category?.name,
-      CreatedBy: c.createdby?.name,
-      OwnerBy: c.ownerId?.name,
-      CreatedAt: c.createdAt,
-    }));
-    return exportToCSV(res, exportData, "all_coupons.csv");
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
 
 
 const getall = async (req, res) => {
@@ -1384,46 +1462,7 @@ const getall = async (req, res) => {
   }
 };
 
-export const getById = async (req, res) => {
-  try {
-    const userId = req.user.id; // Middleware se aayega
-    const { couponId } = req.params;
 
-    // Find the userCoupon entry
-    const userCoupon = await UserCoupon.findOne({
-      couponId,
-      userId,
-      status: { $in: ["available", "used", "transferred"] } // claim ke jagah enums use kiye hain
-    }).populate({
-      path: "couponId",
-      model: Coupon,
-      populate: [
-        { path: "createdby", select: "name email" },
-        { path: "category", select: "name" }
-      ]
-    });
-
-    if (!userCoupon) {
-      return res.status(404).json({
-        success: false,
-        message: "Coupon not found or not assigned to this user",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Coupon fetched successfully",
-      data: userCoupon,
-    });
-  } catch (error) {
-    console.error("Error fetching coupon:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching coupon",
-      error: error.message,
-    });
-  }
-};
 
 
 
@@ -1447,23 +1486,7 @@ const deleteCoupon = async (req, res) => {
   }
 };
 
-const toggleActive = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const coupon = await Coupon.findById(id);
-    if (!coupon) {
-      return res.status(404).json({ message: 'Coupon not found' });
-    }
-    coupon.active = !coupon.active;
-    await coupon.save();
-    res.status(200).json({ message: 'Coupon status toggled successfully', coupon });
-  } catch (error) {
-    res.status(500).json({
-      message: 'Error toggling coupon status',
-      error: error.message
-    });
-  }
-}
+
 
 const updateCoupon = async (req, res) => {
   try {
