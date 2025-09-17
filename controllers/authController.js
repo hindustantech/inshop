@@ -333,29 +333,47 @@ const login = async (req, res) => {
   try {
     const { phone, password, deviceToken } = req.body;
 
+    // Check if phone & password are provided
+    if (!phone || !password) {
+      return res.status(400).json({ message: 'Phone and password are required' });
+    }
+
+    // Find user by phone
     const user = await User.findOne({ phone });
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!user) {
       return res.status(400).json({ message: 'Invalid phone number or password' });
     }
 
-    // Update device token
+    // Compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid phone number or password' });
+    }
+
+    // Update device token if provided
     if (deviceToken) {
-      user.devicetoken = deviceToken;
+      user.devicetoken = deviceToken; // ensure your schema field is `deviceToken` not `devicetoken`
       await user.save();
     }
 
-    res.json({
-      token: generateToken(user._id,user.type),
+    // ✅ Always make sure generateToken receives valid params
+    const token = generateToken(user._id.toString(), user.type);
+
+    return res.json({
+      token,
       name: user.name,
       type: user.type,
-      isApproved: user.isVerified,
+      isApproved: user.isVerified,        // make sure field names match your schema
       isProfileCompleted: user.isProfileCompleted,
       message: 'Login successful'
     });
+
   } catch (error) {
-    res.status(500).json({ message: 'Login failed', error: error.message });
+    console.error('Login error:', error); // helps debugging
+    return res.status(500).json({ message: 'Login failed', error: error.message });
   }
 };
+
 
 const resendOtp = async (req, res) => {
   try {
