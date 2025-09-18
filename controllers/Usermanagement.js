@@ -1,9 +1,8 @@
 // controllers/userController.js
 import User from '../models/userModel.js';
 import bcrypt from 'bcryptjs'; // Assume bcryptjs is installed for password hashing
-import { json2csv } from 'json2csv'; // Assume json2csv is installed for export; fallback to manual CSV if not
-
-// Helper function for pagination and filtering
+import json2csv from 'json2csv'
+// Helper function for paginatiozn and filtering
 const getUserQuery = (search, role, isAgency) => {
   const query = {};
   if (search) {
