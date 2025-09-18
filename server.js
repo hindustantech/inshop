@@ -15,6 +15,7 @@ import fs from 'fs';
 import banner from './routes/BannerRoute.js'
 import manuladdress from './routes/manullocationroute.js';
 import Categoryroute from './routes/Category.js'
+import usermanagement from './routes/userManagementRoutes.js'
 
 dotenv.config();
 connectDB();
@@ -48,6 +49,7 @@ app.get('/', (req, res) => {
 // AdminJS setup
 
 app.use('/admin', adminRouter);
+app.use('/api/usermanagement', usermanagement);
 
 // API routes
 app.use('/api/auth', authRoutes);
