@@ -16,6 +16,6 @@ router.get('/getbanner', authMiddleware, getUserNearestBanners);
 router.get("/banners/my", authMiddleware, getMyBanners);
 router.get("/banners/admin", authMiddleware, getAllBannersForAdmin);
 router.get("/getBannerById", getBannerById);
-router.patch("/getBannerById", updateBannerExpiry);
+router.patch("/updateBannerExpiry", updateBannerExpiry);
 
 export default router;
