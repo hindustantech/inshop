@@ -698,7 +698,7 @@ export const getBannerById = async (req, res) => {
     try {
         const { bannerId } = req.params;
 
-        if (!bannerId) {
+        if (!bannerId) {  
             return res.status(400).json({
                 success: false,
                 message: "Banner ID is required",
