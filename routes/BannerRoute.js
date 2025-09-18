@@ -1,5 +1,5 @@
 import express from 'express';
-import { createBanner, getUserNearestBanners, getMyBanners, getAllBannersForAdmin } from '../controllers/BannerController.js';
+import { createBanner, getUserNearestBanners, getMyBanners, getAllBannersForAdmin,getBannerById,updateBannerExpiry } from '../controllers/BannerController.js';
 import multer from 'multer';
 import authMiddleware from '../middlewares/authMiddleware.js';
 const router = express.Router();
@@ -15,5 +15,7 @@ router.get('/getbanner', authMiddleware, getUserNearestBanners);
 
 router.get("/banners/my", authMiddleware, getMyBanners);
 router.get("/banners/admin", authMiddleware, getAllBannersForAdmin);
+router.get("/getBannerById", getBannerById);
+router.patch("/getBannerById", updateBannerExpiry);
 
 export default router;

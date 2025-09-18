@@ -270,7 +270,7 @@ const signup = async (req, res) => {
       type,
       phone,
       password: hashedPassword,
-      type: 'user',
+      type,
       referalCode: uniqueReferralCode,
       referredBy: referralCode || null,
     });
