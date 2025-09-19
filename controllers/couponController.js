@@ -1019,7 +1019,7 @@ export const transferCoupon = async (req, res) => {
   try {
     const senderId = req.user._id; // Authenticated user's ID
     const { receiverId, couponId } = req.body;
-
+    const count = 1
     // Validate input
     if (!mongoose.Types.ObjectId.isValid(receiverId)) {
       return res.status(400).json({ success: false, message: 'Invalid receiver ID' });
@@ -1116,6 +1116,7 @@ export const transferCoupon = async (req, res) => {
           status: 'transferred',
           transferredTo: receiverId,
           transferDate: new Date(),
+          count: count - 1,
           // add other required fields here
         });
         await newCoupon.save();
@@ -1138,9 +1139,9 @@ export const transferCoupon = async (req, res) => {
       userId: receiverId,
       status: 'available',
       senders: [{ senderId, sentAt: new Date() }],
-      // qrCode,
-      count: count + 1,
+      count: count+1
     });
+
     await newUserCoupon.save();
 
 
