@@ -1603,6 +1603,7 @@ export const claimCoupon = async (req, res) => {
     const userId = req.user._id;
 
     const { couponId, useCount = 1, owner } = req.body;
+    const serviceStartTime=Date.now;
 
     if (!mongoose.Types.ObjectId.isValid(couponId)) {
       return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
