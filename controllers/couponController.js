@@ -1112,7 +1112,7 @@ export const transferCoupon = async (req, res) => {
       status: 'transferred',
       transferredTo: receiverId,
       transferDate: new Date(),
-      count: count-1,
+      count: count - 1,
       qrCode
     });
     await transferredCoupon.save();
@@ -1167,16 +1167,35 @@ export const transferCoupon = async (req, res) => {
 export const claimCoupon = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { couponId, useCount = 1, ownerId } = req.body;
+
+    const { couponId, useCount = 1, owner } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(couponId)) {
       return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
     }
-    if (!mongoose.Types.ObjectId.isValid(ownerId)) {
-      return res.status(400).json({ success: false, message: "Invalid owner ID" });
+    // if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+    //   return res.status(400).json({ success: false, message: "Invalid owner ID" });
+    // }
+    if (!owner) {
+      return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
+    }
+    const decoded = jwt.verify(owner, JWT_SECRET)
+
+    if (!decoded || !decoded.id) {
+      return res.status(401).json({ message: 'Invalid or expired token' });
     }
 
-    const coupon = await Coupon.findOne({ _id: couponId, ownerId });
+    // 3) Fetch user from DB
+    const user = await User.findById(decoded.id).select('-password -otp -__v');
+    if (!user) {
+      return res.status(401).json({ message: 'User not found, authorization denied' });
+    }
+
+    
+
+
+
+    const coupon = await Coupon.findOne({ _id: couponId, ownerId: user._id });
 
     if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
 
