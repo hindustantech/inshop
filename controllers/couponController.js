@@ -1017,9 +1017,10 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
 export const transferCoupon = async (req, res) => {
   try {
-    const senderId = req.user._id; // Authenticated user's ID
+    const senderId = req.user._id;
     const { receiverId, couponId } = req.body;
-    const count = 1
+    const count = 1;
+
     // Validate input
     if (!mongoose.Types.ObjectId.isValid(receiverId)) {
       return res.status(400).json({ success: false, message: 'Invalid receiver ID' });
@@ -1054,7 +1055,7 @@ export const transferCoupon = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Coupon is expired' });
     }
 
-    // Check if coupon is special (not transferable if special)
+    // Check if coupon is special
     if (coupon.is_spacial_copun) {
       return res.status(400).json({ success: false, message: 'Special coupons cannot be transferred' });
     }
@@ -1088,51 +1089,33 @@ export const transferCoupon = async (req, res) => {
       userId: senderId,
       couponId,
       $or: [
-        { senders: { $size: 0 } }, // Coupon created by sender (no senders)
-        { 'senders.senderId': senderId }, // Sender is in the senders array
+        { senders: { $size: 0 } },
+        { 'senders.senderId': senderId },
       ],
     });
 
-    // If no UserCoupon found, check if sender is the owner
+    // If sender has the coupon but it's not available for transfer
     if (senderUserCoupon) {
-
       return res.status(400).json({
         success: false,
-        message: ' This Copun is not tranfer you because  you  already  used this copun',
+        message: 'This coupon is not transferable because you already used this coupon',
       });
-
-      // If sender is the owner, proceed without a UserCoupon entry
     }
 
-    // Generate a QR code if none exists (or reuse existing one if senderUserCoupon exists)
-    const qrCode = senderUserCoupon ? senderUserCoupon.qrCode : `qr-${couponId}-${Date.now()}`; // Placeholder; replace with actual QR code generation if needed
+    // Generate QR code
+    const qrCode = `qr-${couponId}-${Date.now()}`;
 
-    // If sender has a UserCoupon, mark it as transferred
-    if (!senderUserCoupon) {
-
-      try {
-        // Create a new coupon instead of trying to update a null one
-        const newCoupon = new UserCoupon({
-          status: 'transferred',
-          transferredTo: receiverId,
-          transferDate: new Date(),
-          count: count - 1,
-          qrCode
-          // add other required fields here
-        });
-        await newCoupon.save();
-
-      } catch (error) {
-        res.status(500).json({
-          success: true,
-          message: "Error in the tranfered copun"
-        })
-      }
-
-
-
-
-    }
+    // Create transferred coupon for sender
+    const transferredCoupon = new UserCoupon({
+      couponId,
+      userId: senderId,
+      status: 'transferred',
+      transferredTo: receiverId,
+      transferDate: new Date(),
+      count: count,
+      qrCode
+    });
+    await transferredCoupon.save();
 
     // Create new UserCoupon for receiver
     const newUserCoupon = new UserCoupon({
@@ -1143,9 +1126,7 @@ export const transferCoupon = async (req, res) => {
       count: count + 1,
       qrCode
     });
-
     await newUserCoupon.save();
-
 
     // Update couponCount for sender and receiver
     sender.couponCount -= 1;
@@ -1153,19 +1134,28 @@ export const transferCoupon = async (req, res) => {
     await sender.save();
     await receiver.save();
 
-    res.status(200).json({
+    // Update coupon distribution count
+    coupon.currentDistributions += 1;
+    await coupon.save();
+
+    return res.status(200).json({
       success: true,
       message: 'Coupon transferred successfully',
       couponId,
       receiverId,
     });
+
   } catch (error) {
     console.error('Error transferring coupon:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error transferring coupon',
-      error: error.message,
-    });
+
+    // Check if headers haven't been sent yet
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: 'Error transferring coupon',
+        error: error.message,
+      });
+    }
   }
 };
 
