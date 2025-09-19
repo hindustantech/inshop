@@ -18,7 +18,8 @@ import {
     getAllCities,
     getCouponCount,
     getMyCoupons,
-    getAllCouponsForAdmin
+    getAllCouponsForAdmin,
+    claimCoupon
 } from '../controllers/couponController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1 } from '../middlewares/checkuser.js';
@@ -31,7 +32,7 @@ const storage = multer.memoryStorage(); // ✅ stores buffer in memory
 const upload = multer({ storage });
 
 
-router.post('/create', authMiddleware, roleBasedOwnership,upload.array("images", 5), createCoupon);
+router.post('/create', authMiddleware, roleBasedOwnership, upload.array("images", 5), createCoupon);
 
 router.get('/getAllCouponsWithStatusTag', authMiddleware1, getAllCouponsWithStatusTag);
 
@@ -40,12 +41,14 @@ router.get("/coupons/my", authMiddleware, getMyCoupons);
 router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
 router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
 
+router.post("/claimCoupon", authMiddleware, claimCoupon);
+
 
 
 
 // Public routes (no authentication required)
 router.get('/getall', authMiddleware, getall);
-router.get('/get/:id',authMiddleware, getById);
+router.get('/get/:id', authMiddleware, getById);
 router.get('/get-cities', authMiddleware, getAllCities);
 
 // Protected routes (authentication required)
