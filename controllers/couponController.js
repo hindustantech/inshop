@@ -1105,14 +1105,31 @@ export const transferCoupon = async (req, res) => {
     }
 
     // Generate a QR code if none exists (or reuse existing one if senderUserCoupon exists)
-    const qrCode = senderUserCoupon ? senderUserCoupon.qrCode : `qr-${couponId}-${Date.now()}`; // Placeholder; replace with actual QR code generation if needed
+    // const qrCode = senderUserCoupon ? senderUserCoupon.qrCode : `qr-${couponId}-${Date.now()}`; // Placeholder; replace with actual QR code generation if needed
 
     // If sender has a UserCoupon, mark it as transferred
     if (!senderUserCoupon) {
-      senderUserCoupon.status = 'transferred';
-      senderUserCoupon.transferredTo = receiverId;
-      senderUserCoupon.transferDate = new Date();
-      await senderUserCoupon.save();
+
+      try {
+        // Create a new coupon instead of trying to update a null one
+        const newCoupon = new UserCoupon({
+          status: 'transferred',
+          transferredTo: receiverId,
+          transferDate: new Date(),
+          // add other required fields here
+        });
+        await newCoupon.save();
+
+      } catch (error) {
+        res.status(500).json({
+          success: true,
+          message: "Error in the tranfered copun"
+        })
+      }
+
+
+
+
     }
 
     // Create new UserCoupon for receiver
@@ -1121,7 +1138,7 @@ export const transferCoupon = async (req, res) => {
       userId: receiverId,
       status: 'available',
       senders: [{ senderId, sentAt: new Date() }],
-      qrCode,
+      // qrCode,
       count: count + 1,
     });
     await newUserCoupon.save();
