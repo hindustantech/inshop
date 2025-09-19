@@ -2,7 +2,8 @@ import express from 'express';
 import { createBanner, getUserNearestBanners, getMyBanners, getAllBannersForAdmin, getBannerById, updateBannerExpiry } from '../controllers/BannerController.js';
 import multer from 'multer';
 import authMiddleware from '../middlewares/authMiddleware.js';
-import authMiddleware1 from '../middlewares/authMiddleware.js';
+import { authMiddleware1 } from '../middlewares/checkuser.js';
+
 const router = express.Router();
 
 const storage = multer.memoryStorage(); // ✅ stores buffer in memory

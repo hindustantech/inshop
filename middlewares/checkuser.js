@@ -1,8 +1,7 @@
+import User from "../models/userModel.js";
 import jwt from 'jsonwebtoken';
-import User from '../models/userModel.js';
 
-const JWTS = process.env.JWT_SECRET;
-const authMiddleware = async (req, res, next) => {
+export const authMiddleware1 = async (req, res, next) => {
   try {
     // 1) Get token from header or cookie
     let token;
@@ -13,7 +12,8 @@ const authMiddleware = async (req, res, next) => {
     }
 
     if (!token) {
-      return res.status(401).json({ message: 'No token provided, authorization denied' });
+      req.user = null; // User not found, continue without authentication
+      return next();
     }
 
     // 2) Verify token
@@ -38,16 +38,3 @@ const authMiddleware = async (req, res, next) => {
     return res.status(500).json({ message: 'Authentication error' });
   }
 };
-
-
-
-
-export default authMiddleware;
-  
-
-
-
-
-
-
-

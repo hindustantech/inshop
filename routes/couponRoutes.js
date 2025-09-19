@@ -21,6 +21,7 @@ import {
     getAllCouponsForAdmin
 } from '../controllers/couponController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
+import { authMiddleware1 } from '../middlewares/checkuser.js';
 import { roleBasedOwnership } from '../middlewares/rolebasedownership.js';
 import multer from 'multer';
 
@@ -32,7 +33,7 @@ const upload = multer({ storage });
 
 router.post('/create', authMiddleware, roleBasedOwnership,upload.array("images", 5), createCoupon);
 
-router.get('/getAllCouponsWithStatusTag', authMiddleware, getAllCouponsWithStatusTag);
+router.get('/getAllCouponsWithStatusTag', authMiddleware1, getAllCouponsWithStatusTag);
 
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);
