@@ -1112,7 +1112,7 @@ export const transferCoupon = async (req, res) => {
       status: 'transferred',
       transferredTo: receiverId,
       transferDate: new Date(),
-      count: count,
+      count: count-1,
       qrCode
     });
     await transferredCoupon.save();
