@@ -18,7 +18,7 @@ const salesSchema = new mongoose.Schema({
     },
     serviceEndTime: {
         type: Date,
-        required: true
+        
     },
     status: {
         type: String,
@@ -32,17 +32,17 @@ const salesSchema = new mongoose.Schema({
     },
     amount: {
         type: Number,
-        required: true,
+      
         min: 0
     },
     discountAmount: {
         type: Number,
-        required: true,
+      
         min: 0
     },
     finalAmount: {
         type: Number,
-        required: true,
+      
         min: 0
     }
 }, { timestamps: true });

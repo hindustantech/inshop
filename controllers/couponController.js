@@ -1665,7 +1665,7 @@ export const claimCoupon = async (req, res) => {
           couponId,
           userId,
           serviceStartTime,
-          serviceEndTime,
+          
           status: "ongoing",
           usedCount: useCount
         });
@@ -1690,7 +1690,6 @@ export const claimCoupon = async (req, res) => {
       couponId,
       userId,
       serviceStartTime,
-      serviceEndTime,
       status: "ongoing",
       usedCount: initialCount
     });
