@@ -35,7 +35,6 @@ const userCouponSchema = new mongoose.Schema({
     },
     qrCode: {
         type: String,
-        required: true
     },
     qrScanDate: {
         type: Date
