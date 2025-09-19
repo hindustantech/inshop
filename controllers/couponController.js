@@ -69,7 +69,7 @@ export const generateTheQRCode = async (req, res) => {
     const token = jwt.sign(
       { userId: user._id },
       JWT_SECRET,
-      { expiresIn: "10m" } // 10 minutes
+      // { expiresIn: "10m" } // 10 minutes
     );
 
     // Generate QR code from the token
