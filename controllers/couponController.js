@@ -326,44 +326,44 @@ export const createCoupon = async (req, res) => {
 export const getAvailableCouponsWithDetails = async (req, res) => {
   try {
     const { userId } = req.params; // Assuming you want coupons for a specific user
-    
+
     // Get all available user coupons for this user with populated coupon details
     const availableCoupons = await UserCoupon.find({
       userId: userId,
       status: 'available'
     })
-    .populate({
-      path: 'couponId',
-      model: 'Coupon',
-      populate: [
-        {
-          path: 'createdby',
-          model: 'User',
-          select: 'name email' // Select only necessary fields
-        },
-        {
-          path: 'ownerId',
-          model: 'User',
-          select: 'name email' // Select only necessary fields
-        },
-        {
-          path: 'category',
-          model: 'Category',
-          select: 'name' // Select only necessary fields
-        }
-      ]
-    })
-    .populate({
-      path: 'senders.senderId',
-      model: 'User',
-      select: 'name email' // Select only necessary sender info
-    })
-    .sort({ createdAt: -1 }); // Sort by newest first
+      .populate({
+        path: 'couponId',
+        model: 'Coupon',
+        populate: [
+          {
+            path: 'createdby',
+            model: 'User',
+            select: 'name email' // Select only necessary fields
+          },
+          {
+            path: 'ownerId',
+            model: 'User',
+            select: 'name email' // Select only necessary fields
+          },
+          {
+            path: 'category',
+            model: 'Category',
+            select: 'name' // Select only necessary fields
+          }
+        ]
+      })
+      .populate({
+        path: 'senders.senderId',
+        model: 'User',
+        select: 'name email' // Select only necessary sender info
+      })
+      .sort({ createdAt: -1 }); // Sort by newest first
 
     // Format the response to include all necessary details
     const formattedCoupons = availableCoupons.map(userCoupon => {
       const coupon = userCoupon.couponId;
-      
+
       return {
         userCouponId: userCoupon._id,
         status: userCoupon.status,
@@ -371,7 +371,7 @@ export const getAvailableCouponsWithDetails = async (req, res) => {
         qrCode: userCoupon.qrCode,
         createdAt: userCoupon.createdAt,
         updatedAt: userCoupon.updatedAt,
-        
+
         // Coupon details
         coupon: {
           _id: coupon._id,
@@ -395,7 +395,7 @@ export const getAvailableCouponsWithDetails = async (req, res) => {
           createdby: coupon.createdby,
           ownerId: coupon.ownerId
         },
-        
+
         // Sender details
         senders: userCoupon.senders.map(sender => ({
           senderId: sender.senderId,
@@ -1535,7 +1535,7 @@ export const transferCoupon = async (req, res) => {
 
     // Check if receiver has a used coupon to reactivate
 
-   
+
 
     if (receiverUsedCoupon.status = 'used') {
       // Reactivate a used coupon
@@ -1598,116 +1598,223 @@ export const transferCoupon = async (req, res) => {
   }
 };
 
+// export const claimCoupon = async (req, res) => {
+//   try {
+//     const userId = req.user._id;
+
+//     const { couponId, useCount = 1, owner } = req.body;
+
+//     if (!mongoose.Types.ObjectId.isValid(couponId)) {
+//       return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
+//     }
+//     // if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+//     //   return res.status(400).json({ success: false, message: "Invalid owner ID" });
+//     // }
+//     if (!owner) {
+//       return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
+//     }
+//     const decoded = jwt.verify(owner, JWT_SECRET)
+
+//     if (!decoded || !decoded.userId) {
+//       return res.status(401).json({ message: 'Invalid or expired token' });
+//     }
+
+//     // 3) Fetch user from DB
+//     const user = await User.findById(decoded.userId).select('-password -otp -__v');
+//     if (!user) {
+//       return res.status(401).json({ message: 'User not found, authorization denied' });
+//     }
+
+
+
+
+
+//     const coupon = await Coupon.findOne({ _id: couponId, ownerId: user._id });
+
+//     if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
+
+//     if (new Date() > coupon.validTill) return res.statu(400).json({ success: false, message: "Coupon expired" });
+
+//     if (coupon.maxDistributions > 0 && coupon.currentDistributions >= coupon.maxDistributions) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Coupon limit reached"
+//       });
+//     }
+//     let existingClaim = await UserCoupon.findOne({ couponId, userId });
+
+//     if (existingClaim) {
+//       if (existingClaim.status === "used") return res.status(400).json({ success: false, message: "Coupon already used" });
+//       if (["cancelled", "transferred"].includes(existingClaim.status)) return res.status(400).json({ success: false, message: `Coupon already ${existingClaim.status}` });
+
+//       if (existingClaim.status === "available") {
+//         let totalCount = existingClaim.count - useCount;
+//         if (totalCount < 0) totalCount = 0;
+
+//         existingClaim.count = totalCount;
+//         if (existingClaim.count === 0) {
+//           existingClaim.status = "used";
+//           existingClaim.useDate = new Date();
+//         }
+
+//         await existingClaim.save();
+
+//         // Create ongoing sale (amount will be charged later)
+//         const sale = new Salses({
+//           couponId,
+//           userId,
+
+
+//           status: "ongoing",
+//           usedCount: useCount
+//         });
+//         await sale.save();
+
+//         return res.status(200).json({ success: true, message: "Coupon count reduced and sale record created (pending payment)", data: { userCoupon: existingClaim, sale } });
+//       }
+//     }
+
+//     // New claim
+//     const initialCount = useCount > 2 ? 2 : useCount;
+//     const userCoupon = new UserCoupon({
+//       couponId,
+//       userId,
+//       qrCode: `COUPON-${couponId}-${userId}-${Date.now()}`,
+//       status: "available",
+//       count: initialCount
+//     });
+//     await userCoupon.save();
+
+//     const sale = new Salses({
+//       couponId,
+//       userId,
+//       status: "ongoing",
+//       usedCount: initialCount
+//     });
+//     await sale.save();
+
+
+//     // 6️⃣ Update coupon distributions & consumers
+//     coupon.currentDistributions += 1;
+//     coupon.consumersId.push(userId);
+//     await coupon.save();
+
+//     return res.status(201).json({ success: true, message: "Coupon claimed and sale record created (pending payment)", data: { userCoupon, sale } });
+
+//   } catch (error) {
+//     console.error("Error claiming coupon:", error);
+//     return res.status(500).json({ success: false, message: "Error claiming coupon", error: error.message });
+//   }
+// };
+
+
+
 export const claimCoupon = async (req, res) => {
   try {
     const userId = req.user._id;
-
     const { couponId, useCount = 1, owner } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(couponId)) {
       return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
     }
-    // if (!mongoose.Types.ObjectId.isValid(ownerId)) {
-    //   return res.status(400).json({ success: false, message: "Invalid owner ID" });
-    // }
+
     if (!owner) {
-      return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
+      return res.status(400).json({ success: false, message: "Invalid Owner Token" });
     }
-    const decoded = jwt.verify(owner, JWT_SECRET)
 
+    // ✅ Verify owner token
+    const decoded = jwt.verify(owner, JWT_SECRET);
     if (!decoded || !decoded.userId) {
-      return res.status(401).json({ message: 'Invalid or expired token' });
+      return res.status(401).json({ message: "Invalid or expired owner token" });
     }
 
-    // 3) Fetch user from DB
-    const user = await User.findById(decoded.userId).select('-password -otp -__v');
-    if (!user) {
-      return res.status(401).json({ message: 'User not found, authorization denied' });
+    const ownerUser = await User.findById(decoded.userId);
+    if (!ownerUser) {
+      return res.status(401).json({ message: "Owner not found, authorization denied" });
     }
 
-
-
-
-
-    const coupon = await Coupon.findOne({ _id: couponId, ownerId: user._id });
-
+    // ✅ Check coupon
+    const coupon = await Coupon.findOne({ _id: couponId, ownerId: ownerUser._id });
     if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
 
-    if (new Date() > coupon.validTill) return res.statu(400).json({ success: false, message: "Coupon expired" });
+    if (!coupon.active) return res.status(400).json({ success: false, message: "Coupon is not active" });
+
+    if (new Date() > coupon.validTill) return res.status(400).json({ success: false, message: "Coupon expired" });
 
     if (coupon.maxDistributions > 0 && coupon.currentDistributions >= coupon.maxDistributions) {
-      return res.status(400).json({
-        success: false,
-        message: "Coupon limit reached"
-      });
+      return res.status(400).json({ success: false, message: "Coupon limit reached" });
     }
-    let existingClaim = await UserCoupon.findOne({ couponId, userId });
 
-    if (existingClaim) {
-      if (existingClaim.status === "used") return res.status(400).json({ success: false, message: "Coupon already used" });
-      if (["cancelled", "transferred"].includes(existingClaim.status)) return res.status(400).json({ success: false, message: `Coupon already ${existingClaim.status}` });
+    // ✅ Check if user already has this coupon
+    let userCoupon = await UserCoupon.findOne({ couponId, userId });
 
-      if (existingClaim.status === "available") {
-        let totalCount = existingClaim.count - useCount;
-        if (totalCount < 0) totalCount = 0;
+    if (userCoupon) {
+      if (userCoupon.status === "used") {
+        return res.status(400).json({ success: false, message: "Coupon already fully used" });
+      }
+      if (["cancelled", "transferred"].includes(userCoupon.status)) {
+        return res.status(400).json({ success: false, message: `Coupon already ${userCoupon.status}` });
+      }
 
-        existingClaim.count = totalCount;
-        if (existingClaim.count === 0) {
-          existingClaim.status = "used";
-          existingClaim.useDate = new Date();
+      // If available → reduce count
+      if (userCoupon.status === "available") {
+        let remaining = userCoupon.count - useCount;
+        if (remaining < 0) remaining = 0;
+
+        userCoupon.count = remaining;
+        if (remaining === 0) {
+          userCoupon.status = "used";
+          userCoupon.useDate = new Date();
         }
+        await userCoupon.save();
 
-        await existingClaim.save();
-
-        // Create ongoing sale (amount will be charged later)
-        const sale = new Salses({
+        // ✅ Always create Sale (ongoing)
+        const sale = new Sales({
           couponId,
           userId,
-
-          
           status: "ongoing",
           usedCount: useCount
         });
         await sale.save();
 
-        return res.status(200).json({ success: true, message: "Coupon count reduced and sale record created (pending payment)", data: { userCoupon: existingClaim, sale } });
+        return res.status(200).json({
+          success: true,
+          message: "Coupon usage updated",
+          data: { userCoupon, sale }
+        });
       }
     }
 
-    // New claim
-    const initialCount = useCount > 2 ? 2 : useCount;
-    const userCoupon = new UserCoupon({
+    // ✅ If user has no coupon → directly mark as used (count=0)
+    userCoupon = new UserCoupon({
       couponId,
       userId,
-      qrCode: `COUPON-${couponId}-${userId}-${Date.now()}`,
-      status: "available",
-      count: initialCount
+      status: "used",
+      count: 0,
+      useDate: new Date()
     });
     await userCoupon.save();
 
-    const sale = new Salses({
+    // ✅ Sale always ongoing
+    const sale = new Sales({
       couponId,
       userId,
       status: "ongoing",
-      usedCount: initialCount
+      usedCount: 0
     });
     await sale.save();
 
-
-    // 6️⃣ Update coupon distributions & consumers
-    coupon.currentDistributions += 1;
-    coupon.consumersId.push(userId);
-    await coupon.save();
-
-    return res.status(201).json({ success: true, message: "Coupon claimed and sale record created (pending payment)", data: { userCoupon, sale } });
+    return res.status(201).json({
+      success: true,
+      message: "Coupon created as used (no prior claim found)",
+      data: { userCoupon, sale }
+    });
 
   } catch (error) {
     console.error("Error claiming coupon:", error);
     return res.status(500).json({ success: false, message: "Error claiming coupon", error: error.message });
   }
 };
-
-
 
 export const completeSale = async (req, res) => {
   try {
