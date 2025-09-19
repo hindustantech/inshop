@@ -19,7 +19,8 @@ import {
     getCouponCount,
     getMyCoupons,
     getAllCouponsForAdmin,
-    claimCoupon
+    claimCoupon,
+    getAvailableCouponsWithDetails
 } from '../controllers/couponController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1 } from '../middlewares/checkuser.js';
@@ -42,6 +43,7 @@ router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
 router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
 
 router.post("/claimCoupon", authMiddleware, claimCoupon);
+router.get("/getAvailableCouponsWithDetails/:userId", getAvailableCouponsWithDetails);
 
 
 

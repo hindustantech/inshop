@@ -323,6 +323,105 @@ export const createCoupon = async (req, res) => {
 
 
 
+export const getAvailableCouponsWithDetails = async (req, res) => {
+  try {
+    const { userId } = req.params; // Assuming you want coupons for a specific user
+    
+    // Get all available user coupons for this user with populated coupon details
+    const availableCoupons = await UserCoupon.find({
+      userId: userId,
+      status: 'available'
+    })
+    .populate({
+      path: 'couponId',
+      model: 'Coupon',
+      populate: [
+        {
+          path: 'createdby',
+          model: 'User',
+          select: 'name email' // Select only necessary fields
+        },
+        {
+          path: 'ownerId',
+          model: 'User',
+          select: 'name email' // Select only necessary fields
+        },
+        {
+          path: 'category',
+          model: 'Category',
+          select: 'name' // Select only necessary fields
+        }
+      ]
+    })
+    .populate({
+      path: 'senders.senderId',
+      model: 'User',
+      select: 'name email' // Select only necessary sender info
+    })
+    .sort({ createdAt: -1 }); // Sort by newest first
+
+    // Format the response to include all necessary details
+    const formattedCoupons = availableCoupons.map(userCoupon => {
+      const coupon = userCoupon.couponId;
+      
+      return {
+        userCouponId: userCoupon._id,
+        status: userCoupon.status,
+        count: userCoupon.count,
+        qrCode: userCoupon.qrCode,
+        createdAt: userCoupon.createdAt,
+        updatedAt: userCoupon.updatedAt,
+        
+        // Coupon details
+        coupon: {
+          _id: coupon._id,
+          title: coupon.title,
+          copuon_image: coupon.copuon_image,
+          manul_address: coupon.manul_address,
+          copuon_srno: coupon.copuon_srno,
+          category: coupon.category,
+          copuon_type: coupon.copuon_type,
+          discountPercentage: coupon.discountPercentage,
+          validTill: coupon.validTill,
+          style: coupon.style,
+          fromTime: coupon.fromTime,
+          toTime: coupon.toTime,
+          isFullDay: coupon.isFullDay,
+          termsAndConditions: coupon.termsAndConditions,
+          is_spacial_copun: coupon.is_spacial_copun,
+          isTransferable: coupon.isTransferable,
+          tag: coupon.tag,
+          shope_location: coupon.shope_location,
+          createdby: coupon.createdby,
+          ownerId: coupon.ownerId
+        },
+        
+        // Sender details
+        senders: userCoupon.senders.map(sender => ({
+          senderId: sender.senderId,
+          sentAt: sender.sentAt,
+          senderName: sender.senderId?.name,
+          senderEmail: sender.senderId?.email
+        }))
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: formattedCoupons.length,
+      data: formattedCoupons
+    });
+  } catch (error) {
+    console.error('Error fetching available coupons:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching coupons',
+      error: error.message
+    });
+  }
+};
+
+
 
 /* 1. Get My Coupons */
 export const getMyCoupons = async (req, res) => {
@@ -1409,7 +1508,7 @@ export const transferCoupon = async (req, res) => {
       userId: receiverId,
       couponId,
     }).session(session);
-    
+
     // Generate unique QR code
     const qrCode = `qr-${couponId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -1516,7 +1615,7 @@ export const claimCoupon = async (req, res) => {
     }
     const decoded = jwt.verify(owner, JWT_SECRET)
 
-    if (!decoded || !decoded.id) {
+    if (!decoded || !decoded.userId) {
       return res.status(401).json({ message: 'Invalid or expired token' });
     }
 
