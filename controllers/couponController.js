@@ -1769,7 +1769,7 @@ export const claimCoupon = async (req, res) => {
         await userCoupon.save();
 
         // ✅ Always create Sale (ongoing)
-        const sale = new Sales({
+        const sale = new Salses({
           couponId,
           userId,
           status: "ongoing",
@@ -1796,7 +1796,7 @@ export const claimCoupon = async (req, res) => {
     await userCoupon.save();
 
     // ✅ Sale always ongoing
-    const sale = new Sales({
+    const sale = new Salses({
       couponId,
       userId,
       status: "ongoing",
