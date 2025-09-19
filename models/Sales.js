@@ -14,6 +14,7 @@ const salesSchema = new mongoose.Schema({
     },
     serviceStartTime: {
         type: Date,
+        default :Date.now,
         required: true
     },
     serviceEndTime: {
