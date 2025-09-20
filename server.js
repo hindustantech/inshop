@@ -16,7 +16,7 @@ import banner from './routes/BannerRoute.js'
 import manuladdress from './routes/manullocationroute.js';
 import Categoryroute from './routes/Category.js'
 import usermanagement from './routes/userManagementRoutes.js'
-
+import patnerProfile  from './routes/PatnerProfile.js'
 dotenv.config();
 connectDB();
 
@@ -63,6 +63,7 @@ app.use('/api/banner', banner);
 
 app.use('/api/manul', manuladdress);
 app.use('/api/category', Categoryroute);
+app.use('/api/patnerProfile', patnerProfile);
 
 // Add this after your existing middleware setup
 app.use('/uploads', express.static('uploads'));
