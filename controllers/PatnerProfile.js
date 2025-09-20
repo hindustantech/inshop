@@ -12,7 +12,7 @@ export const createOrUpdateProfile = async (req, res) => {
     session.startTransaction();
 
     try {
-        const userId = req.user?._id || req.body.id;
+        const userId = req.user?._id || req.user.id;
         const { email, firm_name, address ,pan} = req.body;
 
         if (!userId) {
