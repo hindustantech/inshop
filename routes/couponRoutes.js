@@ -20,7 +20,9 @@ import {
     getMyCoupons,
     getAllCouponsForAdmin,
     claimCoupon,
-    getAvailableCouponsWithDetails
+    getAvailableCouponsWithDetails,
+    getOwnerCouponDetails,
+    getOwnerCoupons
 } from '../controllers/couponController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1 } from '../middlewares/checkuser.js';
@@ -45,7 +47,15 @@ router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
 router.post("/claimCoupon", authMiddleware, claimCoupon);
 router.get("/getAvailableCouponsWithDetails/:userId", getAvailableCouponsWithDetails);
 
+// @route   GET /api/coupons/owner/:ownerId
+// @desc    Get all coupons for a specific owner
+// @access  Private
+router.get('/owner/:ownerId', authMiddleware, getOwnerCoupons);
 
+// @route   GET /api/coupons/:couponId/owner/:ownerId
+// @desc    Get detailed information for a specific coupon owned by an owner
+// @access  Private
+router.get('/:couponId/owner/:ownerId', authMiddleware, getOwnerCouponDetails);
 
 
 // Public routes (no authentication required)

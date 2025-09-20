@@ -14,6 +14,10 @@ const PatnerProfileSchema = new mongoose.Schema({
         type: String,
         require: true,
     },
+    pan: {
+        type: String,
+        require: true,
+    },
     firm_name: {
         type: String,
         require: true,

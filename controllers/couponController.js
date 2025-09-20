@@ -1,4 +1,3 @@
-
 import Coupon from '../models/coupunModel.js';
 import User from '../models/userModel.js';
 import UserCoupon from '../models/UserCoupon.js';
@@ -417,6 +416,191 @@ export const getAvailableCouponsWithDetails = async (req, res) => {
       success: false,
       message: 'Server error while fetching coupons',
       error: error.message
+    });
+  }
+};
+
+export const getOwnerCoupons = async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+
+    // Validate ownerId
+    if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid owner ID'
+      });
+    }
+
+    // Find all coupons for the owner
+    const coupons = await Coupon.find({ ownerId })
+      .populate('createdby', 'name email') // Populate creator details
+      .populate('category', 'name') // Populate category details
+      .select('-__v') // Exclude version key
+      .lean(); // Convert to plain JavaScript object
+
+    // Check if coupons exist
+    if (!coupons || coupons.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No coupons found for this owner'
+      });
+    }
+
+    // Return success response
+    res.status(200).json({
+      success: true,
+      count: coupons.length,
+      data: coupons
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching coupons',
+      error: error.message
+    });
+  }
+};
+
+
+
+// @desc    Get detailed information for a specific coupon owned by an owner, with optional date filters
+// @route   GET /api/coupons/:couponId/owner/:ownerId?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD
+// @access  Private
+export const getOwnerCouponDetails =async (req, res) => {
+  try {
+    const { couponId, ownerId } = req.params;
+    const { fromDate, toDate } = req.query;
+
+    // Validate ownerId and couponId
+    if (!mongoose.Types.ObjectId.isValid(ownerId) || !mongoose.Types.ObjectId.isValid(couponId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid owner ID or coupon ID',
+      });
+    }
+
+    // Fetch the coupon details (unchanged, as filters don't apply here)
+    const coupon = await Coupon.findOne({ _id: couponId, ownerId })
+      .populate('createdby', 'name email')
+      .populate('category', 'name')
+      .select('-__v')
+      .lean();
+
+    if (!coupon) {
+      return res.status(404).json({
+        success: false,
+        message: 'Coupon not found or does not belong to this owner',
+      });
+    }
+
+    // Build query for user coupons with date filters on createdAt
+    let userCouponQuery = { couponId };
+    const userCouponDateFilter = {};
+    if (fromDate) {
+      try {
+        userCouponDateFilter.$gte = new Date(fromDate);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid fromDate format. Use YYYY-MM-DD.',
+        });
+      }
+    }
+    if (toDate) {
+      try {
+        userCouponDateFilter.$lte = new Date(toDate);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid toDate format. Use YYYY-MM-DD.',
+        });
+      }
+    }
+    if (Object.keys(userCouponDateFilter).length > 0) {
+      userCouponQuery.createdAt = userCouponDateFilter;
+    }
+
+    // Fetch associated user coupons with filters
+    const userCoupons = await UserCoupon.find(userCouponQuery)
+      .populate('userId', 'name email')
+      .populate('senders.senderId', 'name email')
+      .select('-__v')
+      .sort({ createdAt: -1 }) // Sort by createdAt descending for more recent first
+      .lean();
+
+    // Build query for sales with date filters on createdAt
+    let salesQuery = { couponId };
+    const salesDateFilter = {};
+    if (fromDate) {
+      salesDateFilter.$gte = new Date(fromDate);
+    }
+    if (toDate) {
+      salesDateFilter.$lte = new Date(toDate);
+    }
+    if (Object.keys(salesDateFilter).length > 0) {
+      salesQuery.createdAt = salesDateFilter;
+    }
+
+    // Fetch associated sales with filters
+    const sales = await Sales.find(salesQuery)
+      .populate('userId', 'name email')
+      .select('-__v')
+      .sort({ createdAt: -1 }) // Sort by createdAt descending for more recent first
+      .lean();
+
+    // Calculate aggregate statistics (now based on filtered data)
+    const stats = {
+      totalUserCoupons: userCoupons.length,
+      availableCoupons: userCoupons.filter(uc => uc.status === 'available').length,
+      usedCoupons: userCoupons.filter(uc => uc.status === 'used').length,
+      transferredCoupons: userCoupons.filter(uc => uc.status === 'transferred').length,
+      cancelledCoupons: userCoupons.filter(uc => uc.status === 'cancelled').length,
+      totalSales: sales.length,
+      completedSales: sales.filter(s => s.status === 'completed').length,
+      ongoingSales: sales.filter(s => s.status === 'ongoing').length,
+      cancelledSales: sales.filter(s => s.status === 'cancelled').length,
+      totalRevenue: sales.reduce((sum, sale) => sum + (sale.finalAmount || 0), 0),
+      totalDiscount: sales.reduce((sum, sale) => sum + (sale.discountAmount || 0), 0),
+      // Additional in-depth stats
+      averageDiscount: sales.length > 0 ? (sales.reduce((sum, sale) => sum + (sale.discountAmount || 0), 0) / sales.length) : 0,
+      totalUsedCount: sales.reduce((sum, sale) => sum + (sale.usedCount || 0), 0),
+      averageFinalAmount: sales.length > 0 ? (sales.reduce((sum, sale) => sum + (sale.finalAmount || 0), 0) / sales.length) : 0,
+      earliestEntry: Math.min(
+        ...userCoupons.map(uc => uc.createdAt?.getTime() || Infinity),
+        ...sales.map(s => s.createdAt?.getTime() || Infinity)
+      ) === Infinity ? null : new Date(Math.min(
+        ...userCoupons.map(uc => uc.createdAt?.getTime() || Infinity),
+        ...sales.map(s => s.createdAt?.getTime() || Infinity)
+      )),
+      latestEntry: Math.max(
+        ...userCoupons.map(uc => uc.createdAt?.getTime() || -Infinity),
+        ...sales.map(s => s.createdAt?.getTime() || -Infinity)
+      ) === -Infinity ? null : new Date(Math.max(
+        ...userCoupons.map(uc => uc.createdAt?.getTime() || -Infinity),
+        ...sales.map(s => s.createdAt?.getTime() || -Infinity)
+      )),
+    };
+
+    // Return the response with applied filters noted
+    res.status(200).json({
+      success: true,
+      filtersApplied: {
+        fromDate: fromDate || 'None',
+        toDate: toDate || 'None',
+      },
+      data: {
+        couponDetails: coupon,
+        userCoupons,
+        sales,
+        stats,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching coupon details',
+      error: error.message,
     });
   }
 };

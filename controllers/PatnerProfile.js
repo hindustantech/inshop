@@ -13,7 +13,7 @@ export const createOrUpdateProfile = async (req, res) => {
 
     try {
         const userId = req.user?._id || req.body.User_id;
-        const { email, firm_name, address } = req.body;
+        const { email, firm_name, address ,pan} = req.body;
 
         if (!userId) {
             return res.status(400).json({ success: false, message: "User ID is required" });
@@ -29,6 +29,7 @@ export const createOrUpdateProfile = async (req, res) => {
                 User_id: userId,
                 firm_name: firm_name || "New Firm",
                 email: email || "",
+                pan:pan,
                 address: {
                     country: "",
                     state: "",
@@ -54,17 +55,16 @@ export const createOrUpdateProfile = async (req, res) => {
          ---------------------------- */
         if (email !== undefined) profile.email = email;
         if (firm_name !== undefined) profile.firm_name = firm_name;
+        if (pan !== undefined) profile.pan = pan;
 
         /** Address (merge object safely) */
         if (address !== undefined) {
             let addressObj = typeof address === "string" ? JSON.parse(address) : address;
             profile.address = {
-                country: addressObj.country || profile.address?.country || "",
+                
                 state: addressObj.state || profile.address?.state || "",
                 city: addressObj.city || profile.address?.city || "",
-                pincode: addressObj.pincode || profile.address?.pincode || "",
-                countryIsoCode: addressObj.countryIsoCode || profile.address?.countryIsoCode || "",
-                stateIsoCode: addressObj.stateIsoCode || profile.address?.stateIsoCode || ""
+               
             };
         }
 
