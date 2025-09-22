@@ -1,4 +1,6 @@
 import express from 'express';
+import multer from 'multer'; // Add this at the top
+
 import {
     signup,
     updateUserLocation,
