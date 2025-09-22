@@ -1942,7 +1942,7 @@ export const getSalesByCouponOwner = async (req, res) => {
     const sales = await Salses.find()
       .populate({
         path: 'coupon',        // assuming `coupon` is the field in Sales referencing Coupons
-        match: { owner: userId } // only include coupons owned by logged-in user
+        match: { ownerId: userId } // only include coupons owned by logged-in user
       })
       .skip(skip)
       .limit(limit)
