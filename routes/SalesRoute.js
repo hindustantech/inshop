@@ -7,5 +7,5 @@ router.get('/getSales', authMiddleware, getSales);
 
 router.post('/completeSale', completeSale);
 router.post('/cancelSale', authMiddleware, cancelSale);
-router.post('/getSalesByCouponOwner', authMiddleware, getSalesByCouponOwner);
+router.get('/getSalesByCouponOwner', authMiddleware, getSalesByCouponOwner);
 export default router;
