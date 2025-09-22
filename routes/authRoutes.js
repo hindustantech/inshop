@@ -33,6 +33,7 @@ router.post('/updateUserLocation', authMiddleware, updateUserLocation);
 router.post('/UpdateManualAddress', authMiddleware, UpdateManualAddress);
 
 router.get('/getProfile', authMiddleware, getProfile);
+
 router.get('/updateProfileImage', authMiddleware, upload.single('profileImage'), updateProfileImage);
 
 // router.post('/signout', signout);

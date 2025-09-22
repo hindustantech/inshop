@@ -543,7 +543,7 @@ export const getOwnerCouponDetails = async (req, res) => {
     }
 
     // Fetch associated sales with filters
-    const sales = await Sales.find(salesQuery)
+    const sales = await Salses.find(salesQuery)
       .populate('userId', 'name email')
       .select('-__v')
       .sort({ createdAt: -1 }) // Sort by createdAt descending for more recent first
@@ -1232,7 +1232,9 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
       {
         $project: {
           title: 1,
-          coupon_image: 1,
+          copuon_image: 1,  // use the actual field from schema
+
+
           manual_address: 1,
           coupon_srno: 1,
           discountPercentage: 1,
