@@ -2039,7 +2039,7 @@ export const completeSale = async (req, res) => {
 
 export const cancelSale = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
     const { saleId } = req.body;
 
     if (!saleId) return res.status(400).json({ success: false, message: "Sale ID is required" });

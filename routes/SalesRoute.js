@@ -5,7 +5,7 @@ const router = express.Router();
 
 router.get('/getSales', authMiddleware, getSales);
 
-router.post('/completeSale', authMiddleware, completeSale);
+router.post('/completeSale', completeSale);
 router.post('/cancelSale', authMiddleware, cancelSale);
 router.post('/getSalesByCouponOwner', authMiddleware, getSalesByCouponOwner);
 export default router;
