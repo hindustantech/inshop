@@ -22,7 +22,8 @@ import {
     claimCoupon,
     getAvailableCouponsWithDetails,
     getOwnerCouponDetails,
-    getOwnerCoupons
+    getOwnerCoupons,
+    
 } from '../controllers/couponController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1 } from '../middlewares/checkuser.js';

@@ -10,5 +10,5 @@ router.post("/", upload.single("logo"), authMiddleware,createOrUpdateProfile);
 
 // Get Profile by User ID
 router.get("/:userId", getProfile);
-
+   
 export default router;

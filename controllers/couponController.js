@@ -467,7 +467,7 @@ export const getOwnerCoupons = async (req, res) => {
 // @desc    Get detailed information for a specific coupon owned by an owner, with optional date filters
 // @route   GET /api/coupons/:couponId/owner/:ownerId?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD
 // @access  Private
-export const getOwnerCouponDetails =async (req, res) => {
+export const getOwnerCouponDetails = async (req, res) => {
   try {
     const { couponId, ownerId } = req.params;
     const { fromDate, toDate } = req.query;
@@ -1890,6 +1890,86 @@ export const claimCoupon = async (req, res) => {
   } catch (error) {
     console.error("Error claiming coupon:", error);
     return res.status(500).json({ success: false, message: "Error claiming coupon", error: error.message });
+  }
+};
+
+export const getSales = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Pagination: get page and limit from query, default page=1, limit=10
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Find sales for the user with pagination
+    const sales = await Salses.find({ user: userId })
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 }); // latest first
+
+    // Get total count for pagination info
+    const totalSales = await Salses.countDocuments({ user: userId });
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalPages: Math.ceil(totalSales / limit),
+      totalSales,
+      sales
+    });
+
+  } catch (error) {
+    console.error("Error fetching sales:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch sales",
+      error: error.message
+    });
+  }
+};
+
+
+export const getSalesByCouponOwner = async (req, res) => {
+  try {
+    const userId = req.user.id; // logged-in user
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Find all sales, populate the coupon, filter by coupon owner
+    const sales = await Salses.find()
+      .populate({
+        path: 'coupon',        // assuming `coupon` is the field in Sales referencing Coupons
+        match: { owner: userId } // only include coupons owned by logged-in user
+      })
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    // Filter out sales where populate didn't match (coupon not owned by user)
+    const filteredSales = sales.filter(sale => sale.coupon !== null);
+
+    // Total count
+    const totalSales = filteredSales.length;
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalPages: Math.ceil(totalSales / limit),
+      totalSales,
+      sales: filteredSales
+    });
+
+  } catch (error) {
+    console.error("Error fetching sales by coupon owner:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch sales",
+      error: error.message
+    });
   }
 };
 
