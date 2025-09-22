@@ -338,12 +338,12 @@ export const getAvailableCouponsWithDetails = async (req, res) => {
           {
             path: 'createdby',
             model: 'User',
-            select: 'name email' // Select only necessary fields
+            select: 'name phone' // Select only necessary fields
           },
           {
             path: 'ownerId',
             model: 'User',
-            select: 'name email' // Select only necessary fields
+            select: 'name phone' // Select only necessary fields
           },
           {
             path: 'category',
@@ -355,7 +355,7 @@ export const getAvailableCouponsWithDetails = async (req, res) => {
       .populate({
         path: 'senders.senderId',
         model: 'User',
-        select: 'name email' // Select only necessary sender info
+        select: 'name phone' // Select only necessary sender info
       })
       .sort({ createdAt: -1 }); // Sort by newest first
 
@@ -434,7 +434,7 @@ export const getOwnerCoupons = async (req, res) => {
 
     // Find all coupons for the owner
     const coupons = await Coupon.find({ ownerId })
-      .populate('createdby', 'name email') // Populate creator details
+      .populate('createdby', 'name phone') // Populate creator details
       .populate('category', 'name') // Populate category details
       .select('-__v') // Exclude version key
       .lean(); // Convert to plain JavaScript object
