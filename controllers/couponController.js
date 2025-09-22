@@ -1943,8 +1943,8 @@ export const getSalesByCouponOwner = async (req, res) => {
     // Find all sales, populate the coupon, filter by coupon owner
     const sales = await Salses.find()
       .populate({
-        path: 'coupon',        // assuming `coupon` is the field in Sales referencing Coupons
-        match: { ownerId: userId } // only include coupons owned by logged-in user
+        path: 'couponId',           // use correct reference field
+        match: { ownerId: userId }
       })
       .skip(skip)
       .limit(limit)
