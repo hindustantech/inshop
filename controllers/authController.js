@@ -6,8 +6,59 @@ import { generateReferralCode } from '../utils/Referalcode.js';
 import fs from 'fs';
 import path from 'path';
 import admin from 'firebase-admin'
+import { uploadToCloudinary } from '../utils/Cloudinary.js';
+
+export const getProfile = async (req, res) => {
+  try {
+    const userId = req.user?.id; // from auth middleware
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "User ID is required" });
+    }
+
+    const user = await User.findById(userId)
+      .select('name phone profileImage couponCount type referalCode referredBy')
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    console.error("Error fetching user profile:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 
 
+export const updateProfileImage = async (req, res) => {
+  try {
+    const userId = req.user?.id; // from auth middleware
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "User ID is required" });
+    }
+
+    if (!req.file || !req.file.buffer) {
+      return res.status(400).json({ success: false, message: "No image file uploaded" });
+    }
+
+    // Upload image to Cloudinary
+    const result = await uploadToCloudinary(req.file.buffer, 'profile_images');
+
+    // Update user's profileImage
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { profileImage: result.secure_url },
+      { new: true, select: 'name phone profileImage couponCount type referalCode referredBy' }
+    ).lean();
+
+    res.status(200).json({ success: true, message: "Profile image updated", data: user });
+  } catch (error) {
+    console.error("Error updating profile image:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 
 // Controller function to broadcast notifications using Promise.all for parallel processing
 export const broadcastNotification = async (req, res) => {

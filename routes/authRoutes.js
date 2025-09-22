@@ -14,16 +14,24 @@ import {
     uploadProfileImage,
     getOwner,
     findUserByPhone,
-    getProfileImageUrl
+    getProfileImageUrl,
+    getProfile,
+    updateProfileImage
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
 const router = express.Router();
+const storage = multer.memoryStorage(); // ✅ stores buffer in memory
 
+const upload = multer({ storage });
+upload.single("images")
 
 router.post('/updateUserLocation', authMiddleware, updateUserLocation);
 
 router.post('/UpdateManualAddress', authMiddleware, UpdateManualAddress);
+
+router.get('/getProfile', authMiddleware, getProfile);
+router.get('/updateProfileImage', authMiddleware, upload.single('profileImage'), updateProfileImage);
 
 // router.post('/signout', signout);
 
