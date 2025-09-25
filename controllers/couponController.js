@@ -1641,7 +1641,7 @@ export const getSales = async (req, res) => {
     const skip = (page - 1) * limit;
 
     // Find sales for the user with pagination
-    const sales = await Salses.find({ user: userId })
+    const sales = await Salses.find({  userId })
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 }); // latest first
