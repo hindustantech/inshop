@@ -212,7 +212,9 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     }
 
     let userLocation = location;
+    let targetCoordinates = manualAddress.location.coordinates;
 
+    // For logged-in users, check if they have a preferred manual address
     if (userId) {
       const user = await User.findById(userId);
       if (user && user.manul_address) {
@@ -223,6 +225,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
 
         if (userManualAddress) {
           userLocation = user.manul_address;
+          targetCoordinates = userManualAddress.location.coordinates;
         }
       }
     }
@@ -233,13 +236,12 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
         $geoNear: {
           near: {
             type: "Point",
-            coordinates: manualAddress.location.coordinates
+            coordinates: targetCoordinates
           },
           distanceField: "distance",
           distanceMultiplier: 0.001, // Convert meters to kilometers
           spherical: true,
           query: {
-            manul_address: userLocation,
             active: true,
             validTill: { $gte: new Date() }
           }
@@ -304,11 +306,13 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       success: true,
       location: {
         code: userLocation,
-        city: manualAddress.city
+        city: manualAddress.city,
+        coordinates: targetCoordinates
       },
       coupons: couponsWithFormattedDistance,
       totalCount: couponsWithFormattedDistance.length,
-      promotionFilter: promotion || 'all'
+      promotionFilter: promotion || 'all',
+      userStatus: userId ? 'logged-in' : 'guest'
     });
 
   } catch (error) {
