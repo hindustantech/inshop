@@ -10,10 +10,10 @@ const BannerSchema = new mongoose.Schema(
     },
 
     ownerId: {
-       type: mongoose.Schema.Types.ObjectId, // references id from another table
-       ref: 'User', // assuming you have an 'Owner' model or similar
-       required: true
-     },
+      type: mongoose.Schema.Types.ObjectId, // references id from another table
+      ref: 'User', // assuming you have an 'Owner' model or similar
+      required: true
+    },
 
 
 
@@ -33,13 +33,15 @@ const BannerSchema = new mongoose.Schema(
 
     google_location_url: {
       type: String
-
+    },
+    website_url: {
+      type: String
     },
 
     banner_type: {
       type: String,
       enum: ["Changeable", "Unchangeable"],
-      default: "Unchangeable", 
+      default: "Unchangeable",
       index: true
     },
 
@@ -47,11 +49,11 @@ const BannerSchema = new mongoose.Schema(
       type: Number,
       default: 100000
     }, // meters
-    category: {
-      type: mongoose.Schema.Types.ObjectId, // references id from another table
-      ref: 'Category', // assuming you have an 'Owner' model or similar
+    category: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
       required: true,
-    },
+    }],
     location: {
       type: { type: String, enum: ["Point"], required: true, default: "Point" },
       coordinates: {
@@ -61,7 +63,7 @@ const BannerSchema = new mongoose.Schema(
       },
     },
 
-    
+
     title: { type: String },
     main_keyword: { type: [String], index: true },
     keyword: { type: [String], index: true },
