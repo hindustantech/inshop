@@ -152,13 +152,13 @@ export const createBanner = async (req, res) => {
     /* ======================
        🔹 URL Validation
     ====================== */
-    const urlRegex = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?$/;
-    if (google_location_url && !urlRegex.test(google_location_url)) {
-      return res.status(400).json({ success: false, message: 'Invalid Google Location URL format' });
-    }
-    if (website_url && !urlRegex.test(website_url)) {
-      return res.status(400).json({ success: false, message: 'Invalid Website URL format' });
-    }
+    // const urlRegex = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?$/;
+    // if (google_location_url && !urlRegex.test(google_location_url)) {
+    //   return res.status(400).json({ success: false, message: 'Invalid Google Location URL format' });
+    // }
+    // if (website_url && !urlRegex.test(website_url)) {
+    //   return res.status(400).json({ success: false, message: 'Invalid Website URL format' });
+    // }
 
     /* ======================
        🔹 Image Validation
