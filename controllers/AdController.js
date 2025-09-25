@@ -190,7 +190,7 @@ export const getBannersByLocation = async (req, res) => {
 export const getAdUserCityByCopunWithGeo = async (req, res) => {
   try {
     const { location, promotion } = req.query;
-    const userId = req.user?.id;
+    const userId = req?.user?.id;
 
     if (!location) {
       return res.status(400).json({
