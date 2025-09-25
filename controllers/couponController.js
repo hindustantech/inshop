@@ -1640,14 +1640,28 @@ export const getSales = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Find sales for the user with pagination
-    const sales = await Salses.find({  userId })
+    // Find sales for the user with pagination and populate coupon details with owner info
+    const sales = await Sales.find({ userId })
+      .populate({
+        path: 'couponId',
+        select: 'title discountPercentage validTill category copuon_type termsAndConditions tag isTransferable ownerId',
+        populate: [
+          {
+            path: 'category',
+            select: 'name'
+          },
+          {
+            path: 'ownerId',
+            select: 'name phone' // Owner details: name and phone
+          }
+        ]
+      })
       .skip(skip)
       .limit(limit)
-      .sort({ createdAt: -1 }); // latest first
+      .sort({ createdAt: -1 });
 
     // Get total count for pagination info
-    const totalSales = await Salses.countDocuments({ user: userId });
+    const totalSales = await Sales.countDocuments({ userId });
 
     res.status(200).json({
       success: true,
