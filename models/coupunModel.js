@@ -32,11 +32,13 @@ const couponSchema = new mongoose.Schema({
       ref: 'Ad',
     }
   ],
+  
   category: [{
     type: mongoose.Schema.Types.ObjectId, // references id from another table
     ref: 'Category', // assuming you have an 'Owner' model or similar
     required: true,
   }],
+
   copuon_type: {
     type: Boolean,
     default: false, // if False then  not Transfarel

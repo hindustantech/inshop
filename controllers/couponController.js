@@ -121,21 +121,21 @@ export const createCoupon = async (req, res) => {
     const { createdBy, ownerId, partnerId } = req.ownership || {};
 
     // ------------------ Validations ------------------
-    if (
-      !title?.trim() ||
-      !manual_address?.trim() ||
-      !copuon_srno?.trim() ||
-      !Array.isArray(categoryIds) ||
-      categoryIds.length === 0 ||
-      isNaN(parseFloat(discountPercentage)) ||
-      !validTill?.trim() ||
-      !termsAndConditions?.trim()
-    ) {
-      return res.status(400).json({
-        message:
-          "Missing/Invalid fields: title, manual_address, copuon_srno, categoryIds[], discountPercentage, validTill, termsAndConditions",
-      });
-    }
+    // if (
+    //   !title?.trim() ||
+    //   !manual_address?.trim() ||
+    //   !copuon_srno?.trim() ||
+    //   !Array.isArray(categoryIds) ||
+    //   categoryIds.length === 0 ||
+    //   isNaN(parseFloat(discountPercentage)) ||
+    //   !validTill?.trim() ||
+    //   !termsAndConditions?.trim()
+    // ) {
+    //   return res.status(400).json({
+    //     message:
+    //       "Missing/Invalid fields: title, manual_address, copuon_srno, categoryIds[], discountPercentage, validTill, termsAndConditions",
+    //   });
+    // }
 
     // Parse discountPercentage
     const parsedDiscount = parseFloat(discountPercentage);
@@ -286,7 +286,7 @@ export const createCoupon = async (req, res) => {
   }
 };
 
-
+  
 
 
 export const getAvailableCouponsWithDetails = async (req, res) => {

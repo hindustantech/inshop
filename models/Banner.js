@@ -15,6 +15,13 @@ const BannerSchema = new mongoose.Schema(
       required: true
     },
 
+    promotion:[
+        {
+          type: mongoose.Schema.Types.ObjectId, // references id from another table
+          ref: 'Ad',
+        }
+      ],
+
 
 
 
