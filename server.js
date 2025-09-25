@@ -18,6 +18,7 @@ import Categoryroute from './routes/Category.js'
 import usermanagement from './routes/userManagementRoutes.js'
 import patnerProfile  from './routes/PatnerProfile.js'
 import salesRoute from './routes/SalesRoute.js'
+import adroute from './routes/AdRoute.js'
 dotenv.config();
 connectDB();
 
@@ -51,6 +52,7 @@ app.get('/', (req, res) => {
 
 app.use('/admin', adminRouter);
 app.use('/api/usermanagement', usermanagement);
+app.use('/api/adRoute', adroute);
 
 // API routes
 app.use('/api/auth', authRoutes);
