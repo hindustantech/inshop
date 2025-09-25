@@ -350,12 +350,13 @@ export const addOrUpdateAds = async (req, res) => {
 
     // Validate that all adIds are valid ObjectIds
     const validAdIds = adIds.map(adId => {
-      try {
-        return new mongoose.Types.ObjectId(adId);
-      } catch (error) {
+      const trimmedId = adId.trim();
+      if (!mongoose.Types.ObjectId.isValid(trimmedId)) {
         throw new Error(`Invalid adId: ${adId}`);
       }
+      return new mongoose.Types.ObjectId(trimmedId);
     });
+
 
     let result;
     let updatedDocument;
@@ -363,7 +364,7 @@ export const addOrUpdateAds = async (req, res) => {
     if (couponId) {
       // Handle coupon ad update
       const coupon = await Coupon.findById(couponId);
-      
+
       if (!coupon) {
         return res.status(404).json({
           success: false,
@@ -373,9 +374,9 @@ export const addOrUpdateAds = async (req, res) => {
 
       // Check if user has permission to update this coupon
       // Super admin can bypass ownership check
-      if (userType !== 'super_admin' && 
-          coupon.createdby.toString() !== userId && 
-          coupon.ownerId.toString() !== userId) {
+      if (userType !== 'super_admin' &&
+        coupon.createdby.toString() !== userId &&
+        coupon.ownerId.toString() !== userId) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to update this coupon'
@@ -388,9 +389,9 @@ export const addOrUpdateAds = async (req, res) => {
         {
           $set: { promotion: validAdIds }
         },
-        { 
+        {
           new: true,
-          runValidators: true 
+          runValidators: true
         }
       ).populate('promotion', 'name desc');
 
@@ -402,7 +403,7 @@ export const addOrUpdateAds = async (req, res) => {
     } else if (bannerId) {
       // Handle banner ad update
       const banner = await Banner.findById(bannerId);
-      
+
       if (!banner) {
         return res.status(404).json({
           success: false,
@@ -412,9 +413,9 @@ export const addOrUpdateAds = async (req, res) => {
 
       // Check if user has permission to update this banner
       // Super admin can bypass ownership check
-      if (userType !== 'super_admin' && 
-          banner.createdby.toString() !== userId && 
-          banner.ownerId.toString() !== userId) {
+      if (userType !== 'super_admin' &&
+        banner.createdby.toString() !== userId &&
+        banner.ownerId.toString() !== userId) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to update this banner'
@@ -427,9 +428,9 @@ export const addOrUpdateAds = async (req, res) => {
         {
           $set: { promotion: validAdIds }
         },
-        { 
+        {
           new: true,
-          runValidators: true 
+          runValidators: true
         }
       ).populate('promotion', 'name desc');
 
@@ -448,7 +449,7 @@ export const addOrUpdateAds = async (req, res) => {
 
   } catch (error) {
     console.error('Error adding/updating ads:', error);
-    
+
     if (error.message.includes('Invalid adId')) {
       return res.status(400).json({
         success: false,
@@ -507,9 +508,9 @@ export const appendAds = async (req, res) => {
       }
 
       // Super admin can bypass ownership check
-      if (userType !== 'super_admin' && 
-          coupon.createdby.toString() !== userId && 
-          coupon.ownerId.toString() !== userId) {
+      if (userType !== 'super_admin' &&
+        coupon.createdby.toString() !== userId &&
+        coupon.ownerId.toString() !== userId) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to update this coupon'
@@ -522,9 +523,9 @@ export const appendAds = async (req, res) => {
         {
           $addToSet: { promotion: { $each: validAdIds } }
         },
-        { 
+        {
           new: true,
-          runValidators: true 
+          runValidators: true
         }
       ).populate('promotion', 'name desc');
 
@@ -544,9 +545,9 @@ export const appendAds = async (req, res) => {
       }
 
       // Super admin can bypass ownership check
-      if (userType !== 'super_admin' && 
-          banner.createdby.toString() !== userId && 
-          banner.ownerId.toString() !== userId) {
+      if (userType !== 'super_admin' &&
+        banner.createdby.toString() !== userId &&
+        banner.ownerId.toString() !== userId) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to update this banner'
@@ -559,9 +560,9 @@ export const appendAds = async (req, res) => {
         {
           $addToSet: { promotion: { $each: validAdIds } }
         },
-        { 
+        {
           new: true,
-          runValidators: true 
+          runValidators: true
         }
       ).populate('promotion', 'name desc');
 
@@ -581,7 +582,7 @@ export const appendAds = async (req, res) => {
 
   } catch (error) {
     console.error('Error appending ads:', error);
-    
+
     if (error.message.includes('Invalid adId')) {
       return res.status(400).json({
         success: false,
@@ -640,9 +641,9 @@ export const removeAds = async (req, res) => {
       }
 
       // Super admin can bypass ownership check
-      if (userType !== 'super_admin' && 
-          coupon.createdby.toString() !== userId && 
-          coupon.ownerId.toString() !== userId) {
+      if (userType !== 'super_admin' &&
+        coupon.createdby.toString() !== userId &&
+        coupon.ownerId.toString() !== userId) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to update this coupon'
@@ -655,9 +656,9 @@ export const removeAds = async (req, res) => {
         {
           $pull: { promotion: { $in: validAdIds } }
         },
-        { 
+        {
           new: true,
-          runValidators: true 
+          runValidators: true
         }
       ).populate('promotion', 'name desc');
 
@@ -677,9 +678,9 @@ export const removeAds = async (req, res) => {
       }
 
       // Super admin can bypass ownership check
-      if (userType !== 'super_admin' && 
-          banner.createdby.toString() !== userId && 
-          banner.ownerId.toString() !== userId) {
+      if (userType !== 'super_admin' &&
+        banner.createdby.toString() !== userId &&
+        banner.ownerId.toString() !== userId) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to update this banner'
@@ -692,9 +693,9 @@ export const removeAds = async (req, res) => {
         {
           $pull: { promotion: { $in: validAdIds } }
         },
-        { 
+        {
           new: true,
-          runValidators: true 
+          runValidators: true
         }
       ).populate('promotion', 'name desc');
 
@@ -714,7 +715,7 @@ export const removeAds = async (req, res) => {
 
   } catch (error) {
     console.error('Error removing ads:', error);
-    
+
     if (error.message.includes('Invalid adId')) {
       return res.status(400).json({
         success: false,
@@ -751,8 +752,8 @@ export const bulkUpdateAds = async (req, res) => {
       });
     }
 
-    if ((!couponIds || !Array.isArray(couponIds) || couponIds.length === 0) && 
-        (!bannerIds || !Array.isArray(bannerIds) || bannerIds.length === 0)) {
+    if ((!couponIds || !Array.isArray(couponIds) || couponIds.length === 0) &&
+      (!bannerIds || !Array.isArray(bannerIds) || bannerIds.length === 0)) {
       return res.status(400).json({
         success: false,
         message: 'Either couponIds or bannerIds array is required'
