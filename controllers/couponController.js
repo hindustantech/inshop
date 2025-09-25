@@ -1761,7 +1761,7 @@ export const completeSale = async (req, res) => {
       message: "Sale completed successfully",
       data: {
         saleId: sale._id,
-        usedCount: sale.usedCount,
+        // usedCount: sale.usedCount,
         totalAmount,
         discountAmount,
         finalAmount
