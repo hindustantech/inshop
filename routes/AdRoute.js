@@ -21,7 +21,7 @@ router.patch('/ads/remove', authMiddleware, removeAds);
 
 // Only super admin can use bulk operations
 router.patch('/ads/bulk', authMiddleware, bulkUpdateAds);
-router.patch('/ads/bulk', authMiddleware, getAdUserCityByCopunWithGeo);
-router.patch('/ads/bulk', authMiddleware, getBannersByLocation);
+router.patch('/getAdUserCityByCopunWithGeo', authMiddleware, getAdUserCityByCopunWithGeo);
+router.get('/getBannersByLocation', authMiddleware, getBannersByLocation);
 
 export default router;
