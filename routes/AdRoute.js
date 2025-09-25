@@ -1,5 +1,5 @@
 import express from 'express';
-import {getAdUserCityByCopunWithGeo,getBannersByLocation, createAd, getAllAds, updateAd,addOrUpdateAds,appendAds,removeAds,bulkUpdateAds} from '../controllers/AdController.js';
+import { getAdUserCityByCopunWithGeo, getBannersByLocation, createAd, getAllAds, updateAd, addOrUpdateAds, appendAds, removeAds, bulkUpdateAds } from '../controllers/AdController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 const router = express.Router();
 
@@ -21,7 +21,7 @@ router.patch('/ads/remove', authMiddleware, removeAds);
 
 // Only super admin can use bulk operations
 router.patch('/ads/bulk', authMiddleware, bulkUpdateAds);
-router.patch('/getAdUserCityByCopunWithGeo', authMiddleware, getAdUserCityByCopunWithGeo);
+router.get('/getAdUserCityByCopunWithGeo', authMiddleware, getAdUserCityByCopunWithGeo);
 router.get('/getBannersByLocation', authMiddleware, getBannersByLocation);
 
 export default router;

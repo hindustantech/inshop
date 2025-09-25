@@ -1,5 +1,5 @@
 import Ad from "../models/ads.js";
-
+import mongoose from "mongoose";
 import User from "../models/userModel.js";
 import Coupon from "../models/coupunModel.js";
 import Banner from "../models/Banner.js";
@@ -326,14 +326,38 @@ export const addOrUpdateAds = async (req, res) => {
     const userId = req.user?.id;
     const userType = req.user?.type;
 
-    // Validate input
-    if (!adIds || !Array.isArray(adIds) || adIds.length === 0) {
+    // 1️⃣ Parse adIds if it's a string (common with multipart/form-data)
+    let parsedAdIds = adIds;
+    if (typeof adIds === 'string') {
+      try {
+        parsedAdIds = JSON.parse(adIds);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid adIds JSON format'
+        });
+      }
+    }
+
+    // 2️⃣ Validate adIds array
+    if (!Array.isArray(parsedAdIds) || parsedAdIds.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'adIds array is required and must not be empty'
+        message: 'adIds must be a non-empty array'
       });
     }
 
+    // 3️⃣ Validate each adId as ObjectId
+    const validAdIds = parsedAdIds.map(adId => {
+      if (typeof adId !== 'string') adId = adId.toString();
+      const trimmedId = adId.trim();
+      if (!mongoose.Types.ObjectId.isValid(trimmedId)) {
+        throw new Error(`Invalid adId: ${adId}`);
+      }
+      return new mongoose.Types.ObjectId(trimmedId);
+    });
+
+    // 4️⃣ Validate couponId / bannerId
     if (!couponId && !bannerId) {
       return res.status(400).json({
         success: false,
@@ -348,98 +372,65 @@ export const addOrUpdateAds = async (req, res) => {
       });
     }
 
-    // Validate that all adIds are valid ObjectIds
-    const validAdIds = adIds.map(adId => {
-      const trimmedId = adId.trim();
-      if (!mongoose.Types.ObjectId.isValid(trimmedId)) {
-        throw new Error(`Invalid adId: ${adId}`);
-      }
-      return new mongoose.Types.ObjectId(trimmedId);
-    });
-
-
     let result;
     let updatedDocument;
 
+    // 5️⃣ Handle coupon update
     if (couponId) {
-      // Handle coupon ad update
       const coupon = await Coupon.findById(couponId);
-
       if (!coupon) {
-        return res.status(404).json({
-          success: false,
-          message: 'Coupon not found'
-        });
+        return res.status(404).json({ success: false, message: 'Coupon not found' });
       }
 
-      // Check if user has permission to update this coupon
-      // Super admin can bypass ownership check
-      if (userType !== 'super_admin' &&
+      // Permission check
+      if (
+        userType !== 'super_admin' &&
         coupon.createdby.toString() !== userId &&
-        coupon.ownerId.toString() !== userId) {
+        coupon.ownerId.toString() !== userId
+      ) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to update this coupon'
         });
       }
 
-      // Update coupon with new ads (replace existing ones)
       updatedDocument = await Coupon.findByIdAndUpdate(
         couponId,
-        {
-          $set: { promotion: validAdIds }
-        },
-        {
-          new: true,
-          runValidators: true
-        }
+        { $set: { promotion: validAdIds } },
+        { new: true, runValidators: true }
       ).populate('promotion', 'name desc');
 
-      result = {
-        type: 'coupon',
-        document: updatedDocument
-      };
+      result = { type: 'coupon', document: updatedDocument };
 
     } else if (bannerId) {
-      // Handle banner ad update
+      // 6️⃣ Handle banner update
       const banner = await Banner.findById(bannerId);
-
       if (!banner) {
-        return res.status(404).json({
-          success: false,
-          message: 'Banner not found'
-        });
+        return res.status(404).json({ success: false, message: 'Banner not found' });
       }
 
-      // Check if user has permission to update this banner
-      // Super admin can bypass ownership check
-      if (userType !== 'super_admin' &&
+      // Permission check
+      if (
+        userType !== 'super_admin' &&
         banner.createdby.toString() !== userId &&
-        banner.ownerId.toString() !== userId) {
+        banner.ownerId.toString() !== userId
+      ) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to update this banner'
         });
       }
 
-      // Update banner with new ads (replace existing ones)
       updatedDocument = await Banner.findByIdAndUpdate(
         bannerId,
-        {
-          $set: { promotion: validAdIds }
-        },
-        {
-          new: true,
-          runValidators: true
-        }
+        { $set: { promotion: validAdIds } },
+        { new: true, runValidators: true }
       ).populate('promotion', 'name desc');
 
-      result = {
-        type: 'banner',
-        document: updatedDocument
-      };
+      result = { type: 'banner', document: updatedDocument };
     }
 
+    // 7️⃣ Response
     res.status(200).json({
       success: true,
       message: `Ads successfully ${result.type === 'coupon' ? 'added to coupon' : 'added to banner'}`,
@@ -451,16 +442,10 @@ export const addOrUpdateAds = async (req, res) => {
     console.error('Error adding/updating ads:', error);
 
     if (error.message.includes('Invalid adId')) {
-      return res.status(400).json({
-        success: false,
-        message: error.message
-      });
+      return res.status(400).json({ success: false, message: error.message });
     }
 
-    res.status(500).json({
-      success: false,
-      message: 'Server error while updating ads'
-    });
+    res.status(500).json({ success: false, message: 'Server error while updating ads' });
   }
 };
 
