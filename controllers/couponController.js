@@ -185,14 +185,31 @@ export const createCoupon = async (req, res) => {
       return res.status(400).json({ message: "validTill must be a valid future date" });
     }
 
-    // Validate categories
-    const invalidIds = categoryIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    let parsedCategoryIds = categoryIds;
+
+    // If categoryIds is a string, parse it
+    if (typeof categoryIds === "string") {
+      try {
+        parsedCategoryIds = JSON.parse(categoryIds);
+      } catch (error) {
+        return res.status(400).json({ message: "Invalid categoryIds format" });
+      }
+    }
+
+    // Validate array
+    if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
+      return res.status(400).json({ message: "categoryIds must be a non-empty array" });
+    }
+
+    // Check invalid IDs
+    const invalidIds = parsedCategoryIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
     if (invalidIds.length > 0) {
       return res.status(400).json({ message: `Invalid category IDs: ${invalidIds.join(", ")}` });
     }
 
-    const categories = await Category.find({ _id: { $in: categoryIds } });
-    if (categories.length !== categoryIds.length) {
+    // Fetch categories
+    const categories = await Category.find({ _id: { $in: parsedCategoryIds } });
+    if (categories.length !== parsedCategoryIds.length) {
       return res.status(404).json({ message: "One or more categories not found" });
     }
 
@@ -286,7 +303,7 @@ export const createCoupon = async (req, res) => {
   }
 };
 
-  
+
 
 
 export const getAvailableCouponsWithDetails = async (req, res) => {
