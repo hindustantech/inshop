@@ -104,7 +104,7 @@ const userSchema = new mongoose.Schema({
   couponCount: {
     type: Number,
     required: true,
-    default: 2
+    default: 5
   },
 
   manul_address: {
