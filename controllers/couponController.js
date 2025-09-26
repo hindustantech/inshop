@@ -1727,7 +1727,7 @@ export const getSalesByCouponOwner = async (req, res) => {
 
 export const completeSale = async (req, res) => {
   try {
-    const { saleId, totalAmount } = req.body; // totalAmount = user entered amount before discount
+    const { saleId, totalAmount } = req.body;
 
     if (!saleId || !totalAmount) {
       return res.status(400).json({ success: false, message: "Sale ID and total amount are required" });
@@ -1738,31 +1738,31 @@ export const completeSale = async (req, res) => {
     }
 
     const sale = await Salses.findById(saleId);
-
     if (!sale) return res.status(404).json({ success: false, message: "Sale not found" });
     if (sale.status === "completed") return res.status(400).json({ success: false, message: "Sale already completed" });
 
     const coupon = await Coupon.findById(sale.couponId);
-    const user = await Coupon.findById(sale.userId);
     if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
-    const increment = (user.usercount - usedCount) + usedCount + 1;
+
+    const user = await User.findById(sale.userId);
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    // 🔹 Update user coupon count
+    user.couponCount = Math.max(0, user.couponCount - sale.usedCount);
     await user.save();
 
-    // Calculate discount and final amount
+    // 🔹 Calculate discount and final amount
     const totalDiscountPercentage = sale.usedCount * coupon.discountPercentage;
     const discountAmount = (totalAmount * totalDiscountPercentage) / 100;
-
-    // Final amount after discount
     const finalAmount = totalAmount - discountAmount;
 
-
-    // Update sale
+    // 🔹 Update sale
     sale.status = "completed";
     sale.discountAmount = discountAmount;
     sale.finalAmount = finalAmount;
     await sale.save();
 
-    // Update coupon distributions
+    // 🔹 Update coupon distribution
     if (coupon.maxDistributions === 0 || coupon.currentDistributions + sale.usedCount <= coupon.maxDistributions) {
       coupon.currentDistributions += sale.usedCount;
       await coupon.save();
@@ -1775,10 +1775,10 @@ export const completeSale = async (req, res) => {
       message: "Sale completed successfully",
       data: {
         saleId: sale._id,
-        // usedCount: sale.usedCount,
         totalAmount,
         discountAmount,
-        finalAmount
+        finalAmount,
+        remainingCoupons: user.couponCount
       }
     });
 
@@ -1787,6 +1787,7 @@ export const completeSale = async (req, res) => {
     return res.status(500).json({ success: false, message: "Error completing sale", error: error.message });
   }
 };
+
 
 
 export const cancelSale = async (req, res) => {
