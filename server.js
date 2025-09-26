@@ -19,7 +19,7 @@ import usermanagement from './routes/userManagementRoutes.js'
 import patnerProfile  from './routes/PatnerProfile.js'
 import salesRoute from './routes/SalesRoute.js'
 import adroute from './routes/AdRoute.js'
-import analyticsRoutes from './routes/authRoutes.js'
+import analyticsRoutes from './routes/analyticsRoutes.js'
 dotenv.config();
 connectDB();
 
