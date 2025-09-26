@@ -1690,21 +1690,83 @@ export const getSalesByCouponOwner = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Find all sales, populate the coupon, filter by coupon owner
-    const sales = await Salses.find()
-      .populate({
-        path: 'couponId',           // use correct reference field
-        match: { ownerId: userId }
-      })
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+    // Aggregation pipeline to fetch sales where the coupon's ownerId matches the user
+    const salesPipeline = [
+      // Step 1: Lookup to join Salses with Coupon collection
+      {
+        $lookup: {
+          from: 'coupons', // Collection name for Coupon model (adjust if different)
+          localField: 'couponId',
+          foreignField: '_id',
+          as: 'coupon'
+        }
+      },
+      // Step 2: Unwind the coupon array (since $lookup returns an array)
+      {
+        $unwind: {
+          path: '$coupon',
+          preserveNullAndEmptyArrays: false // Only keep sales with a matching coupon
+        }
+      },
+      // Step 3: Match sales where the coupon's ownerId is the logged-in user
+      {
+        $match: {
+          'coupon.ownerId': mongoose.Types.ObjectId(userId)
+        }
+      },
+      // Step 4: Sort by createdAt (newest first)
+      {
+        $sort: { createdAt: -1 }
+      },
+      // Step 5: Pagination
+      {
+        $skip: skip
+      },
+      {
+        $limit: limit
+      },
+      // Step 6: Project to shape the output (optional, adjust fields as needed)
+      {
+        $project: {
+          couponId: 1,
+          createdAt: 1,
+          // Include other Salses fields as needed
+          coupon: 1 // Include coupon details if needed
+        }
+      }
+    ];
 
-    // Filter out sales where populate didn't match (coupon not owned by user)
-    const filteredSales = sales.filter(sale => sale.coupon !== null);
+    // Run aggregation to get paginated sales
+    const sales = await Salses.aggregate(salesPipeline).exec();
 
-    // Total count
-    const totalSales = filteredSales.length;
+    // Count total matching sales for pagination
+    const countPipeline = [
+      {
+        $lookup: {
+          from: 'coupons',
+          localField: 'couponId',
+          foreignField: '_id',
+          as: 'coupon'
+        }
+      },
+      {
+        $unwind: {
+          path: '$coupon',
+          preserveNullAndEmptyArrays: false
+        }
+      },
+      {
+        $match: {
+          'coupon.ownerId': mongoose.Types.ObjectId(userId)
+        }
+      },
+      {
+        $count: 'totalSales'
+      }
+    ];
+
+    const countResult = await Salses.aggregate(countPipeline).exec();
+    const totalSales = countResult.length > 0 ? countResult[0].totalSales : 0;
 
     res.status(200).json({
       success: true,
@@ -1712,9 +1774,8 @@ export const getSalesByCouponOwner = async (req, res) => {
       limit,
       totalPages: Math.ceil(totalSales / limit),
       totalSales,
-      sales: filteredSales
+      sales
     });
-
   } catch (error) {
     console.error("Error fetching sales by coupon owner:", error);
     res.status(500).json({
