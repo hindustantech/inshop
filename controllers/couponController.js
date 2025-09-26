@@ -1683,9 +1683,10 @@ export const getSales = async (req, res) => {
 };
 
 
+
 export const getSalesByCouponOwner = async (req, res) => {
   try {
-    const userId = req.user.id; // logged-in user
+    const userId = req.user.id; // Logged-in user
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
@@ -1695,13 +1696,13 @@ export const getSalesByCouponOwner = async (req, res) => {
       // Step 1: Lookup to join Salses with Coupon collection
       {
         $lookup: {
-          from: 'coupons', // Collection name for Coupon model (adjust if different)
+          from: 'coupons', // Matches the Coupon model's collection name
           localField: 'couponId',
           foreignField: '_id',
           as: 'coupon'
         }
       },
-      // Step 2: Unwind the coupon array (since $lookup returns an array)
+      // Step 2: Unwind the coupon array
       {
         $unwind: {
           path: '$coupon',
@@ -1711,7 +1712,7 @@ export const getSalesByCouponOwner = async (req, res) => {
       // Step 3: Match sales where the coupon's ownerId is the logged-in user
       {
         $match: {
-          'coupon.ownerId': new mongoose.Types.ObjectId(userId)
+          'coupon.ownerId': new mongoose.Types.ObjectId(userId) // Fixed: Use 'new'
         }
       },
       // Step 4: Sort by createdAt (newest first)
@@ -1725,13 +1726,15 @@ export const getSalesByCouponOwner = async (req, res) => {
       {
         $limit: limit
       },
-      // Step 6: Project to shape the output (optional, adjust fields as needed)
+      // Step 6: Project to shape the output (adjust fields as needed)
       {
         $project: {
           couponId: 1,
           createdAt: 1,
-          // Include other Salses fields as needed
-          coupon: 1 // Include coupon details if needed
+          'coupon.title': 1, // Include coupon title from Coupon schema
+          'coupon.discountPercentage': 1, // Include discount percentage
+          'coupon.validTill': 1 // Include coupon expiry date
+          // Add other Salses or Coupon fields as needed
         }
       }
     ];
@@ -1757,7 +1760,7 @@ export const getSalesByCouponOwner = async (req, res) => {
       },
       {
         $match: {
-          'coupon.ownerId': mongoose.Types.ObjectId(userId)
+          'coupon.ownerId': new mongoose.Types.ObjectId(userId) // Fixed: Use 'new'
         }
       },
       {
