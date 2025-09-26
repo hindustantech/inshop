@@ -1711,7 +1711,7 @@ export const getSalesByCouponOwner = async (req, res) => {
       // Step 3: Match sales where the coupon's ownerId is the logged-in user
       {
         $match: {
-          'coupon.ownerId': mongoose.Types.ObjectId(userId)
+          'coupon.ownerId': new mongoose.Types.ObjectId(userId)
         }
       },
       // Step 4: Sort by createdAt (newest first)
