@@ -13,7 +13,6 @@ const logFilePath = path.join(__dirname, '../logs/app.log');
 const logger = winston.createLogger({
   // Define log levels
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-  // Define log format
   format: winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }), // Include stack traces for errors
