@@ -1450,7 +1450,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               },
             },
             { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-            // Include only active coupons or those with 'available' or 'cancelled' status
+            // Include coupons that are active OR have a user status of 'used' or 'transferred'
             {
               $match: {
                 $or: [
@@ -1461,7 +1461,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                       { validTill: null },
                     ],
                   },
-                  { 'userStatus.status': { $in: ['available', 'cancelled'] } },
+                  { 'userStatus.status': { $in: ['used', 'transferred'] } },
                 ],
               },
             },
@@ -1470,10 +1470,12 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 displayTag: {
                   $switch: {
                     branches: [
+                      { case: { $eq: ['$userStatus.status', 'used'] }, then: 'Used' },
+                      { case: { $eq: ['$userStatus.status', 'transferred'] }, then: 'Transferred' },
                       { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
                       { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
                     ],
-                    default: 'Not Claimed', // Simplified to always show 'Not Claimed' for unclaimed coupons
+                    default: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
                   },
                 },
               },
@@ -1491,7 +1493,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
             },
             {
               $addFields: {
-                displayTag: 'Not Claimed', // Simplified to always show 'Not Claimed' for guests
+                displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
               },
             },
           ]),
@@ -1572,7 +1574,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                       { validTill: null },
                     ],
                   },
-                  { 'userStatus.status': { $in: ['available', 'cancelled'] } },
+                  { 'userStatus.status': { $in: ['used', 'transferred'] } },
                 ],
               },
             },
