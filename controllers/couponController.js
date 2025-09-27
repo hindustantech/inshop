@@ -1796,7 +1796,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                       { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
                       { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
                     ],
-                    default: 'Not Claimed',
+                    default: 'Available',
                   },
                 },
               },
@@ -1814,7 +1814,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
             },
             {
               $addFields: {
-                displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
+                displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
               },
             },
           ]),
