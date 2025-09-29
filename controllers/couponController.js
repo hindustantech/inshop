@@ -2332,7 +2332,7 @@ export const getOngoingServices = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const ongoingServices = await Salses.find({ userId, status: "ongoing" })
+    const sales = await Salses.find({ userId, status: "ongoing" })
       .populate({
         path: "couponId",
         select: "title discountPercentage validTill category copuon_type termsAndConditions tag isTransferable ownerId",
@@ -2345,7 +2345,7 @@ export const getOngoingServices = async (req, res) => {
       .limit(limit)
       .sort({ createdAt: -1 });
 
-    const totalOngoing = await Salses.countDocuments({
+    const totalSales = await Salses.countDocuments({
       userId,
       status: "ongoing",
     });
@@ -2354,9 +2354,9 @@ export const getOngoingServices = async (req, res) => {
       success: true,
       page,
       limit,
-      totalPages: Math.ceil(totalOngoing / limit),
-      totalOngoing,
-      ongoingServices,
+      totalPages: Math.ceil(totalSales / limit),
+      totalSales,
+      sales,
     });
   } catch (error) {
     console.error("Error fetching ongoing services:", error);
