@@ -2594,7 +2594,9 @@ const getall = async (req, res) => {
     const city = req.query.city;  // Get the city from the query parameter
     const search = req.query.search; // Get the search text from the query parameter
 
-    let filter = {};
+    let filter = {
+      status: "ongoing" // ✅ Only ongoing coupons
+    };
 
     // If user is authenticated
     if (req.user) {
@@ -2633,6 +2635,7 @@ const getall = async (req, res) => {
     });
   }
 };
+
 
 
 
