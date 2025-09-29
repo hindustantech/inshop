@@ -2475,6 +2475,8 @@ export const getSalesByCouponOwner = async (req, res) => {
   }
 };
 
+
+
 export const completeSale = async (req, res) => {
   try {
     const { saleId, totalAmount } = req.body;
