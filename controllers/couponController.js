@@ -2323,6 +2323,51 @@ export const getSales = async (req, res) => {
   }
 };
 
+export const getOngoingServices = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Pagination support
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const ongoingServices = await Salses.find({ userId, status: "ongoing" })
+      .populate({
+        path: "couponId",
+        select: "title discountPercentage validTill category copuon_type termsAndConditions tag isTransferable ownerId",
+        populate: [
+          { path: "category", select: "name" },
+          { path: "ownerId", select: "name phone" },
+        ],
+      })
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const totalOngoing = await Salses.countDocuments({
+      userId,
+      status: "ongoing",
+    });
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      totalPages: Math.ceil(totalOngoing / limit),
+      totalOngoing,
+      ongoingServices,
+    });
+  } catch (error) {
+    console.error("Error fetching ongoing services:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch ongoing services",
+      error: error.message,
+    });
+  }
+};
+
 
 
 export const getSalesByCouponOwner = async (req, res) => {
@@ -2594,9 +2639,7 @@ const getall = async (req, res) => {
     const city = req.query.city;  // Get the city from the query parameter
     const search = req.query.search; // Get the search text from the query parameter
 
-    let filter = {
-      status: "ongoing" // ✅ Only ongoing coupons
-    };
+    let filter = {};
 
     // If user is authenticated
     if (req.user) {
@@ -2635,7 +2678,6 @@ const getall = async (req, res) => {
     });
   }
 };
-
 
 
 
