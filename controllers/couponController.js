@@ -2421,7 +2421,7 @@ export const getSalesByCouponOwner = async (req, res) => {
       }
     ];
 
-    const sales = await Sales.aggregate(pipeline);
+    const sales = await Salses.aggregate(pipeline);
 
     // Count total matching sales for pagination
     const countPipeline = [
@@ -2442,7 +2442,7 @@ export const getSalesByCouponOwner = async (req, res) => {
       { $count: "totalSales" }
     ];
 
-    const countResult = await Sales.aggregate(countPipeline);
+    const countResult = await Salses.aggregate(countPipeline);
     const totalSales = countResult.length ? countResult[0].totalSales : 0;
 
     res.status(200).json({
