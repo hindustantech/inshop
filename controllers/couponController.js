@@ -2368,94 +2368,82 @@ export const getOngoingServices = async (req, res) => {
   }
 };
 
-
-
 export const getSalesByCouponOwner = async (req, res) => {
   try {
-    const userId = req.user.id; // Logged-in user
+    const userId = req.user.id; // logged-in user
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Aggregation pipeline to fetch sales where the coupon's ownerId matches the user
-    const salesPipeline = [
-      // Step 1: Lookup to join Salses with Coupon collection
+    // Aggregation pipeline
+    const pipeline = [
+      // 1️⃣ Join with Coupon collection
       {
         $lookup: {
-          from: 'coupons', // Matches the Coupon model's collection name
-          localField: 'couponId',
-          foreignField: '_id',
-          as: 'coupon'
+          from: "coupons",
+          localField: "couponId",
+          foreignField: "_id",
+          as: "coupon"
         }
       },
-      // Step 2: Unwind the coupon array
-      {
-        $unwind: {
-          path: '$coupon',
-          preserveNullAndEmptyArrays: false // Only keep sales with a matching coupon
-        }
-      },
-      // Step 3: Match sales where the coupon's ownerId is the logged-in user
+      { $unwind: "$coupon" },
+      // 2️⃣ Only sales where the coupon's owner is the logged-in user
       {
         $match: {
-          'coupon.ownerId': new mongoose.Types.ObjectId(userId) // Fixed: Use 'new'
+          "coupon.ownerId": new mongoose.Types.ObjectId(userId)
         }
       },
-      // Step 4: Sort by createdAt (newest first)
-      {
-        $sort: { createdAt: -1 }
-      },
-      // Step 5: Pagination
-      {
-        $skip: skip
-      },
-      {
-        $limit: limit
-      },
-      // Step 6: Project to shape the output (adjust fields as needed)
+      // 3️⃣ Sort newest first
+      { $sort: { createdAt: -1 } },
+      // 4️⃣ Pagination
+      { $skip: skip },
+      { $limit: limit },
+      // 5️⃣ Project required fields
       {
         $project: {
+          _id: 1,
           couponId: 1,
+          userId: 1,
           createdAt: 1,
-          'coupon.title': 1, // Include coupon title from Coupon schema
-          'coupon.discountPercentage': 1, // Include discount percentage
-          'coupon.validTill': 1 // Include coupon expiry date
-          // Add other Salses or Coupon fields as needed
+          status: 1,
+          serviceStartTime: 1,
+          serviceEndTime: 1,
+          amount: 1,
+          discountAmount: 1,
+          finalAmount: 1,
+          usedCount: 1,
+          "coupon.title": 1,
+          "coupon.discountPercentage": 1,
+          "coupon.validTill": 1,
+          "coupon.isTransferable": 1,
+          "coupon.copuon_type": 1
         }
       }
     ];
 
-    // Run aggregation to get paginated sales
-    const sales = await Salses.aggregate(salesPipeline).exec();
+    const sales = await Sales.aggregate(pipeline);
 
     // Count total matching sales for pagination
     const countPipeline = [
       {
         $lookup: {
-          from: 'coupons',
-          localField: 'couponId',
-          foreignField: '_id',
-          as: 'coupon'
+          from: "coupons",
+          localField: "couponId",
+          foreignField: "_id",
+          as: "coupon"
         }
       },
-      {
-        $unwind: {
-          path: '$coupon',
-          preserveNullAndEmptyArrays: false
-        }
-      },
+      { $unwind: "$coupon" },
       {
         $match: {
-          'coupon.ownerId': new mongoose.Types.ObjectId(userId) // Fixed: Use 'new'
+          "coupon.ownerId": new mongoose.Types.ObjectId(userId)
         }
       },
-      {
-        $count: 'totalSales'
-      }
+      { $count: "totalSales" }
     ];
 
-    const countResult = await Salses.aggregate(countPipeline).exec();
-    const totalSales = countResult.length > 0 ? countResult[0].totalSales : 0;
+    const countResult = await Sales.aggregate(countPipeline);
+    const totalSales = countResult.length ? countResult[0].totalSales : 0;
 
     res.status(200).json({
       success: true,
