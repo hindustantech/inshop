@@ -23,6 +23,7 @@ import {
     getAvailableCouponsWithDetails,
     getOwnerCouponDetails,
     getOwnerCoupons,
+    updateCouponDeatils
     
 } from '../controllers/couponController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
@@ -35,6 +36,7 @@ const storage = multer.memoryStorage(); // ✅ stores buffer in memory
 
 const upload = multer({ storage });
 
+router.put('/coupon/:couponId', authMiddleware, updateCouponDeatils);
 
 router.post('/create', authMiddleware, roleBasedOwnership, upload.array("images", 5), createCoupon);
 

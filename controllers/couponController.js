@@ -306,7 +306,50 @@ export const createCoupon = async (req, res) => {
 };
 
 
+export const updateCouponDeatils = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { couponId } = req.params; // coupon id from URL
+    const { maxDistributions, coupon_color } = req.body;
 
+    // Validate couponId
+    if (!mongoose.Types.ObjectId.isValid(couponId)) {
+      return res.status(400).json({ message: 'Invalid coupon ID' });
+    }
+
+    // Find the coupon
+    const coupon = await Coupon.findById(couponId);
+    if (!coupon) {
+      return res.status(404).json({ message: 'Coupon not found' });
+    }
+
+    // Validate owner
+    if (!mongoose.Types.ObjectId(userId).equals(coupon.ownerId)) {
+      return res.status(403).json({ message: 'You are not allowed to update this coupon' });
+    }
+
+    // Check if coupon is active and valid
+    const now = new Date();
+    if (!coupon.active) {
+      return res.status(400).json({ message: 'Coupon is not active' });
+    }
+
+    if (coupon.validTill < now) {
+      return res.status(400).json({ message: 'Coupon has expired' });
+    }
+
+    // Update only allowed fields
+    if (maxDistributions !== undefined) coupon.maxDistributions = maxDistributions;
+    if (coupon_color) coupon.coupon_color = coupon_color;
+
+    await coupon.save();
+
+    return res.status(200).json({ message: 'Coupon updated successfully', coupon });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Server error', error });
+  }
+};
 
 export const getAvailableCouponsWithDetails = async (req, res) => {
   try {
@@ -1757,71 +1800,71 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         : []),
       ...(userId
         ? [
-            {
-              $lookup: {
-                from: 'usercoupons',
-                let: { couponId: '$_id' },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $and: [
-                          { $eq: ['$couponId', '$$couponId'] },
-                          { $eq: ['$userId', userId] },
-                        ],
-                      },
+          {
+            $lookup: {
+              from: 'usercoupons',
+              let: { couponId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$couponId', '$$couponId'] },
+                        { $eq: ['$userId', userId] },
+                      ],
                     },
                   },
-                  { $project: { status: 1, _id: 0 } },
-                ],
-                as: 'userStatus',
-              },
+                },
+                { $project: { status: 1, _id: 0 } },
+              ],
+              as: 'userStatus',
             },
-            { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-            // Only include active coupons that are not used or transferred
-            {
-              $match: {
-                active: true,
-                $or: [
-                  { validTill: { $gt: new Date() } },
-                  { validTill: null },
-                ],
-                $or: [
-                  { userStatus: { $exists: false } }, // Coupons not claimed by the user
-                  { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
-                ],
-              },
+          },
+          { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+          // Only include active coupons that are not used or transferred
+          {
+            $match: {
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+              $or: [
+                { userStatus: { $exists: false } }, // Coupons not claimed by the user
+                { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
+              ],
             },
-            {
-              $addFields: {
-                displayTag: {
-                  $switch: {
-                    branches: [
-                      { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
-                      { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
-                    ],
-                    default: 'Available',
-                  },
+          },
+          {
+            $addFields: {
+              displayTag: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
+                    { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
+                  ],
+                  default: 'Available',
                 },
               },
             },
-          ]
+          },
+        ]
         : [
-            {
-              $match: {
-                active: true,
-                $or: [
-                  { validTill: { $gt: new Date() } },
-                  { validTill: null },
-                ],
-              },
+          {
+            $match: {
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
             },
-            {
-              $addFields: {
-                displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
-              },
+          },
+          {
+            $addFields: {
+              displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
             },
-          ]),
+          },
+        ]),
       {
         $project: {
           title: 1,
@@ -1868,52 +1911,52 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         : []),
       ...(userId
         ? [
-            {
-              $lookup: {
-                from: 'usercoupons',
-                let: { couponId: '$_id' },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $and: [
-                          { $eq: ['$couponId', '$$couponId'] },
-                          { $eq: ['$userId', userId] },
-                        ],
-                      },
+          {
+            $lookup: {
+              from: 'usercoupons',
+              let: { couponId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$couponId', '$$couponId'] },
+                        { $eq: ['$userId', userId] },
+                      ],
                     },
                   },
-                  { $project: { status: 1, _id: 0 } },
-                ],
-                as: 'userStatus',
-              },
+                },
+                { $project: { status: 1, _id: 0 } },
+              ],
+              as: 'userStatus',
             },
-            { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-            {
-              $match: {
-                active: true,
-                $or: [
-                  { validTill: { $gt: new Date() } },
-                  { validTill: null },
-                ],
-                $or: [
-                  { userStatus: { $exists: false } }, // Coupons not claimed by the user
-                  { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
-                ],
-              },
+          },
+          { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+          {
+            $match: {
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+              $or: [
+                { userStatus: { $exists: false } }, // Coupons not claimed by the user
+                { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
+              ],
             },
-          ]
+          },
+        ]
         : [
-            {
-              $match: {
-                active: true,
-                $or: [
-                  { validTill: { $gt: new Date() } },
-                  { validTill: null },
-                ],
-              },
+          {
+            $match: {
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
             },
-          ]),
+          },
+        ]),
       { $count: 'total' },
     ];
 
