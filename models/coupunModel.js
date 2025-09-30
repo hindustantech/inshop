@@ -86,6 +86,12 @@ const couponSchema = new mongoose.Schema({
       return !this.isFullDay; // required only if full day is NOT checked
     }
   },
+  coupon_color: {
+    type: String,
+    required: true,
+    default: '#FFFFFF'
+  },
+
   toTime: {
     type: String,
     required: function () {

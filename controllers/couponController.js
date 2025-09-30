@@ -94,6 +94,7 @@ export const generateTheQRCode = async (req, res) => {
 export const createCoupon = async (req, res) => {
   try {
     const {
+      coupon_color,
       title,
       manual_address,
       copuon_srno,
@@ -230,6 +231,7 @@ export const createCoupon = async (req, res) => {
     // Save Coupon
     const newCoupon = new Coupon({
       title,
+      coupon_color,
       manul_address: manual_address,
       copuon_srno,
       category: categories.map(c => c._id), // ✅ multiple categories
@@ -451,6 +453,7 @@ export const getOwnerCoupons = async (req, res) => {
 // @desc    Get detailed information for a specific coupon owned by an owner, with optional date filters
 // @route   GET /api/coupons/:couponId/owner/:ownerId?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD
 // @access  Private
+
 export const getOwnerCouponDetails = async (req, res) => {
   try {
     const { couponId, ownerId } = req.params;
@@ -592,6 +595,7 @@ export const getOwnerCouponDetails = async (req, res) => {
 
 
 /* 1. Get My Coupons */
+
 export const getMyCoupons = async (req, res) => {
   try {
     const userId = req.user._id;
