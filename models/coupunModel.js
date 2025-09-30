@@ -26,13 +26,13 @@ const couponSchema = new mongoose.Schema({
     require: true,
   },
 
-  promotion:[
+  promotion: [
     {
       type: mongoose.Schema.Types.ObjectId, // references id from another table
       ref: 'Ad',
     }
   ],
-  
+
   category: [{
     type: mongoose.Schema.Types.ObjectId, // references id from another table
     ref: 'Category', // assuming you have an 'Owner' model or similar
@@ -44,9 +44,7 @@ const couponSchema = new mongoose.Schema({
     default: false, // if False then  not Transfarel
   },
   discountPercentage: {
-    type: Number,
-    min: 0,
-    max: 100,
+    type: String,
     required: true
   },
   ownerId: {

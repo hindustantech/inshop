@@ -18,8 +18,7 @@ const categorySchema = new mongoose.Schema(
     description: {
       type: String,
       trim: true,
-    },
-   
+    }, 
     isActive: {
       type: Boolean,
       default: true,
@@ -30,6 +29,7 @@ const categorySchema = new mongoose.Schema(
         trim: true,
       },
     ],
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User", // To track which user/admin created it

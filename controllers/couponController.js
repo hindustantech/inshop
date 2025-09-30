@@ -2492,14 +2492,13 @@ export const completeSale = async (req, res) => {
     await user.save();
 
     // 🔹 Calculate discount and final amount
-    const totalDiscountPercentage = sale.usedCount * coupon.discountPercentage;
-    const discountAmount = (totalAmount * totalDiscountPercentage) / 100;
-    const finalAmount = totalAmount - discountAmount;
+    // const totalDiscountPercentage = sale.usedCount * coupon.discountPercentage;
+    // const discountAmount = (totalAmount * totalDiscountPercentage) / 100;
+    // const finalAmount = totalAmount - discountAmount;
 
     // 🔹 Update sale
     sale.status = "completed";
-    sale.discountAmount = discountAmount;
-    sale.finalAmount = finalAmount;
+    sale.finalAmount = totalAmount;
     await sale.save();
 
     // 🔹 Update coupon distribution
