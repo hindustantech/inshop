@@ -2514,9 +2514,6 @@ export const completeSale = async (req, res) => {
       message: "Sale completed successfully",
       data: {
         saleId: sale._id,
-        totalAmount,
-        discountAmount,
-        finalAmount,
         remainingCoupons: user.couponCount
       }
     });
