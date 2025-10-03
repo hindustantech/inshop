@@ -348,49 +348,54 @@ export const createCoupon = async (req, res) => {
   }
 };
 
-
 export const updateCouponDeatils = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { couponId } = req.params; // coupon id from URL
+    const { couponId } = req.params;
     const { maxDistributions, coupon_color } = req.body;
 
-    // Validate couponId
+    // ✅ Validate couponId
     if (!mongoose.Types.ObjectId.isValid(couponId)) {
-      return res.status(400).json({ message: 'Invalid coupon ID' });
+      return res.status(400).json({ message: "Invalid coupon ID" });
     }
 
-    // Find the coupon
+    // ✅ Find the coupon
     const coupon = await Coupon.findById(couponId);
     if (!coupon) {
-      return res.status(404).json({ message: 'Coupon not found' });
+      return res.status(404).json({ message: "Coupon not found" });
     }
 
-    // Validate owner
-    if (!mongoose.Types.ObjectId(userId).equals(coupon.ownerId)) {
-      return res.status(403).json({ message: 'You are not allowed to update this coupon' });
+    // ✅ Validate owner
+    if (!coupon.ownerId.equals(new mongoose.Types.ObjectId(userId))) {
+      return res
+        .status(403)
+        .json({ message: "You are not allowed to update this coupon" });
     }
 
-    // Check if coupon is active and valid
+    // ✅ Check if coupon is active & valid
     const now = new Date();
     if (!coupon.active) {
-      return res.status(400).json({ message: 'Coupon is not active' });
+      return res.status(400).json({ message: "Coupon is not active" });
     }
 
     if (coupon.validTill < now) {
-      return res.status(400).json({ message: 'Coupon has expired' });
+      return res.status(400).json({ message: "Coupon has expired" });
     }
 
-    // Update only allowed fields
-    if (maxDistributions !== undefined) coupon.maxDistributions = maxDistributions;
+    // ✅ Update only allowed fields
+    if (maxDistributions !== undefined)
+      coupon.maxDistributions = maxDistributions;
+
     if (coupon_color) coupon.coupon_color = coupon_color;
 
     await coupon.save();
 
-    return res.status(200).json({ message: 'Coupon updated successfully', coupon });
+    return res
+      .status(200)
+      .json({ message: "Coupon updated successfully", coupon });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: 'Server error', error });
+    console.error("❌ updateCouponDeatils Error:", error);
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
