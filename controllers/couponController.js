@@ -2057,7 +2057,7 @@ export const transferCoupon = async (req, res) => {
     }
 
     if (coupon.is_spacial_copun || !coupon.isTransferable) {
-      throw new Error("Coupon cannot be transferred");
+      throw new Error("spacial coupon is not Transferable");
     }
 
     if (coupon.maxDistributions > 0 && coupon.currentDistributions >= coupon.maxDistributions) {
