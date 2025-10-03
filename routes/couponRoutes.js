@@ -37,7 +37,7 @@ const storage = multer.memoryStorage(); // ✅ stores buffer in memory
 
 const upload = multer({ storage });
 
-router.put('/coupon/:couponId', authMiddleware, updateCouponDeatils);
+router.put('/updateCouponDeatils/:couponId', authMiddleware, updateCouponDeatils);
 
 router.put(
     "/admin/coupons/:couponId",
