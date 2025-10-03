@@ -60,7 +60,7 @@ export const updateProfileImage = async (req, res) => {
   }
 };
 
-export const broadcastNotificationEnhanced = async (req, res) => {
+export const broadcastNotification = async (req, res) => {
   const startTime = Date.now();
   let processedCount = 0;
 
