@@ -5,7 +5,7 @@ import { sendWhatsAppOtp, verifyWhatsAppOtp } from '../utils/whatapp.js';
 import { generateReferralCode } from '../utils/Referalcode.js';
 import fs from 'fs';
 import path from 'path';
-import admin from 'firebase-admin'
+import * as admin from 'firebase-admin';
 import { uploadToCloudinary } from '../utils/Cloudinary.js';
 
 export const getProfile = async (req, res) => {
