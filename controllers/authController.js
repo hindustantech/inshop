@@ -5,8 +5,8 @@ import { sendWhatsAppOtp, verifyWhatsAppOtp } from '../utils/whatapp.js';
 import { generateReferralCode } from '../utils/Referalcode.js';
 import fs from 'fs';
 import path from 'path';
-import * as admin from 'firebase-admin';
 import { uploadToCloudinary } from '../utils/Cloudinary.js';
+import admin from '../utils/firebaseadmin.js';
 
 export const getProfile = async (req, res) => {
   try {
@@ -60,8 +60,6 @@ export const updateProfileImage = async (req, res) => {
   }
 };
 
-
-
 export const broadcastNotification = async (req, res) => {
   try {
     const { address, title, body } = req.body;
@@ -87,33 +85,76 @@ export const broadcastNotification = async (req, res) => {
 
     // Batch tokens (Firebase limit = 500)
     const batchSize = 500;
+    let totalSuccess = 0;
+    let totalFailures = 0;
+
     for (let i = 0; i < users.length; i += batchSize) {
       const batchUsers = users.slice(i, i + batchSize);
-      const tokens = batchUsers.map(u => u.devicetoken);
+      const tokens = batchUsers.map(u => u.devicetoken).filter(token => token); // Filter out null/undefined
+
+      if (tokens.length === 0) continue;
 
       try {
-        const response = await admin.messaging().sendMulticast({
+        const message = {
           tokens,
-          notification: { title, body },
-        });
+          notification: {
+            title,
+            body
+          },
+          apns: {
+            payload: {
+              aps: {
+                sound: 'default',
+                badge: 1,
+              },
+            },
+          },
+          android: {
+            notification: {
+              sound: 'default',
+              channelId: 'default',
+            },
+          },
+        };
 
-        console.log(`Batch ${i / batchSize} success: ${response.successCount}, failures: ${response.failureCount}`);
+        const response = await admin.messaging().sendMulticast(message);
+
+        console.log(`Batch ${Math.floor(i / batchSize)} success: ${response.successCount}, failures: ${response.failureCount}`);
+
+        totalSuccess += response.successCount;
+        totalFailures += response.failureCount;
 
         if (response.failureCount > 0) {
           response.responses.forEach((resp, idx) => {
             if (!resp.success) {
-              console.log(`Error for user ${batchUsers[idx].uid}: ${resp.error.message}`);
+              console.log(`Error for user ${batchUsers[idx]?.uid}: ${resp.error?.message}`);
+
+              // Clean up invalid tokens
+              if (resp.error?.code === 'messaging/invalid-registration-token' ||
+                resp.error?.code === 'messaging/registration-token-not-registered') {
+                // Remove invalid token from database
+                User.updateOne(
+                  { devicetoken: tokens[idx] },
+                  { $set: { devicetoken: null } }
+                ).exec();
+              }
             }
           });
         }
       } catch (err) {
-        console.error(`Error sending batch ${i / batchSize}:`, err.message);
+        console.error(`Error sending batch ${Math.floor(i / batchSize)}:`, err.message);
+        totalFailures += tokens.length;
       }
     }
 
     return res.status(200).json({
       success: true,
-      message: `Notification broadcast completed`,
+      message: `Notification broadcast completed - Success: ${totalSuccess}, Failures: ${totalFailures}`,
+      data: {
+        totalSuccess,
+        totalFailures,
+        totalUsers: users.length
+      }
     });
 
   } catch (error) {
@@ -125,8 +166,6 @@ export const broadcastNotification = async (req, res) => {
     });
   }
 };
-
-
 
 
 
@@ -344,7 +383,7 @@ const verifyOtp = async (req, res) => {
 
     res.json({
       message: 'OTP verified successfully',
-      token: generateToken(user._id,user.type),
+      token: generateToken(user._id, user.type),
       name: user.name,
       type: user.type,
       isVerified: user.isVerified,
