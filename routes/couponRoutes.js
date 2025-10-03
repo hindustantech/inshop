@@ -23,11 +23,12 @@ import {
     getAvailableCouponsWithDetails,
     getOwnerCouponDetails,
     getOwnerCoupons,
-    updateCouponDeatils
-    
+    updateCouponDeatils,
+    updateCouponByAdmin
+
 } from '../controllers/couponController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
-import { authMiddleware1 } from '../middlewares/checkuser.js';
+import { authMiddleware1 ,isSuperAdmin} from '../middlewares/checkuser.js';
 import { roleBasedOwnership } from '../middlewares/rolebasedownership.js';
 import multer from 'multer';
 
@@ -37,6 +38,13 @@ const storage = multer.memoryStorage(); // ✅ stores buffer in memory
 const upload = multer({ storage });
 
 router.put('/coupon/:couponId', authMiddleware, updateCouponDeatils);
+
+router.put(
+    "/admin/coupons/:couponId",
+    authMiddleware,   // check login
+    isSuperAdmin,          // check role is admin
+    updateCouponByAdmin
+)
 
 router.post('/create', authMiddleware, roleBasedOwnership, upload.array("images", 5), createCoupon);
 

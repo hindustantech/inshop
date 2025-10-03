@@ -90,6 +90,50 @@ export const generateTheQRCode = async (req, res) => {
   }
 };
 
+
+// ✅ Admin update route
+export const updateCouponByAdmin = async (req, res) => {
+  try {
+    const { couponId } = req.params;
+    const { maxDistributions, fromTime, toTime, active, validTill } = req.body;
+
+    // ✅ Allow only these fields
+    const allowedUpdates = {};
+    if (maxDistributions !== undefined) allowedUpdates.maxDistributions = maxDistributions;
+    if (fromTime !== undefined) allowedUpdates.fromTime = fromTime;
+    if (toTime !== undefined) allowedUpdates.toTime = toTime;
+    if (active !== undefined) allowedUpdates.active = active;
+    if (validTill !== undefined) {
+      // validate that validTill is a valid future date
+      if (new Date(validTill) <= new Date()) {
+        return res.status(400).json({ error: "validTill must be a future date." });
+      }
+      allowedUpdates.validTill = new Date(validTill);
+    }
+
+    // ✅ Update coupon with only allowed fields
+    const updatedCoupon = await Coupon.findByIdAndUpdate(
+      couponId,
+      { $set: allowedUpdates },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedCoupon) {
+      return res.status(404).json({ error: "Coupon not found" });
+    }
+
+    res.status(200).json({
+      message: "Coupon updated successfully by admin",
+      coupon: updatedCoupon
+    });
+
+  } catch (error) {
+    console.error("Admin coupon update error:", error);
+    res.status(500).json({ error: "Server error while updating coupon" });
+  }
+};
+
+
 // helper for image upload
 export const createCoupon = async (req, res) => {
   try {
@@ -102,7 +146,6 @@ export const createCoupon = async (req, res) => {
       discountPercentage,
       validTill,
       style,
-      active = true,
       maxDistributions = 0,
       fromTime,
       toTime,
@@ -241,7 +284,7 @@ export const createCoupon = async (req, res) => {
       createdby: userId,
       validTill: new Date(validTill),
       style,
-      active,
+      active: false,
       maxDistributions,
       fromTime: isFullDay ? undefined : fromTime,
       toTime: isFullDay ? undefined : toTime,
@@ -1871,6 +1914,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           copuon_image: 1,
           manual_address: 1,
           copuon_srno: 1,
+          coupon_color: 1,
           discountPercentage: 1,
           validTill: 1,
           displayTag: 1,

@@ -40,3 +40,16 @@ export const authMiddleware1 = async (req, res, next) => {
         return res.status(500).json({ message: 'Authentication error' });
     }
 };
+
+
+// 🛡️ Check if user is super admin
+export const isSuperAdmin = (req, res, next) => {
+  try {
+    if (req.user && req.user.type === "super_admin") {
+      return next();
+    }
+    return res.status(403).json({ error: "Access denied. Super Admin only." });
+  } catch (err) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+};

@@ -273,6 +273,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
           manul_address: 1,
           discountPercentage: 1,
           validTill: 1,
+          coupon_color:1,
           creationDate: 1,
           active: 1,
           termsAndConditions: 1

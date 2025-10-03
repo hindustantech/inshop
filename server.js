@@ -20,6 +20,7 @@ import patnerProfile  from './routes/PatnerProfile.js'
 import salesRoute from './routes/SalesRoute.js'
 import adroute from './routes/AdRoute.js'
 import analyticsRoutes from './routes/analyticsRoutes.js'
+import agencypatner from './routes/userRoutes.js'
 dotenv.config();
 connectDB();
 
@@ -55,6 +56,7 @@ app.use('/admin', adminRouter);
 app.use('/api/usermanagement', usermanagement);
 app.use('/api/adRoute', adroute);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/agencypatner', agencypatner);
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/coupon', couponRoutes);
