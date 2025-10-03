@@ -62,7 +62,7 @@ export const updateProfileImage = async (req, res) => {
 
 export const broadcastNotification = async (req, res) => {
   try {
-    const { address, title, body } = req.body;
+    const { address, title, body, data } = req.body;
 
     if (!address || !title || !body) {
       return res.status(400).json({
@@ -71,9 +71,14 @@ export const broadcastNotification = async (req, res) => {
       });
     }
 
+    // Build query based on address type (array or string)
+    const query = Array.isArray(address) 
+      ? { manul_address: { $in: address }, devicetoken: { $ne: null } }
+      : { manul_address: address, devicetoken: { $ne: null } };
+
     const users = await User.find(
-      { manul_address: address, devicetoken: { $ne: null } },
-      { uid: 1, name: 1, devicetoken: 1 }
+      query,
+      { uid: 1, name: 1, devicetoken: 1, manul_address: 1 }
     );
 
     if (!users.length) {
@@ -87,10 +92,11 @@ export const broadcastNotification = async (req, res) => {
     const batchSize = 500;
     let totalSuccess = 0;
     let totalFailures = 0;
+    const invalidTokens = [];
 
     for (let i = 0; i < users.length; i += batchSize) {
       const batchUsers = users.slice(i, i + batchSize);
-      const tokens = batchUsers.map(u => u.devicetoken).filter(token => token); // Filter out null/undefined
+      const tokens = batchUsers.map(u => u.devicetoken).filter(token => token);
 
       if (tokens.length === 0) continue;
 
@@ -101,6 +107,7 @@ export const broadcastNotification = async (req, res) => {
             title,
             body
           },
+          data: data || {}, // Custom data payload
           apns: {
             payload: {
               aps: {
@@ -113,47 +120,74 @@ export const broadcastNotification = async (req, res) => {
             notification: {
               sound: 'default',
               channelId: 'default',
+              priority: 'high',
+            },
+          },
+          webpush: {
+            headers: {
+              Urgency: 'high',
             },
           },
         };
 
         const response = await admin.messaging().sendMulticast(message);
 
-        console.log(`Batch ${Math.floor(i / batchSize)} success: ${response.successCount}, failures: ${response.failureCount}`);
+        console.log(`Batch ${Math.floor(i / batchSize) + 1}: Success: ${response.successCount}, Failures: ${response.failureCount}`);
 
         totalSuccess += response.successCount;
         totalFailures += response.failureCount;
 
+        // Handle failures and clean up invalid tokens
         if (response.failureCount > 0) {
-          response.responses.forEach((resp, idx) => {
+          const cleanupPromises = response.responses.map(async (resp, idx) => {
             if (!resp.success) {
-              console.log(`Error for user ${batchUsers[idx]?.uid}: ${resp.error?.message}`);
+              const user = batchUsers[idx];
+              console.log(`Error for user ${user?.uid}: ${resp.error?.message}`);
 
-              // Clean up invalid tokens
+              // Check for invalid token errors
               if (resp.error?.code === 'messaging/invalid-registration-token' ||
-                resp.error?.code === 'messaging/registration-token-not-registered') {
+                  resp.error?.code === 'messaging/registration-token-not-registered' ||
+                  resp.error?.code === 'messaging/invalid-argument') {
+                
+                invalidTokens.push({
+                  uid: user?.uid,
+                  token: tokens[idx],
+                  error: resp.error.message
+                });
+
                 // Remove invalid token from database
-                User.updateOne(
-                  { devicetoken: tokens[idx] },
+                return User.updateOne(
+                  { _id: user?._id },
                   { $set: { devicetoken: null } }
-                ).exec();
+                );
               }
             }
+            return Promise.resolve();
           });
+
+          await Promise.allSettled(cleanupPromises);
         }
+
+        // Add delay between batches to avoid rate limiting
+        if (i + batchSize < users.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
       } catch (err) {
-        console.error(`Error sending batch ${Math.floor(i / batchSize)}:`, err.message);
+        console.error(`Error sending batch ${Math.floor(i / batchSize) + 1}:`, err.message);
         totalFailures += tokens.length;
       }
     }
 
     return res.status(200).json({
       success: true,
-      message: `Notification broadcast completed - Success: ${totalSuccess}, Failures: ${totalFailures}`,
+      message: `Notification broadcast completed`,
       data: {
         totalSuccess,
         totalFailures,
-        totalUsers: users.length
+        totalUsers: users.length,
+        invalidTokensCleaned: invalidTokens.length,
+        batches: Math.ceil(users.length / batchSize)
       }
     });
 
@@ -166,7 +200,6 @@ export const broadcastNotification = async (req, res) => {
     });
   }
 };
-
 
 
 export const findUserByPhone = async (req, res) => {
