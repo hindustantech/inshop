@@ -60,9 +60,12 @@ export const updateProfileImage = async (req, res) => {
   }
 };
 
-export const broadcastNotification = async (req, res) => {
+export const broadcastNotificationEnhanced = async (req, res) => {
+  const startTime = Date.now();
+  let processedCount = 0;
+
   try {
-    const { address, title, body, data } = req.body;
+    const { address, title, body, data, delay = 50, concurrency = 5 } = req.body;
 
     if (!address || !title || !body) {
       return res.status(400).json({
@@ -71,111 +74,105 @@ export const broadcastNotification = async (req, res) => {
       });
     }
 
-    const query = Array.isArray(address) 
-      ? { manul_address: { $in: address }, devicetoken: { $ne: null } }
-      : { manul_address: address, devicetoken: { $ne: null } };
+    console.log(`🔔 Starting notification broadcast: ${title}`);
 
-    const users = await User.find(
-      query,
-      { uid: 1, name: 1, devicetoken: 1, manul_address: 1 }
-    );
+    const query = Array.isArray(address)
+      ? { manul_address: { $in: address }, devicetoken: { $ne: null, $ne: "" } }
+      : { manul_address: address, devicetoken: { $ne: null, $ne: "" } };
+
+    const users = await User.find(query, {
+      uid: 1, name: 1, devicetoken: 1, manul_address: 1
+    }).lean();
 
     if (!users.length) {
       return res.status(404).json({
         success: false,
-        message: `No users found with address "${address}" or valid device tokens`,
+        message: `No users found with address "${address}"`,
       });
     }
 
-    let totalSuccess = 0;
-    let totalFailures = 0;
-    const invalidTokens = [];
+    console.log(`📱 Found ${users.length} users with device tokens`);
 
-    // Check if sendMulticast is available
-    const messaging = admin.messaging();
-    const useMulticast = typeof messaging.sendMulticast === 'function';
+    const results = {
+      totalSuccess: 0,
+      totalFailures: 0,
+      invalidTokens: [],
+      detailedResults: []
+    };
 
-    if (useMulticast) {
-      console.log('Using sendMulticast method');
-      // Batch tokens (Firebase limit = 500)
-      const batchSize = 500;
+    // Process with progress tracking
+    for (let i = 0; i < users.length; i += concurrency) {
+      const batch = users.slice(i, i + concurrency);
+      processedCount += batch.length;
 
-      for (let i = 0; i < users.length; i += batchSize) {
-        const batchUsers = users.slice(i, i + batchSize);
-        const tokens = batchUsers.map(u => u.devicetoken).filter(token => token);
+      const batchPromises = batch.map(user =>
+        sendSingleNotification(user, title, body, data)
+      );
 
-        if (tokens.length === 0) continue;
+      const batchResults = await Promise.allSettled(batchPromises);
 
-        try {
-          const message = {
-            tokens,
-            notification: { title, body },
-            data: data || {},
-          };
+      batchResults.forEach(result => {
+        if (result.status === 'fulfilled') {
+          const notificationResult = result.value;
+          results.detailedResults.push(notificationResult);
 
-          const response = await messaging.sendMulticast(message);
-          totalSuccess += response.successCount;
-          totalFailures += response.failureCount;
+          if (notificationResult.success) {
+            results.totalSuccess++;
+          } else {
+            results.totalFailures++;
 
-          // Handle failures
-          if (response.failureCount > 0) {
-            response.responses.forEach((resp, idx) => {
-              if (!resp.success) {
-                handleTokenError(batchUsers[idx], tokens[idx], resp.error, invalidTokens);
-              }
-            });
+            if (notificationResult.shouldCleanup) {
+              results.invalidTokens.push({
+                uid: notificationResult.user.uid,
+                _id: notificationResult.user._id,
+                token: notificationResult.user.devicetoken,
+                error: notificationResult.error
+              });
+            }
           }
-        } catch (err) {
-          console.error(`Error sending batch ${Math.floor(i / batchSize) + 1}:`, err.message);
-          totalFailures += tokens.length;
+        } else {
+          results.totalFailures++;
+          results.detailedResults.push({
+            success: false,
+            error: result.reason?.message || 'Unknown error in batch processing'
+          });
         }
-      }
-    } else {
-      console.log('Using individual send method');
-      // Send notifications individually
-      for (const user of users) {
-        if (!user.devicetoken) {
-          totalFailures++;
-          continue;
-        }
+      });
 
-        try {
-          const message = {
-            token: user.devicetoken,
-            notification: { title, body },
-            data: data || {},
-          };
+      // Progress logging
+      const progress = ((processedCount / users.length) * 100).toFixed(1);
+      console.log(`📊 Progress: ${progress}% (${processedCount}/${users.length})`);
 
-          await messaging.send(message);
-          totalSuccess++;
-        } catch (error) {
-          console.error(`Error sending to user ${user.uid}:`, error.message);
-          totalFailures++;
-          handleTokenError(user, user.devicetoken, error, invalidTokens);
-        }
-
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 50));
+      // Delay between batches
+      if (delay > 0 && i + concurrency < users.length) {
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
 
-    // Clean up invalid tokens
-    await cleanupInvalidTokens(invalidTokens);
+    // Cleanup invalid tokens
+    if (results.invalidTokens.length > 0) {
+      await cleanupInvalidTokensBulk(results.invalidTokens);
+      console.log(`🧹 Cleaned up ${results.invalidTokens.length} invalid tokens`);
+    }
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+
+    console.log(`✅ Broadcast completed in ${duration}s: ${results.totalSuccess} successful, ${results.totalFailures} failed`);
 
     return res.status(200).json({
       success: true,
-      message: `Notification broadcast completed`,
+      message: `Notifications sent in ${duration}s`,
       data: {
-        totalSuccess,
-        totalFailures,
+        ...results,
         totalUsers: users.length,
-        invalidTokensCleaned: invalidTokens.length,
-        methodUsed: useMulticast ? 'multicast' : 'individual'
+        duration: `${duration}s`,
+        successRate: `${((results.totalSuccess / users.length) * 100).toFixed(1)}%`
       }
     });
 
   } catch (error) {
-    console.error('Error broadcasting notification:', error);
+    console.error('❌ Error broadcasting notification:', error);
     return res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -184,34 +181,44 @@ export const broadcastNotification = async (req, res) => {
   }
 };
 
-// Helper function to handle token errors
-const handleTokenError = (user, token, error, invalidTokens) => {
-  if (error.code === 'messaging/invalid-registration-token' ||
-      error.code === 'messaging/registration-token-not-registered' ||
-      error.code === 'messaging/invalid-argument') {
-    
-    invalidTokens.push({
-      uid: user?.uid,
-      token: token,
-      error: error.message
-    });
+// Helper function for single notification
+const sendSingleNotification = async (user, title, body, data) => {
+  try {
+    if (!user.devicetoken) {
+      return { user, success: false, error: 'No device token', shouldCleanup: false };
+    }
+
+    const message = {
+      token: user.devicetoken,
+      notification: { title, body },
+      data: data || {},
+    };
+
+    const response = await admin.messaging().send(message);
+
+    return {
+      user,
+      success: true,
+      messageId: response,
+      shouldCleanup: false
+    };
+
+  } catch (error) {
+    const shouldCleanup = [
+      'messaging/invalid-registration-token',
+      'messaging/registration-token-not-registered',
+      'messaging/invalid-argument'
+    ].some(errorCode => error.code === errorCode);
+
+    return {
+      user,
+      success: false,
+      error: error.message,
+      errorCode: error.code,
+      shouldCleanup
+    };
   }
 };
-
-// Helper function to clean up invalid tokens
-const cleanupInvalidTokens = async (invalidTokens) => {
-  const cleanupPromises = invalidTokens.map(async (invalidToken) => {
-    if (invalidToken.uid) {
-      await User.updateOne(
-        { uid: invalidToken.uid },
-        { $set: { devicetoken: null } }
-      );
-    }
-  });
-
-  await Promise.allSettled(cleanupPromises);
-};
-
 
 export const findUserByPhone = async (req, res) => {
   try {
