@@ -1,4 +1,4 @@
-import User from "../models/userModel";
+import User from "../models/userModel.js";
 // Common function for pagination + search + filter
 const fetchUsers = async (req, res, role) => {
   try {
