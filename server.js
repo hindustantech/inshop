@@ -21,6 +21,7 @@ import salesRoute from './routes/SalesRoute.js'
 import adroute from './routes/AdRoute.js'
 import analyticsRoutes from './routes/analyticsRoutes.js'
 import agencypatner from './routes/userRoutes.js'
+import notification from './routes/notificationRoutes.js'
 dotenv.config();
 connectDB();
 
@@ -65,6 +66,7 @@ app.use('/api/info', generalRoutes);
 app.use('/api/landing', landingRoutes);
 app.use('/download', downloadRoutes);
 app.use('/api/send', sendnotification);
+app.use('/api/notification', notification);
 app.use('/api/banner', banner);
 
 app.use('/api/manul', manuladdress);
