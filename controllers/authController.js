@@ -65,29 +65,57 @@ export const broadcastNotification = async (req, res) => {
   let processedCount = 0;
 
   try {
-    const { address, title, body, data, delay = 50, concurrency = 5 } = req.body;
+    // Input validation
+    const { address, title, body, data = {}, delay = 50, concurrency = 5, type = 'broadcast' } = req.body;
 
     if (!address || !title || !body) {
       return res.status(400).json({
         success: false,
-        message: 'Address, title, and body are required',
+        message: 'Address, title, and body are required fields',
+      });
+    }
+
+    // Validate input types
+    if (typeof title !== 'string' || typeof body !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Title and body must be strings',
+      });
+    }
+
+    if (delay < 0 || !Number.isInteger(delay)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Delay must be a non-negative integer',
+      });
+    }
+
+    if (concurrency < 1 || !Number.isInteger(concurrency)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Concurrency must be a positive integer',
       });
     }
 
     console.log(`🔔 Starting notification broadcast: ${title}`);
 
+    // Construct query based on address type
     const query = Array.isArray(address)
-      ? { manul_address: { $in: address }, devicetoken: { $ne: null, $ne: "" } }
-      : { manul_address: address, devicetoken: { $ne: null, $ne: "" } };
+      ? { manul_address: { $in: address }, devicetoken: { $ne: null, $ne: '' } }
+      : { manul_address: address, devicetoken: { $ne: null, $ne: '' } };
 
+    // Fetch users
     const users = await User.find(query, {
-      uid: 1, name: 1, devicetoken: 1, manul_address: 1
+      uid: 1,
+      name: 1,
+      devicetoken: 1,
+      manul_address: 1,
     }).lean();
 
     if (!users.length) {
       return res.status(404).json({
         success: false,
-        message: `No users found with address "${address}"`,
+        message: `No users found for address: ${Array.isArray(address) ? address.join(', ') : address}`,
       });
     }
 
@@ -97,21 +125,21 @@ export const broadcastNotification = async (req, res) => {
       totalSuccess: 0,
       totalFailures: 0,
       invalidTokens: [],
-      detailedResults: []
+      detailedResults: [],
     };
 
-    // Process with progress tracking
+    // Process notifications in batches
     for (let i = 0; i < users.length; i += concurrency) {
       const batch = users.slice(i, i + concurrency);
       processedCount += batch.length;
 
-      const batchPromises = batch.map(user =>
+      const batchPromises = batch.map((user) =>
         sendSingleNotification(user, title, body, data)
       );
 
       const batchResults = await Promise.allSettled(batchPromises);
 
-      batchResults.forEach(result => {
+      batchResults.forEach((result) => {
         if (result.status === 'fulfilled') {
           const notificationResult = result.value;
           results.detailedResults.push(notificationResult);
@@ -120,13 +148,12 @@ export const broadcastNotification = async (req, res) => {
             results.totalSuccess++;
           } else {
             results.totalFailures++;
-
             if (notificationResult.shouldCleanup) {
               results.invalidTokens.push({
                 uid: notificationResult.user.uid,
                 _id: notificationResult.user._id,
                 token: notificationResult.user.devicetoken,
-                error: notificationResult.error
+                error: notificationResult.error,
               });
             }
           }
@@ -134,59 +161,61 @@ export const broadcastNotification = async (req, res) => {
           results.totalFailures++;
           results.detailedResults.push({
             success: false,
-            error: result.reason?.message || 'Unknown error in batch processing'
+            error: result.reason?.message || 'Unknown error in batch processing',
           });
         }
       });
 
-      // Progress logging
+      // Log progress
       const progress = ((processedCount / users.length) * 100).toFixed(1);
       console.log(`📊 Progress: ${progress}% (${processedCount}/${users.length})`);
 
       // Delay between batches
       if (delay > 0 && i + concurrency < users.length) {
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
 
     // Cleanup invalid tokens
     if (results.invalidTokens.length > 0) {
-      // await cleanupInvalidTokensBulk(results.invalidTokens);
-      // console.log(`🧹 Cleaned up ${results.invalidTokens.length} invalid tokens`);
+      await cleanupInvalidTokensBulk(results.invalidTokens);
+      console.log(`🧹 Cleaned up ${results.invalidTokens.length} invalid tokens`);
     }
 
-    // ✅ Save Notification in DB
+    // Save notification in DB
     const newNotification = await notification.create({
       title,
       message: body,
       type,
-      location: type === "location" ? address : undefined,
-      users: [], // empty since this is broadcast, not per-user
+      location: type === 'location' ? address : undefined,
+      users: [], // empty since this is broadcast
       createdBy: req.user?._id || null,
+      createdAt: new Date(),
     });
-
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
 
-    console.log(`✅ Broadcast completed in ${duration}s: ${results.totalSuccess} successful, ${results.totalFailures} failed`);
+    console.log(
+      `✅ Broadcast completed in ${duration}s: ${results.totalSuccess} successful, ${results.totalFailures} failed`
+    );
 
     return res.status(200).json({
       success: true,
-      message: `Notifications sent in ${duration}s`,
+      message: `Notifications sent successfully in ${duration}s`,
       data: {
         ...results,
         totalUsers: users.length,
         duration: `${duration}s`,
-        successRate: `${((results.totalSuccess / users.length) * 100).toFixed(1)}%`
-      }
+        successRate: `${((results.totalSuccess / users.length) * 100).toFixed(1)}%`,
+        notificationId: newNotification._id,
+      },
     });
-
   } catch (error) {
     console.error('❌ Error broadcasting notification:', error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: 'Failed to send notifications',
       error: error.message,
     });
   }
@@ -196,7 +225,12 @@ export const broadcastNotification = async (req, res) => {
 const sendSingleNotification = async (user, title, body, data) => {
   try {
     if (!user.devicetoken) {
-      return { user, success: false, error: 'No device token', shouldCleanup: false };
+      return {
+        user,
+        success: false,
+        error: 'No device token found for user',
+        shouldCleanup: false,
+      };
     }
 
     const message = {
@@ -211,25 +245,40 @@ const sendSingleNotification = async (user, title, body, data) => {
       user,
       success: true,
       messageId: response,
-      shouldCleanup: false
+      shouldCleanup: false,
     };
-
   } catch (error) {
     const shouldCleanup = [
       'messaging/invalid-registration-token',
       'messaging/registration-token-not-registered',
-      'messaging/invalid-argument'
-    ].some(errorCode => error.code === errorCode);
+      'messaging/invalid-argument',
+    ].includes(error.code);
 
     return {
       user,
       success: false,
       error: error.message,
       errorCode: error.code,
-      shouldCleanup
+      shouldCleanup,
     };
   }
 };
+
+// Helper function to clean up invalid tokens
+const cleanupInvalidTokensBulk = async (invalidTokens) => {
+  try {
+    const userIds = invalidTokens.map((token) => token._id);
+    await User.updateMany(
+      { _id: { $in: userIds } },
+      { $set: { devicetoken: null } }
+    );
+    console.log(`Successfully cleaned up ${invalidTokens.length} invalid tokens`);
+  } catch (error) {
+    console.error('❌ Error cleaning up invalid tokens:', error);
+    throw error;
+  }
+};
+
 
 export const findUserByPhone = async (req, res) => {
   try {
