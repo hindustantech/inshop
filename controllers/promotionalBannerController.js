@@ -6,7 +6,6 @@ import mongoose from "mongoose";
 import { uploadToCloudinary } from "../utils/Cloudinary.js";
 
 
-router.post("/", upload.single('bannerImage'), createPromotionalBanner);
 
 export const createPromotionalBanner = async (req, res) => {
     try {
@@ -78,7 +77,7 @@ export const createPromotionalBanner = async (req, res) => {
                     message: "Invalid expiry date format"
                 });
             }
-            
+
             // Check if expiry date is in the future
             if (expiryDate <= new Date()) {
                 return res.status(400).json({
@@ -118,7 +117,7 @@ export const createPromotionalBanner = async (req, res) => {
         });
     } catch (error) {
         console.error("Error creating promotional banner:", error);
-        
+
         // Handle duplicate key errors
         if (error.code === 11000) {
             return res.status(400).json({
@@ -126,7 +125,7 @@ export const createPromotionalBanner = async (req, res) => {
                 message: "A banner with similar details already exists"
             });
         }
-        
+
         // Handle validation errors
         if (error.name === 'ValidationError') {
             const errors = Object.values(error.errors).map(err => err.message);
