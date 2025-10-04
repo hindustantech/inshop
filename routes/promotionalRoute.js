@@ -6,7 +6,7 @@ import multer from 'multer';
 const router = express.Router();
 
 const storage = multer.memoryStorage();
-export const upload = multer({ storage });
+const upload = multer({ storage });
 
 router.post("/",upload.single('bannerImage'), createPromotionalBanner);
 router.put("/:id", updatePromotionalBanner);
