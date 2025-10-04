@@ -8,6 +8,8 @@ import path from 'path';
 import { uploadToCloudinary } from '../utils/Cloudinary.js';
 import admin from '../utils/firebaseadmin.js';
 import notification from '../models/notification.js';
+import ReferralUsage from '../models/ReferralUsage.js'
+
 export const getProfile = async (req, res) => {
   try {
     const userId = req.user?.id; // from auth middleware
@@ -491,6 +493,19 @@ const verifyOtp = async (req, res) => {
     user.isVerified = true;
     user.otp = null;
     await user.save();
+
+
+     // ✅ Store referral usage (only if referral code was used)
+    if (user.referredBy) {
+      const referrer = await User.findOne({ referalCode: user.referredBy });
+      if (referrer) {
+        await ReferralUsage.create({
+          referralCode: user.referredBy,
+          referrerId: referrer._id,
+          referredUserId: user._id,
+        });
+      }
+    }
 
     res.json({
       message: 'OTP verified successfully',
