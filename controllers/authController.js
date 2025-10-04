@@ -7,7 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { uploadToCloudinary } from '../utils/Cloudinary.js';
 import admin from '../utils/firebaseadmin.js';
-
+import notification from '../models/notification.js';
 export const getProfile = async (req, res) => {
   try {
     const userId = req.user?.id; // from auth middleware
@@ -154,6 +154,17 @@ export const broadcastNotification = async (req, res) => {
       await cleanupInvalidTokensBulk(results.invalidTokens);
       console.log(`🧹 Cleaned up ${results.invalidTokens.length} invalid tokens`);
     }
+
+    // ✅ Save Notification in DB
+    const newNotification = await notification.create({
+      title,
+      message: body,
+      type,
+      location: type === "location" ? address : undefined,
+      users: [], // empty since this is broadcast, not per-user
+      createdBy: req.user?._id || null,
+    });
+
 
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);

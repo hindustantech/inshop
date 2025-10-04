@@ -14,7 +14,7 @@ export const createNotification = async (req, res) => {
             return res.status(400).json({ error: "Users are required for user-specific notifications" });
         }
 
-        const notification = await Notification.create({
+        const notifications = await notification.create({
             title,
             message,
             type,
@@ -26,7 +26,7 @@ export const createNotification = async (req, res) => {
         res.status(201).json({
             success: true,
             message: "Notification created successfully",
-            data: notification,
+            data: notifications,
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -47,7 +47,7 @@ export const getNotifications = async (req, res) => {
         // 1. Global
         // 2. Location (if user has location)
         // 3. User-specific
-        const notifications = await Notification.find({
+        const notifications = await notification.find({
             $or: [
                 { type: "global" },
                 { type: "location", location: user.manul_address }, // assuming user has a `location` field
