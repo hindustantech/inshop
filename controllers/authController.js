@@ -66,7 +66,7 @@ export const broadcastNotification = async (req, res) => {
 
   try {
     // Input validation
-    const { address, title, body, data = {}, delay = 50, concurrency = 5, type = 'broadcast' } = req.body;
+    const { address, title, body, data = {}, delay = 50, concurrency = 5, type = 'location' } = req.body;
 
     if (!address || !title || !body) {
       return res.status(400).json({
