@@ -92,7 +92,7 @@ export const createPromotionalBanner = async (req, res) => {
             ownerId,
             title: title.trim(),
             description: description?.trim() || '',
-            bannerImage,
+            bannerImage:bannerImage?.url,
             manualAddress,
             location: {
                 type: "Point",
