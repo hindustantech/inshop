@@ -151,8 +151,8 @@ export const broadcastNotification = async (req, res) => {
 
     // Cleanup invalid tokens
     if (results.invalidTokens.length > 0) {
-      await cleanupInvalidTokensBulk(results.invalidTokens);
-      console.log(`🧹 Cleaned up ${results.invalidTokens.length} invalid tokens`);
+      // await cleanupInvalidTokensBulk(results.invalidTokens);
+      // console.log(`🧹 Cleaned up ${results.invalidTokens.length} invalid tokens`);
     }
 
     // ✅ Save Notification in DB
