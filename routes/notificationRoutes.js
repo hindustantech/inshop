@@ -8,7 +8,7 @@ const router = express.Router();
  * @desc    Create a new notification
  * @access  Admin only
  */
-router.post("/", authMiddleware, isAdmin, createNotification);
+router.post("/", authMiddleware, createNotification);
 
 /**
  * @route   GET /api/notifications
