@@ -1,10 +1,10 @@
 export function generateReferralCode() {
-    const randomNum = Math.floor(100000 + Math.random() * 900000); // always 6 digits
-    return `IN${randomNum}`;
+    const randomNum = Math.floor(100 + Math.random() * 900); // always 3 digits
+    return `IND${randomNum}`;
 }
 
 export function isValidReferralCode(code) {
-    const regex = /^IND\d{4}$/;
+    const regex = /^IND\d{3}$/; // matches 3 digits after IND
     return regex.test(code);
 }
 
