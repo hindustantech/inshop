@@ -7,13 +7,6 @@ export const getReferralUsersByDate = async (req, res) => {
         const { from, to, page = 1, limit = 20 } = req.query; // default page 1, limit 20
         const { id } = req.body;
 
-        if (!from || !to) {
-            return res.status(400).json({
-                success: false,
-                message: "From and to dates are required",
-            });
-        }
-
         // Step 1: Get referral code of user
         const user = await User.findById(id, "referalCode").lean();
         if (!user || !user.referalCode) {
@@ -24,20 +17,20 @@ export const getReferralUsersByDate = async (req, res) => {
         }
 
         const referralCode = user.referalCode;
-        const fromDate = new Date(from);
-        const toDate = new Date(to);
-
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
-        // Step 2: Aggregation pipeline with pagination
+        // Step 2: Build match condition dynamically
+        const matchCondition = { referralCode };
+        if (from || to) {
+            matchCondition.dateUsed = {};
+            if (from) matchCondition.dateUsed.$gte = new Date(from);
+            if (to) matchCondition.dateUsed.$lte = new Date(to);
+        }
+
+        // Step 3: Aggregation pipeline with pagination
         const [result, totalCount] = await Promise.all([
             ReferralUsage.aggregate([
-                {
-                    $match: {
-                        referralCode,
-                        dateUsed: { $gte: fromDate, $lte: toDate },
-                    },
-                },
+                { $match: matchCondition },
                 {
                     $lookup: {
                         from: "users",
@@ -59,10 +52,7 @@ export const getReferralUsersByDate = async (req, res) => {
                 { $skip: skip },
                 { $limit: parseInt(limit) },
             ]),
-            ReferralUsage.countDocuments({
-                referralCode,
-                dateUsed: { $gte: fromDate, $lte: toDate },
-            }),
+            ReferralUsage.countDocuments(matchCondition),
         ]);
 
         return res.status(200).json({
@@ -74,13 +64,14 @@ export const getReferralUsersByDate = async (req, res) => {
             users: result,
         });
     } catch (error) {
-        console.error("Error fetching referral users by date:", error);
+        console.error("Error fetching referral users:", error);
         return res.status(500).json({
             success: false,
             message: "Server error",
         });
     }
 };
+
 
 
 
