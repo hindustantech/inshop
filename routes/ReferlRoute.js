@@ -1,5 +1,5 @@
 import express from "express";
-import { getCompletedSalesByReferral,getReferralUsersByDate } from "../controllers/ReferalUsed";
+import { getCompletedSalesByReferral,getReferralUsersByDate } from "../controllers/ReferalUsed.js";
 const router = express.Router();
 
 router.get("/getCompletedSalesByReferral", getCompletedSalesByReferral);
