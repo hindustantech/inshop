@@ -25,9 +25,9 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  suspend:{
-    type:Boolean,
-    default:false
+  suspend: {
+    type: Boolean,
+    default: false
   },
   isVerified: {
     type: Boolean,
@@ -37,6 +37,16 @@ const userSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true
+  },
+  referrelCommisationType: {
+    type: String,
+    enum: ["fixed", "percentage"], // enum values must be strings
+    default: "fixed", // you can set default as "fixed" or "percentage"
+  },
+
+  referrelCommisation: {
+    type: Number, // should be Number, not String or Boolean
+    default: 0,   // default commission value
   },
   referredBy: {
     type: String,
@@ -53,7 +63,7 @@ const userSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['user', 'partner', 'agency','super_admin'],
+    enum: ['user', 'partner', 'agency', 'super_admin'],
     default: 'user'
   },
   data: {
