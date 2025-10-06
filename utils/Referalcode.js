@@ -4,7 +4,7 @@ export function generateReferralCode() {
 }
 
 export function isValidReferralCode(code) {
-    const regex = /^IN\d{6}$/;
+    const regex = /^IND\d{4}$/;
     return regex.test(code);
 }
 
