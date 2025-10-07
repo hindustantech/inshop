@@ -1777,7 +1777,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         if (!baseLocation) {
           baseLocation = manualLocation.location;
           mode = 'manual';
-          effectiveRadius = null;
+          effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
         } else {
           const check = await ManualAddress.aggregate([
             {
@@ -1795,7 +1795,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           if (distance > 100000) {
             mode = 'manual';
             baseLocation = manualLocation.location;
-            effectiveRadius = null;
+            effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
           }
         }
       }
