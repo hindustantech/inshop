@@ -264,6 +264,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       {
         $project: {
           distance: 1,
+          shop_name: 1,
           distanceInMeters: { $multiply: ["$distance", 1000] },
           "promotion.name": 1,
           "promotion.desc": 1,
@@ -273,7 +274,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
           manul_address: 1,
           discountPercentage: 1,
           validTill: 1,
-          coupon_color:1,
+          coupon_color: 1,
           creationDate: 1,
           active: 1,
           termsAndConditions: 1

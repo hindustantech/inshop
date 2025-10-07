@@ -5,6 +5,10 @@ const couponSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  shop_name:{
+    type:String,
+    require:true,
+  },
   createdby: {
     type: mongoose.Schema.Types.ObjectId, // references id from another table
     ref: 'User', // assuming you have an 'Owner' model or similar

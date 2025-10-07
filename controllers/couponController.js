@@ -10,6 +10,7 @@ import { exportToCSV } from '../utils/exportcsv.js';
 import jwt from "jsonwebtoken";
 import QRCode from "qrcode";
 import admin from '../utils/firebaseadmin.js'
+
 const statesAndUTs = [
   'Andhra Pradesh',
   'Arunachal Pradesh',
@@ -138,6 +139,7 @@ export const updateCouponByAdmin = async (req, res) => {
 export const createCoupon = async (req, res) => {
   try {
     const {
+      shop_name,
       coupon_color,
       title,
       manual_address,
@@ -274,6 +276,7 @@ export const createCoupon = async (req, res) => {
     // Save Coupon
     const newCoupon = new Coupon({
       title,
+      shop_name,
       coupon_color,
       manul_address: manual_address,
       copuon_srno,
@@ -1916,6 +1919,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
       {
         $project: {
           title: 1,
+          shop_name: 1,
           copuon_image: 1,
           manual_address: 1,
           copuon_srno: 1,

@@ -6,7 +6,6 @@ import mongoose from "mongoose";
 import { uploadToCloudinary } from "../utils/Cloudinary.js";
 
 
-
 export const createPromotionalBanner = async (req, res) => {
     try {
         const {

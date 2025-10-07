@@ -12,7 +12,7 @@ router.post("/",upload.single('bannerImage'), createPromotionalBanner);
 router.put("/:id", updatePromotionalBanner);
 router.delete("/:id", deletePromotionalBanner);
 router.patch("/:id/status", toggleBannerStatus);
-router.get("/", getAllPromotionalBanners); // <-- Fetch with filters
+router.get("/", getAllPromotionalBanners); 
 router.get('/my-banners', authMiddleware1, getPromotionalBanners);
 
 export default router;
