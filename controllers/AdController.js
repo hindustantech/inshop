@@ -190,6 +190,7 @@ export const getBannersByLocation = async (req, res) => {
   }
 };
 
+
 export const getAdUserCityByCopunWithGeo = async (req, res) => {
   try {
     // 1️⃣ Validate user ID
@@ -222,8 +223,10 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid limit, must be between 1 and 100' });
     }
 
-    if ((lat && (isNaN(Number(lat)) || Number(lat) < -90 || Number(lat) > 90)) ||
-      (lng && (isNaN(Number(lng)) || Number(lng) < -180 || Number(lng) > 180))) {
+    if (
+      (lat && (isNaN(Number(lat)) || Number(lat) < -90 || Number(lat) > 90)) ||
+      (lng && (isNaN(Number(lng)) || Number(lng) < -180 || Number(lng) > 180))
+    ) {
       return res.status(400).json({ success: false, message: 'Invalid latitude (-90 to 90) or longitude (-180 to 180)' });
     }
 
@@ -231,26 +234,26 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid radius' });
     }
 
+    // 3️⃣ Validate promotion IDs
+    let promotionIds = [];
     if (promotion) {
-      const promotionIds = Array.isArray(promotion) ? promotion : [promotion];
-
-      const invalidIds = promotionIds.filter(id => !mongoose.isValidObjectId(id));
+      promotionIds = Array.isArray(promotion) ? promotion : [promotion];
+      const invalidIds = promotionIds.filter((id) => !mongoose.isValidObjectId(id));
       if (invalidIds.length > 0) {
         return res.status(400).json({
           success: false,
-          message: `Invalid promotion ID(s): ${invalidIds.join(', ')}`
+          message: `Invalid promotion ID(s): ${invalidIds.join(', ')}`,
         });
       }
-    }
 
-
-    // 3️⃣ Validate promotion ID if provided
-    if (promotion) {
-      const adExists = await Ad.find({ _id: { $in: promotionIds } })
+      const ads = await Ad.find({ _id: { $in: promotionIds.map((id) => new mongoose.Types.ObjectId(id)) } })
         .select('_id')
         .lean();
-      if (!adExists) {
-        return res.status(400).json({ success: false, message: 'Promotion not found' });
+      if (ads.length !== promotionIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: `One or more promotion IDs not found`,
+        });
       }
     }
 
@@ -301,19 +304,10 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     // 6️⃣ Build geo query with promotion as array
     const geoQuery = {
       active: true,
-      ...(promotion
-        ? {
-          promotion: {
-            $in: (
-              Array.isArray(promotion)
-                ? promotion
-                : [promotion]
-            ).map(id => new mongoose.Types.ObjectId(id))
-          }
-        }
+      ...(promotionIds.length > 0
+        ? { promotion: { $in: promotionIds.map((id) => new mongoose.Types.ObjectId(id)) } }
         : {}),
     };
-
 
     // 7️⃣ Build aggregation pipeline with $facet for data and count
     const pipeline = [
@@ -323,88 +317,89 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
           distanceField: 'distance',
           maxDistance: parsedRadius,
           spherical: true,
-          key: 'shope_location',
+          key: 'shop_location', // Fixed typo: shope_location -> shop_location
           query: geoQuery,
         },
       },
       ...(search.trim()
         ? [
-          {
-            $match: {
-              $or: [
-                { manual_address: searchRegex },
-                { title: searchRegex },
-                { tag: { $elemMatch: { $regex: searchRegex } } },
-              ],
+            {
+              $match: {
+                $or: [
+                  { manual_address: searchRegex },
+                  { title: searchRegex },
+                  { tag: { $elemMatch: { $regex: searchRegex } } },
+                ],
+              },
             },
-          },
-        ]
+          ]
         : []),
       ...(userId
         ? [
-          {
-            $lookup: {
-              from: 'usercoupons',
-              let: { couponId: '$_id' },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: {
-                      $and: [
-                        { $eq: ['$couponId', '$$couponId'] },
-                        { $eq: ['$userId', userId] },
-                      ],
+            {
+              $lookup: {
+                from: 'usercoupons',
+                let: { couponId: '$_id' },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ['$couponId', '$$couponId'] },
+                          { $eq: ['$userId', userId] },
+                        ],
+                      },
                     },
                   },
-                },
-                { $project: { status: 1, _id: 0 } },
-              ],
-              as: 'userStatus',
+                  { $project: { status: 1, _id: 0 } },
+                ],
+                as: 'userStatus',
+              },
             },
-          },
-          { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-          {
-            $match: {
-              active: true,
-              $and: [
-                { $or: [{ validTill: { $gt: new Date() } }, { validTill: null }] },
-                {
-                  $or: [
-                    { userStatus: { $exists: false } },
-                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
-                  ],
-                },
-              ],
-            }
-
-          },
-          {
-            $addFields: {
-              displayTag: {
-                $switch: {
-                  branches: [
-                    { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
-                    { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
-                  ],
-                  default: 'Available',
+            { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+            {
+              $match: {
+                active: true,
+                $or: [
+                  { validTill: { $gt: new Date() } },
+                  { validTill: null },
+                ],
+                $or: [
+                  { userStatus: { $exists: false } },
+                  { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                ],
+              },
+            },
+            {
+              $addFields: {
+                displayTag: {
+                  $switch: {
+                    branches: [
+                      { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
+                      { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
+                    ],
+                    default: 'Available',
+                  },
                 },
               },
             },
-          },
-        ]
+          ]
         : [
-          {
-            $match: {
-              active: true,
-              $or: [{ validTill: { $gt: new Date() } }, { validTill: null }],
+            {
+              $match: {
+                active: true,
+                $or: [
+                  { validTill: { $gt: new Date() } },
+                  { validTill: null },
+                ],
+              },
             },
-          },
-          {
-            $addFields: {
-              displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
+            {
+              $addFields: {
+                displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
+              },
             },
-          },
-        ]),
+          ]),
       {
         $facet: {
           data: [
@@ -444,7 +439,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       limit: parsedLimit,
       total,
       pages: Math.ceil(total / parsedLimit),
-      promotionFilter: promotion || 'all',
+      promotionFilter: promotionIds.length > 0 ? promotionIds : 'all',
     });
   } catch (error) {
     console.error('Error fetching coupons:', error.message);
@@ -453,7 +448,6 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     res.status(status).json({ success: false, message });
   }
 };
-
 // export const getAdUserCityByCopunWithGeo = async (req, res) => {
 //   try {
 //     const { location, promotion } = req.query;
