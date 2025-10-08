@@ -941,7 +941,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         if (!baseLocation) {
           baseLocation = manualLocation.location;
           mode = 'manual';
-          effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
+          effectiveRadius = parsedRadius;
         } else {
           const check = await ManualAddress.aggregate([
             {
@@ -959,7 +959,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           if (distance > 100000) {
             mode = 'manual';
             baseLocation = manualLocation.location;
-            effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
+            effectiveRadius = parsedRadius;
           }
         }
       }
@@ -988,7 +988,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
       ...(categoryFilter ? { category: categoryFilter } : {}),
     };
 
-    // 7️⃣ Build aggregation pipeline
+    // 7️⃣ Build aggregation pipeline for data
     const dataPipeline = [
       {
         $geoNear: {
@@ -1030,13 +1030,13 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                     },
                   },
                 },
-                { $project: { status: 1, count: 1, _id: 0 } }, // Include count in the lookup
+                { $project: { status: 1, count: 1, _id: 0 } },
               ],
               as: 'userStatus',
             },
           },
           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-          // Only include active coupons that are not used or transferred, and count >= 1
+          // Only include active coupons that are not used or transferred
           {
             $match: {
               active: true,
@@ -1048,10 +1048,10 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 { userStatus: { $exists: false } }, // Coupons not claimed by the user
                 {
                   $and: [
-                    { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
-                    { 'userStatus.count': { $gte: 1 } }, // Only include if count >= 1
-                  ],
-                },
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                    { 'userStatus.count': { $gte: 1 } }
+                  ]
+                }, // Exclude used or transferred and ensure count >= 1
               ],
             },
           },
@@ -1066,6 +1066,14 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                   default: 'Available',
                 },
               },
+              // Add coupon count field
+              couponCount: {
+                $cond: {
+                  if: { $gt: [{ $ifNull: ['$userStatus.count', 0] }, 0] },
+                  then: '$userStatus.count',
+                  else: 1
+                }
+              }
             },
           },
         ]
@@ -1082,6 +1090,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           {
             $addFields: {
               displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
+              // For guests, each coupon counts as 1
+              couponCount: 1
             },
           },
         ]),
@@ -1098,10 +1108,11 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           discountPercentage: 1,
           validTill: 1,
           displayTag: 1,
+          couponCount: 1, // Include coupon count in response
           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
           userStatus: {
             status: { $ifNull: ['$userStatus.status', null] },
-            count: { $ifNull: ['$userStatus.count', 0] }, // Include count in response
+            count: { $ifNull: ['$userStatus.count', 0] },
           },
         },
       },
@@ -1112,7 +1123,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     const coupons = await Coupon.aggregate(dataPipeline);
 
-    // 8️⃣ Count pipeline
+    // 8️⃣ Count pipeline - Get total number of coupons
     const countPipeline = [
       {
         $geoNear: {
@@ -1154,7 +1165,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                     },
                   },
                 },
-                { $project: { status: 1, _id: 0 } },
+                { $project: { status: 1, count: 1, _id: 0 } },
               ],
               as: 'userStatus',
             },
@@ -1168,8 +1179,13 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 { validTill: null },
               ],
               $or: [
-                { userStatus: { $exists: false } }, // Coupons not claimed by the user
-                { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
+                { userStatus: { $exists: false } },
+                {
+                  $and: [
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                    { 'userStatus.count': { $gte: 1 } }
+                  ]
+                },
               ],
             },
           },
@@ -1191,13 +1207,105 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     const totalResult = await Coupon.aggregate(countPipeline);
     const total = totalResult[0]?.total || 0;
 
+    // 9️⃣ Calculate total coupon count (considering multiple counts per coupon for users)
+    let totalCouponCount = 0;
+
+    if (userId) {
+      // For logged-in users, sum up all coupon counts
+      const couponCountPipeline = [
+        {
+          $geoNear: {
+            near: baseLocation,
+            distanceField: 'distance',
+            ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+            spherical: true,
+            key: 'shope_location',
+            query: geoQuery,
+          },
+        },
+        ...(search.trim()
+          ? [
+            {
+              $match: {
+                $or: [
+                  { manual_address: searchRegex },
+                  { title: searchRegex },
+                  { tag: { $elemMatch: { $regex: searchRegex } } },
+                ],
+              },
+            },
+          ]
+          : []),
+        {
+          $lookup: {
+            from: 'usercoupons',
+            let: { couponId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$couponId', '$$couponId'] },
+                      { $eq: ['$userId', userId] },
+                    ],
+                  },
+                },
+              },
+              { $project: { status: 1, count: 1, _id: 0 } },
+            ],
+            as: 'userStatus',
+          },
+        },
+        { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+        {
+          $match: {
+            active: true,
+            $or: [
+              { validTill: { $gt: new Date() } },
+              { validTill: null },
+            ],
+            $or: [
+              { userStatus: { $exists: false } },
+              {
+                $and: [
+                  { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                  { 'userStatus.count': { $gte: 1 } }
+                ]
+              },
+            ],
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalCouponCount: {
+              $sum: {
+                $cond: {
+                  if: { $gt: [{ $ifNull: ['$userStatus.count', 0] }, 0] },
+                  then: '$userStatus.count',
+                  else: 1
+                }
+              }
+            }
+          }
+        }
+      ];
+
+      const countResult = await Coupon.aggregate(couponCountPipeline);
+      totalCouponCount = countResult[0]?.totalCouponCount || 0;
+    } else {
+      // For guests, total coupon count is the same as total coupons
+      totalCouponCount = total;
+    }
+
     res.status(200).json({
       success: true,
       mode,
       data: coupons,
       page: parsedPage,
       limit: parsedLimit,
-      total,
+      total, // Total number of distinct coupons
+      totalCouponCount, // Total count of coupons (considering multiple counts per coupon for users)
       pages: Math.ceil(total / parsedLimit),
     });
   } catch (error) {
@@ -1205,7 +1313,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
-
 
 
 
