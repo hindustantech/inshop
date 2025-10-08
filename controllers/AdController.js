@@ -191,6 +191,7 @@ export const getBannersByLocation = async (req, res) => {
 };
 
 
+
 export const getAdUserCityByCopunWithGeo = async (req, res) => {
   try {
     // 1️⃣ Validate user ID
@@ -317,7 +318,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
           distanceField: 'distance',
           maxDistance: parsedRadius,
           spherical: true,
-          key: 'shop_location', // Fixed typo: shope_location -> shop_location
+          key: 'shop_location',
           query: geoQuery,
         },
       },
@@ -444,7 +445,11 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
   } catch (error) {
     console.error('Error fetching coupons:', error.message);
     const status = error.name === 'ValidationError' ? 400 : 500;
-    const message = error.name === 'ValidationError' ? error.message : 'Internal server error';
+    const message = error.message.includes('unable to find index for $geoNear')
+      ? 'Geospatial index missing on shop_location field'
+      : error.name === 'ValidationError'
+      ? error.message
+      : 'Internal server error';
     res.status(status).json({ success: false, message });
   }
 };
