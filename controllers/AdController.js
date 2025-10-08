@@ -411,6 +411,8 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
                 manual_address: 1,
                 coupon_srno: 1,
                 coupon_color: 1,
+                is_spacial_copun:1,
+                isTransferable:1,
                 discountPercentage: 1,
                 validTill: 1,
                 displayTag: 1,

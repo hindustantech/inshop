@@ -132,7 +132,7 @@ const couponSchema = new mongoose.Schema({
     type: String,
     required: true // इसको fill करना जरूरी होगा
   },
-  is_spacial_copun: {
+  is_spacial_copun: {  
     type: Boolean,
     default: false, //if false  then not a spcical copun
   },
