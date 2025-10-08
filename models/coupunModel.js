@@ -158,5 +158,7 @@ const couponSchema = new mongoose.Schema({
 
 couponSchema.index({ shope_location: '2dsphere' });
 
+couponSchema.index({ promotion: 1 });
+
 const Coupon = mongoose.model('Coupon', couponSchema);
 export default Coupon;
