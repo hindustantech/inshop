@@ -199,7 +199,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       search = '',
       page = 1,
       limit = 50,
-      manualCode,
+      location,
       lat,
       lng,
       promotion, // ✅ added promotion filter
@@ -237,8 +237,8 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     }
 
     // 2️⃣ Manual location
-    if (manualCode) {
-      const manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('location');
+    if (location) {
+      const manualLocation = await ManualAddress.findOne({ uniqueCode: location }).select('location');
       if (manualLocation?.location?.coordinates) {
         baseLocation = manualLocation.location;
         mode = 'manual';
@@ -283,77 +283,77 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       },
       ...(search.trim()
         ? [
-            {
-              $match: {
-                $or: [
-                  { manual_address: searchRegex },
-                  { title: searchRegex },
-                  { tag: { $elemMatch: { $regex: searchRegex } } },
-                ],
-              },
+          {
+            $match: {
+              $or: [
+                { manual_address: searchRegex },
+                { title: searchRegex },
+                { tag: { $elemMatch: { $regex: searchRegex } } },
+              ],
             },
-          ]
+          },
+        ]
         : []),
       ...(userId
         ? [
-            {
-              $lookup: {
-                from: 'usercoupons',
-                let: { couponId: '$_id' },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $and: [
-                          { $eq: ['$couponId', '$$couponId'] },
-                          { $eq: ['$userId', userId] },
-                        ],
-                      },
+          {
+            $lookup: {
+              from: 'usercoupons',
+              let: { couponId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$couponId', '$$couponId'] },
+                        { $eq: ['$userId', userId] },
+                      ],
                     },
                   },
-                  { $project: { status: 1, _id: 0 } },
-                ],
-                as: 'userStatus',
-              },
+                },
+                { $project: { status: 1, _id: 0 } },
+              ],
+              as: 'userStatus',
             },
-            { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-            {
-              $match: {
-                active: true,
-                $or: [{ validTill: { $gt: new Date() } }, { validTill: null }],
-                $or: [
-                  { userStatus: { $exists: false } },
-                  { 'userStatus.status': { $nin: ['used', 'transferred'] } },
-                ],
-              },
+          },
+          { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+          {
+            $match: {
+              active: true,
+              $or: [{ validTill: { $gt: new Date() } }, { validTill: null }],
+              $or: [
+                { userStatus: { $exists: false } },
+                { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+              ],
             },
-            {
-              $addFields: {
-                displayTag: {
-                  $switch: {
-                    branches: [
-                      { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
-                      { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
-                    ],
-                    default: 'Available',
-                  },
+          },
+          {
+            $addFields: {
+              displayTag: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
+                    { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
+                  ],
+                  default: 'Available',
                 },
               },
             },
-          ]
+          },
+        ]
         : [
-            {
-              $match: {
-                active: true,
-                $or: [{ validTill: { $gt: new Date() } }, { validTill: null }],
-              },
+          {
+            $match: {
+              active: true,
+              $or: [{ validTill: { $gt: new Date() } }, { validTill: null }],
             },
-            {
-              $addFields: {
-                displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
-              },
+          },
+          {
+            $addFields: {
+              displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
             },
-          ]),
+          },
+        ]),
       {
         $project: {
           title: 1,
