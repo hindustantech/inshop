@@ -407,7 +407,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
               $project: {
                 title: 1,
                 shop_name: 1,
-                coupon_image: 1,
+                copuon_image: 1,
                 manual_address: 1,
                 coupon_srno: 1,
                 coupon_color: 1,
@@ -448,6 +448,8 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     res.status(status).json({ success: false, message });
   }
 };
+
+
 // export const getAdUserCityByCopunWithGeo = async (req, res) => {
 //   try {
 //     const { location, promotion } = req.query;
