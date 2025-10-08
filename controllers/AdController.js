@@ -199,7 +199,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       search = '',
       page = 1,
       limit = 50,
-      location,
+      manualCode,
       lat,
       lng,
       promotion, // ✅ added promotion filter
@@ -237,8 +237,8 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     }
 
     // 2️⃣ Manual location
-    if (location) {
-      const manualLocation = await ManualAddress.findOne({ uniqueCode: location }).select('location');
+    if (manualCode) {
+      const manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('location');
       if (manualLocation?.location?.coordinates) {
         baseLocation = manualLocation.location;
         mode = 'manual';
