@@ -873,518 +873,6 @@ const toggleActive = async (req, res) => {
 }
 
 
-// export const getAllCouponsWithStatusTag = async (req, res) => {
-//   try {
-//     // Determine user ID (null for guests)
-//     let userId = null;
-//     if (req.user?.id && mongoose.isValidObjectId(req.user.id)) {
-//       userId = new mongoose.Types.ObjectId(req.user.id);
-//     }
-
-//     // Validate query parameters
-//     const { radius = 100000, search = '', page = 1, limit = 50, manualCode, lat, lng, category } = req.query;
-//     const parsedPage = parseInt(page);
-//     const parsedLimit = parseInt(limit);
-//     const parsedRadius = parseInt(radius);
-
-//     if (isNaN(parsedPage) || parsedPage < 1) {
-//       return res.status(400).json({ success: false, message: 'Invalid page number' });
-//     }
-//     if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
-//       return res.status(400).json({ success: false, message: 'Invalid limit, must be between 1 and 100' });
-//     }
-//     if ((lat && isNaN(Number(lat))) || (lng && isNaN(Number(lng)))) {
-//       return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
-//     }
-//     if (isNaN(parsedRadius) || parsedRadius < 0) {
-//       return res.status(400).json({ success: false, message: 'Invalid radius' });
-//     }
-
-//     // ✅ Enhanced category validation (supports single or multiple IDs)
-//     let categoryFilter = null;
-//     if (category) {
-//       const categoryIds = Array.isArray(category) ? category : category.split(',');
-//       const validIds = categoryIds.filter(id => mongoose.isValidObjectId(id));
-//       if (validIds.length !== categoryIds.length) {
-//         return res.status(400).json({ success: false, message: 'One or more invalid category IDs' });
-//       }
-//       const foundCategories = await Category.find({ _id: { $in: validIds } }).select('_id');
-//       if (foundCategories.length !== validIds.length) {
-//         return res.status(400).json({ success: false, message: 'One or more categories not found' });
-//       }
-//       categoryFilter = { $in: validIds.map(id => new mongoose.Types.ObjectId(id)) };
-//     }
-
-//     const skip = (parsedPage - 1) * parsedLimit;
-
-//     let mode = userId ? 'user' : 'guest';
-//     let baseLocation = null;
-//     let effectiveRadius = parsedRadius;
-//     let sortByLatest = false; // Flag to sort by latest in default case
-
-//     // 1️⃣ Logged-in user: Get latestLocation
-//     if (userId) {
-//       const user = await User.findById(userId).select('latestLocation');
-//       if (user?.latestLocation?.coordinates && user.latestLocation.coordinates[0] !== 0 && user.latestLocation.coordinates[1] !== 0) {
-//         const [userLng, userLat] = user.latestLocation.coordinates;
-//         baseLocation = { type: 'Point', coordinates: [userLng, userLat] };
-//       }
-//     }
-
-//     // 2️⃣ Manual location (via manualCode)
-//     let manualLocation = null;
-//     if (manualCode) {
-//       manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('city state location');
-//       if (manualLocation?.location?.coordinates) {
-//         if (!baseLocation) {
-//           baseLocation = manualLocation.location;
-//           mode = 'manual';
-//           effectiveRadius = null; // No radius limit for manual location
-//         } else {
-//           const check = await ManualAddress.aggregate([
-//             {
-//               $geoNear: {
-//                 near: baseLocation,
-//                 distanceField: 'distance',
-//                 spherical: true,
-//                 query: { uniqueCode: manualCode },
-//               },
-//             },
-//             { $project: { distance: 1 } },
-//           ]);
-
-//           const distance = check[0]?.distance || 0;
-//           if (distance > 100000) {
-//             mode = 'manual';
-//             baseLocation = manualLocation.location;
-//             effectiveRadius = null;
-//           }
-//         }
-//       }
-//     }
-
-//     // 3️⃣ Custom location from query params (lat, lng)
-//     if (lat && lng) {
-//       baseLocation = { type: 'Point', coordinates: [Number(lng), Number(lat)] };
-//       mode = 'custom';
-//       effectiveRadius = parsedRadius || 100000;
-//     }
-
-//     // 4️⃣ Fallback: Default location (center of India) with no radius for latest coupons
-//     if (!baseLocation) {
-//       baseLocation = { type: 'Point', coordinates: [78.9629, 20.5937] };
-//       mode = 'default';
-//       effectiveRadius = null; // No radius limit to show all active coupons
-//       sortByLatest = true; // Prioritize latest coupons
-//     }
-
-//     // 5️⃣ Build search regex
-//     const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-
-//     // 6️⃣ Build match query for geoNear
-//     const geoQuery = {
-//       active: true,
-//       $or: [
-//         { validTill: { $gt: new Date() } },
-//         { validTill: null },
-//       ],
-//       ...(categoryFilter ? { category: categoryFilter } : {}), // ✅ Multiple category support
-//     };
-
-//     // 7️⃣ Build aggregation pipeline
-//     const dataPipeline = [
-//       {
-//         $geoNear: {
-//           near: baseLocation,
-//           distanceField: 'distance',
-//           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-//           spherical: true,
-//           key: 'shope_location',
-//           query: geoQuery,
-//         },
-//       },
-//       ...(search.trim()
-//         ? [
-//           {
-//             $match: {
-//               $or: [
-//                 { manual_address: searchRegex },
-//                 { title: searchRegex },
-//                 { tag: { $elemMatch: { $regex: searchRegex } } },
-//               ],
-//             },
-//           },
-//         ]
-//         : []),
-//       ...(userId ? [
-//         {
-//           $lookup: {
-//             from: 'usercoupons',
-//             let: { couponId: '$_id' },
-//             pipeline: [
-//               {
-//                 $match: {
-//                   $expr: {
-//                     $and: [
-//                       { $eq: ['$couponId', '$$couponId'] },
-//                       { $eq: ['$userId', userId] },
-//                     ],
-//                   },
-//                 },
-//               },
-//               { $project: { status: 1, _id: 0 } },
-//             ],
-//             as: 'userStatus',
-//           },
-//         },
-//         { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-//         {
-//           $addFields: {
-//             displayTag: {
-//               $switch: {
-//                 branches: [
-//                   { case: { $eq: ['$userStatus.status', 'used'] }, then: 'Used' },
-//                   { case: { $eq: ['$userStatus.status', 'transferred'] }, then: 'Transferred' },
-//                   { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
-//                   { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
-//                 ],
-//                 default: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
-//               },
-//             },
-//           },
-//         },
-//       ] : [
-//         {
-//           $addFields: {
-//             displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
-//           },
-//         },
-//       ]),
-//       {
-//         $project: {
-//           title: 1,
-//           copuon_image: 1,
-//           manual_address: 1,
-//           copuon_srno: 1,
-//           discountPercentage: 1,
-//           validTill: 1,
-//           displayTag: 1,
-//           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
-//         },
-//       },
-//       { $sort: sortByLatest ? { validTill: -1, createdAt: -1 } : { distance: 1, validTill: -1 } },
-//       { $skip: skip },
-//       { $limit: parsedLimit },
-//     ];
-
-//     const coupons = await Coupon.aggregate(dataPipeline);
-
-//     // 8️⃣ Count pipeline
-//     const countPipeline = [
-//       {
-//         $geoNear: {
-//           near: baseLocation,
-//           distanceField: 'distance',
-//           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-//           spherical: true,
-//           key: 'shope_location',
-//           query: geoQuery,
-//         },
-//       },
-//       ...(search.trim()
-//         ? [
-//           {
-//             $match: {
-//               $or: [
-//                 { manual_address: searchRegex },
-//                 { title: searchRegex },
-//                 { tag: { $elemMatch: { $regex: searchRegex } } },
-//               ],
-//             },
-//           },
-//         ]
-//         : []),
-//       { $count: 'total' },
-//     ];
-
-//     const totalResult = await Coupon.aggregate(countPipeline);
-//     const total = totalResult[0]?.total || 0;
-
-//     res.status(200).json({
-//       success: true,
-//       mode,
-//       data: coupons,
-//       page: parsedPage,
-//       limit: parsedLimit,
-//       total,
-//       pages: Math.ceil(total / parsedLimit),
-//     });
-//   } catch (error) {
-//     console.error('Error fetching coupons:', error);
-//     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
-//   }
-// };
-
-
-
-// export const getAllCouponsWithStatusTag = async (req, res) => {
-//   try {
-//     // Determine user ID (null for guests)
-//     let userId = null;
-//     if (req.user?.id && mongoose.isValidObjectId(req.user.id)) {
-//       userId = new mongoose.Types.ObjectId(req.user.id);
-//     }
-
-//     // Validate query parameters
-//     const { radius = 100000, search = '', page = 1, limit = 50, manualCode, lat, lng, category } = req.query;
-//     const parsedPage = parseInt(page);
-//     const parsedLimit = parseInt(limit);
-//     const parsedRadius = parseInt(radius);
-
-//     if (isNaN(parsedPage) || parsedPage < 1) {
-//       return res.status(400).json({ success: false, message: 'Invalid page number' });
-//     }
-//     if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
-//       return res.status(400).json({ success: false, message: 'Invalid limit, must be between 1 and 100' });
-//     }
-//     if ((lat && isNaN(Number(lat))) || (lng && isNaN(Number(lng)))) {
-//       return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
-//     }
-//     if (isNaN(parsedRadius) || parsedRadius < 0) {
-//       return res.status(400).json({ success: false, message: 'Invalid radius' });
-//     }
-//     // Enhanced category validation
-//     let categoryId = null;
-//     if (category) {
-//       if (!mongoose.isValidObjectId(category)) {
-//         return res.status(400).json({ success: false, message: 'Invalid category ID' });
-//       }
-//       // Optional: Verify category exists in the Category collection
-//       const categoryExists = await Category.findById(category).select('_id');
-//       if (!categoryExists) {
-//         return res.status(400).json({ success: false, message: 'Category not found' });
-//       }
-//       categoryId = new mongoose.Types.ObjectId(category);
-//     }
-
-//     const skip = (parsedPage - 1) * parsedLimit;
-
-//     let mode = userId ? 'user' : 'guest';
-//     let baseLocation = null;
-//     let effectiveRadius = parsedRadius;
-//     let sortByLatest = false; // Flag to sort by latest in default case
-
-//     // 1️⃣ Logged-in user: Get latestLocation
-//     if (userId) {
-//       const user = await User.findById(userId).select('latestLocation');
-//       if (user?.latestLocation?.coordinates && user.latestLocation.coordinates[0] !== 0 && user.latestLocation.coordinates[1] !== 0) {
-//         const [userLng, userLat] = user.latestLocation.coordinates;
-//         baseLocation = { type: 'Point', coordinates: [userLng, userLat] };
-//       }
-//     }
-
-//     // 2️⃣ Manual location (via manualCode)
-//     let manualLocation = null;
-//     if (manualCode) {
-//       manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('city state location');
-//       if (manualLocation?.location?.coordinates) {
-//         if (!baseLocation) {
-//           baseLocation = manualLocation.location;
-//           mode = 'manual';
-//           effectiveRadius = null; // No radius limit for manual location
-//         } else {
-//           const check = await ManualAddress.aggregate([
-//             {
-//               $geoNear: {
-//                 near: baseLocation,
-//                 distanceField: 'distance',
-//                 spherical: true,
-//                 query: { uniqueCode: manualCode },
-//               },
-//             },
-//             { $project: { distance: 1 } },
-//           ]);
-
-//           const distance = check[0]?.distance || 0;
-//           if (distance > 100000) {
-//             mode = 'manual';
-//             baseLocation = manualLocation.location;
-//             effectiveRadius = null;
-//           }
-//         }
-//       }
-//     }
-
-//     // 3️⃣ Custom location from query params (lat, lng)
-//     if (lat && lng) {
-//       baseLocation = { type: 'Point', coordinates: [Number(lng), Number(lat)] };
-//       mode = 'custom';
-//       effectiveRadius = parsedRadius || 100000;
-//     }
-
-//     // 4️⃣ Fallback: Default location (center of India) with no radius for latest coupons
-//     if (!baseLocation) {
-//       baseLocation = { type: 'Point', coordinates: [78.9629, 20.5937] };
-//       mode = 'default';
-//       effectiveRadius = null; // No radius limit to show all active coupons
-//       sortByLatest = true; // Prioritize latest coupons
-//     }
-
-//     // 5️⃣ Build search regex (sanitize input)
-//     const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-
-//     // 6️⃣ Build match query for geoNear
-//     const geoQuery = {
-//       active: true,
-//       $or: [
-//         { validTill: { $gt: new Date() } },
-//         { validTill: null },
-//       ],
-//       ...(categoryId ? { category: categoryId } : {}), // Use validated categoryId
-//     };
-
-//     // 7️⃣ Build aggregation pipeline
-//     const dataPipeline = [
-//       // GeoNear as first stage with query
-//       {
-//         $geoNear: {
-//           near: baseLocation,
-//           distanceField: 'distance',
-//           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-//           spherical: true,
-//           key: 'shope_location',
-//           query: geoQuery,
-//         },
-//       },
-//       // Search filter
-//       ...(search.trim()
-//         ? [
-//           {
-//             $match: {
-//               $or: [
-//                 { manual_address: searchRegex },
-//                 { title: searchRegex },
-//                 { tag: { $elemMatch: { $regex: searchRegex } } },
-//               ],
-//             },
-//           },
-//         ]
-//         : []),
-//       // Lookup user coupon status (skip if no userId)
-//       ...(userId ? [
-//         {
-//           $lookup: {
-//             from: 'usercoupons',
-//             let: { couponId: '$_id' },
-//             pipeline: [
-//               {
-//                 $match: {
-//                   $expr: {
-//                     $and: [
-//                       { $eq: ['$couponId', '$$couponId'] },
-//                       { $eq: ['$userId', userId] },
-//                     ],
-//                   },
-//                 },
-//               },
-//               { $project: { status: 1, _id: 0 } },
-//             ],
-//             as: 'userStatus',
-//           },
-//         },
-//         { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-//         {
-//           $addFields: {
-//             displayTag: {
-//               $switch: {
-//                 branches: [
-//                   { case: { $eq: ['$userStatus.status', 'used'] }, then: 'Used' },
-//                   { case: { $eq: ['$userStatus.status', 'transferred'] }, then: 'Transferred' },
-//                   { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
-//                   { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
-//                 ],
-//                 default: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
-//               },
-//             },
-//           },
-//         },
-//       ] : [
-//         {
-//           $addFields: {
-//             displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
-//           },
-//         },
-//       ]),
-//       // Project necessary fields
-//       {
-//         $project: {
-//           title: 1,
-//           copuon_image: 1,  // use the actual field from schema
-
-
-//           manual_address: 1,
-//           coupon_srno: 1,
-//           discountPercentage: 1,
-//           validTill: 1,
-//           displayTag: 1,
-//           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
-//         },
-//       },
-//       // Sort by latest (validTill or createdAt) for default mode, else by distance
-//       { $sort: sortByLatest ? { validTill: -1, createdAt: -1 } : { distance: 1, validTill: -1 } },
-//       // Pagination
-//       { $skip: skip },
-//       { $limit: parsedLimit },
-//     ];
-
-//     const coupons = await Coupon.aggregate(dataPipeline);
-
-//     // 8️⃣ Count total for pagination
-//     const countPipeline = [
-//       {
-//         $geoNear: {
-//           near: baseLocation,
-//           distanceField: 'distance',
-//           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-//           spherical: true,
-//           key: 'shope_location',
-//           query: geoQuery,
-//         },
-//       },
-//       ...(search.trim()
-//         ? [
-//           {
-//             $match: {
-//               $or: [
-//                 { manual_address: searchRegex },
-//                 { title: searchRegex },
-//                 { tag: { $elemMatch: { $regex: searchRegex } } },
-//               ],
-//             },
-//           },
-//         ]
-//         : []),
-//       { $count: 'total' },
-//     ];
-
-//     const totalResult = await Coupon.aggregate(countPipeline);
-//     const total = totalResult[0]?.total || 0;
-
-//     // 9️⃣ Send response
-//     res.status(200).json({
-//       success: true,
-//       mode,
-//       data: coupons,
-//       page: parsedPage,
-//       limit: parsedLimit,
-//       total,
-//       pages: Math.ceil(total / parsedLimit),
-//     });
-//   } catch (error) {
-//     console.error('Error fetching coupons:', error);
-//     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
-//   }
-// };
 
 
 // export const getAllCouponsWithStatusTag = async (req, res) => {
@@ -1453,7 +941,7 @@ const toggleActive = async (req, res) => {
 //         if (!baseLocation) {
 //           baseLocation = manualLocation.location;
 //           mode = 'manual';
-//           effectiveRadius = null;
+//           effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
 //         } else {
 //           const check = await ManualAddress.aggregate([
 //             {
@@ -1471,7 +959,7 @@ const toggleActive = async (req, res) => {
 //           if (distance > 100000) {
 //             mode = 'manual';
 //             baseLocation = manualLocation.location;
-//             effectiveRadius = null;
+//             effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
 //           }
 //         }
 //       }
@@ -1527,80 +1015,79 @@ const toggleActive = async (req, res) => {
 //         : []),
 //       ...(userId
 //         ? [
-//             {
-//               $lookup: {
-//                 from: 'usercoupons',
-//                 let: { couponId: '$_id' },
-//                 pipeline: [
-//                   {
-//                     $match: {
-//                       $expr: {
-//                         $and: [
-//                           { $eq: ['$couponId', '$$couponId'] },
-//                           { $eq: ['$userId', userId] },
-//                         ],
-//                       },
+//           {
+//             $lookup: {
+//               from: 'usercoupons',
+//               let: { couponId: '$_id' },
+//               pipeline: [
+//                 {
+//                   $match: {
+//                     $expr: {
+//                       $and: [
+//                         { $eq: ['$couponId', '$$couponId'] },
+//                         { $eq: ['$userId', userId] },
+//                       ],
 //                     },
 //                   },
-//                   { $project: { status: 1, _id: 0 } },
-//                 ],
-//                 as: 'userStatus',
-//               },
+//                 },
+//                 { $project: { status: 1, _id: 0 } },
+//               ],
+//               as: 'userStatus',
 //             },
-//             { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-//             // Include coupons that are active OR have a user status of 'used' or 'transferred'
-//             {
-//               $match: {
-//                 $or: [
-//                   {
-//                     active: true,
-//                     $or: [
-//                       { validTill: { $gt: new Date() } },
-//                       { validTill: null },
-//                     ],
-//                   },
-//                   { 'userStatus.status': { $in: ['used', 'transferred'] } },
-//                 ],
-//               },
+//           },
+//           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+//           // Only include active coupons that are not used or transferred
+//           {
+//             $match: {
+//               active: true,
+//               $or: [
+//                 { validTill: { $gt: new Date() } },
+//                 { validTill: null },
+//               ],
+//               $or: [
+//                 { userStatus: { $exists: false } }, // Coupons not claimed by the user
+//                 { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
+//               ],
 //             },
-//             {
-//               $addFields: {
-//                 displayTag: {
-//                   $switch: {
-//                     branches: [
-//                       { case: { $eq: ['$userStatus.status', 'used'] }, then: 'Used' },
-//                       { case: { $eq: ['$userStatus.status', 'transferred'] }, then: 'Transferred' },
-//                       { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
-//                       { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
-//                     ],
-//                     default: { $ifNull: 'Not Claimed'},
-//                   },
+//           },
+//           {
+//             $addFields: {
+//               displayTag: {
+//                 $switch: {
+//                   branches: [
+//                     { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
+//                     { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
+//                   ],
+//                   default: 'Available',
 //                 },
 //               },
 //             },
-//           ]
+//           },
+//         ]
 //         : [
-//             {
-//               $match: {
-//                 active: true,
-//                 $or: [
-//                   { validTill: { $gt: new Date() } },
-//                   { validTill: null },
-//                 ],
-//               },
+//           {
+//             $match: {
+//               active: true,
+//               $or: [
+//                 { validTill: { $gt: new Date() } },
+//                 { validTill: null },
+//               ],
 //             },
-//             {
-//               $addFields: {
-//                 displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Not Claimed'] },
-//               },
+//           },
+//           {
+//             $addFields: {
+//               displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
 //             },
-//           ]),
+//           },
+//         ]),
 //       {
 //         $project: {
 //           title: 1,
+//           shop_name: 1,
 //           copuon_image: 1,
 //           manual_address: 1,
 //           copuon_srno: 1,
+//           coupon_color: 1,
 //           discountPercentage: 1,
 //           validTill: 1,
 //           displayTag: 1,
@@ -1641,53 +1128,52 @@ const toggleActive = async (req, res) => {
 //         : []),
 //       ...(userId
 //         ? [
-//             {
-//               $lookup: {
-//                 from: 'usercoupons',
-//                 let: { couponId: '$_id' },
-//                 pipeline: [
-//                   {
-//                     $match: {
-//                       $expr: {
-//                         $and: [
-//                           { $eq: ['$couponId', '$$couponId'] },
-//                           { $eq: ['$userId', userId] },
-//                         ],
-//                       },
+//           {
+//             $lookup: {
+//               from: 'usercoupons',
+//               let: { couponId: '$_id' },
+//               pipeline: [
+//                 {
+//                   $match: {
+//                     $expr: {
+//                       $and: [
+//                         { $eq: ['$couponId', '$$couponId'] },
+//                         { $eq: ['$userId', userId] },
+//                       ],
 //                     },
 //                   },
-//                   { $project: { status: 1, _id: 0 } },
-//                 ],
-//                 as: 'userStatus',
-//               },
+//                 },
+//                 { $project: { status: 1, _id: 0 } },
+//               ],
+//               as: 'userStatus',
 //             },
-//             { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-//             {
-//               $match: {
-//                 $or: [
-//                   {
-//                     active: true,
-//                     $or: [
-//                       { validTill: { $gt: new Date() } },
-//                       { validTill: null },
-//                     ],
-//                   },
-//                   { 'userStatus.status': { $in: ['used', 'transferred'] } },
-//                 ],
-//               },
+//           },
+//           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+//           {
+//             $match: {
+//               active: true,
+//               $or: [
+//                 { validTill: { $gt: new Date() } },
+//                 { validTill: null },
+//               ],
+//               $or: [
+//                 { userStatus: { $exists: false } }, // Coupons not claimed by the user
+//                 { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
+//               ],
 //             },
-//           ]
+//           },
+//         ]
 //         : [
-//             {
-//               $match: {
-//                 active: true,
-//                 $or: [
-//                   { validTill: { $gt: new Date() } },
-//                   { validTill: null },
-//                 ],
-//               },
+//           {
+//             $match: {
+//               active: true,
+//               $or: [
+//                 { validTill: { $gt: new Date() } },
+//                 { validTill: null },
+//               ],
 //             },
-//           ]),
+//           },
+//         ]),
 //       { $count: 'total' },
 //     ];
 
@@ -1708,7 +1194,6 @@ const toggleActive = async (req, res) => {
 //     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
 //   }
 // };
-
 
 
 export const getAllCouponsWithStatusTag = async (req, res) => {
@@ -1777,7 +1262,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         if (!baseLocation) {
           baseLocation = manualLocation.location;
           mode = 'manual';
-          effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
+          effectiveRadius = parsedRadius;
         } else {
           const check = await ManualAddress.aggregate([
             {
@@ -1795,7 +1280,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           if (distance > 100000) {
             mode = 'manual';
             baseLocation = manualLocation.location;
-            effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
+            effectiveRadius = parsedRadius;
           }
         }
       }
@@ -1866,13 +1351,13 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                     },
                   },
                 },
-                { $project: { status: 1, _id: 0 } },
+                { $project: { status: 1, count: 1, _id: 0 } }, // Include count in projection
               ],
               as: 'userStatus',
             },
           },
           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-          // Only include active coupons that are not used or transferred
+          // Only include active coupons that are not used or transferred and have count > 0
           {
             $match: {
               active: true,
@@ -1882,12 +1367,19 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               ],
               $or: [
                 { userStatus: { $exists: false } }, // Coupons not claimed by the user
-                { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
+                {
+                  $and: [
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                    { 'userStatus.count': { $gte: 1 } }, // Only include if count >= 1
+                  ],
+                },
               ],
             },
           },
+          // Add count field, default to 1 if no userStatus
           {
             $addFields: {
+              couponCount: { $ifNull: ['$userStatus.count', 1] },
               displayTag: {
                 $switch: {
                   branches: [
@@ -1899,6 +1391,14 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               },
             },
           },
+          // Generate an array based on count to repeat documents
+          {
+            $addFields: {
+              repeatArray: { $range: [0, '$couponCount'] },
+            },
+          },
+          // Unwind the repeatArray to duplicate documents
+          { $unwind: '$repeatArray' },
         ]
         : [
           {
@@ -1913,6 +1413,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           {
             $addFields: {
               displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
+              couponCount: 1, // Default to 1 for guests
             },
           },
         ]),
@@ -1979,7 +1480,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                     },
                   },
                 },
-                { $project: { status: 1, _id: 0 } },
+                { $project: { status: 1, count: 1, _id: 0 } },
               ],
               as: 'userStatus',
             },
@@ -1994,8 +1495,20 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               ],
               $or: [
                 { userStatus: { $exists: false } }, // Coupons not claimed by the user
-                { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
+                {
+                  $and: [
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                    { 'userStatus.count': { $gte: 1 } }, // Only include if count >= 1
+                  ],
+                },
               ],
+            },
+          },
+          // Sum the count values to get total number of coupons
+          {
+            $group: {
+              _id: null,
+              total: { $sum: { $ifNull: ['$userStatus.count', 1] } },
             },
           },
         ]
@@ -2009,8 +1522,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               ],
             },
           },
+          { $count: 'total' },
         ]),
-      { $count: 'total' },
     ];
 
     const totalResult = await Coupon.aggregate(countPipeline);
@@ -2030,6 +1543,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
+
 
 export const transferCoupon = async (req, res) => {
   const session = await mongoose.startSession();
