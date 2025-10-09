@@ -1839,6 +1839,10 @@ export const transferCoupon = async (req, res) => {
       throw new Error("Cannot transfer coupon to yourself");
     }
 
+    // Generate a unique transaction ID for tracking
+    const transactionId = `txn-${couponId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`Initiating transaction: ${transactionId}`);
+
     // Fetch sender, receiver, and coupon with session
     const [sender, receiver, coupon] = await Promise.all([
       User.findById(senderId).session(session),
@@ -1889,6 +1893,18 @@ export const transferCoupon = async (req, res) => {
       throw new Error("Receiver already has this coupon");
     }
 
+    // Check for in-process transactions (optional, based on your context)
+    const inProcessTransaction = await Salses.findOne({
+      couponId,
+      userId: { $in: [senderId, receiverId] },
+      status: 'in-process',
+    }).session(session);
+
+    if (inProcessTransaction) {
+      console.log(`Found in-process transaction: ${inProcessTransaction._id}`);
+      throw new Error(`An in-process transaction exists for this coupon: ${inProcessTransaction._id}`);
+    }
+
     // Fetch sender's coupon
     let senderCoupon = await UserCoupon.findOne({ userId: senderId, couponId }).session(session);
 
@@ -1897,7 +1913,6 @@ export const transferCoupon = async (req, res) => {
 
     // Handle sender's coupon
     if (!senderCoupon) {
-      // If sender doesn't have a UserCoupon entry, create one with status 'transferred'
       senderCoupon = new UserCoupon({
         couponId,
         userId: senderId,
@@ -1905,14 +1920,15 @@ export const transferCoupon = async (req, res) => {
         transferredTo: receiverId,
         transferDate: new Date(),
         count: 0,
+        transactionId, // Store transaction ID
       });
       await senderCoupon.save({ session });
     } else if (senderCoupon.status === 'available' && senderCoupon.count > 0) {
-      // Decrement sender's coupon count
       senderCoupon.count -= 1;
       senderCoupon.status = senderCoupon.count === 0 ? 'transferred' : 'available';
       senderCoupon.transferredTo = receiverId;
       senderCoupon.transferDate = new Date();
+      senderCoupon.transactionId = transactionId; // Store transaction ID
       await senderCoupon.save({ session });
     } else {
       throw new Error("Sender does not have an available coupon to transfer");
@@ -1922,14 +1938,13 @@ export const transferCoupon = async (req, res) => {
     let receiverUserCoupon = await UserCoupon.findOne({ userId: receiverId, couponId }).session(session);
 
     if (receiverUserCoupon) {
-      // If receiver has a used coupon, update it to available and increment count
       receiverUserCoupon.status = 'available';
       receiverUserCoupon.count += 1;
       receiverUserCoupon.senders.push({ senderId, sentAt: new Date() });
       receiverUserCoupon.qrCode = qrCode;
+      receiverUserCoupon.transactionId = transactionId; // Store transaction ID
       await receiverUserCoupon.save({ session });
     } else {
-      // Create new UserCoupon for receiver
       const newUserCoupon = new UserCoupon({
         couponId,
         userId: receiverId,
@@ -1937,6 +1952,7 @@ export const transferCoupon = async (req, res) => {
         senders: [{ senderId, sentAt: new Date() }],
         count: 1,
         qrCode,
+        transactionId, // Store transaction ID
       });
       await newUserCoupon.save({ session });
     }
@@ -1953,16 +1969,23 @@ export const transferCoupon = async (req, res) => {
     coupon.currentDistributions += 1;
     await coupon.save({ session });
 
+    // Log successful transaction
+    console.log(`Transaction ${transactionId} committed successfully`);
+
     await session.commitTransaction();
-    return res.status(200).json({ success: true, message: "Coupon transferred" });
+    return res.status(200).json({
+      success: true,
+      message: "Coupon transferred",
+      transactionId,
+    });
   } catch (error) {
     await session.abortTransaction();
+    console.error(`Transaction failed: ${error.message}`);
     return res.status(400).json({ success: false, message: error.message });
   } finally {
     session.endSession();
   }
 };
-
 
 export const claimCoupon = async (req, res) => {
   try {

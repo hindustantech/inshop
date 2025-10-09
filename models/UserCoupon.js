@@ -38,7 +38,13 @@ const userCouponSchema = new mongoose.Schema({
     },
     qrScanDate: {
         type: Date
-    }
+    },
+    transactionId: {
+        // Added to track the transaction
+        type: String,
+        unique: true,
+        sparse: true, // Allows null values for non-transferred coupons
+    },
 }, { timestamps: true });
 
 const UserCoupon = mongoose.model('UserCoupon', userCouponSchema);
