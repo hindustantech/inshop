@@ -1960,9 +1960,9 @@ export const claimCoupon = async (req, res) => {
       if (userCoupon.status === "used") {
         return res.status(400).json({ success: false, message: "Coupon already fully used" });
       }
-      if (["cancelled", "transferred"].includes(userCoupon.status)) {
-        return res.status(400).json({ success: false, message: `Coupon already ${userCoupon.status}` });
-      }
+      // if (["cancelled", "transferred"].includes(userCoupon.status)) {
+      //   return res.status(400).json({ success: false, message: `Coupon already ${userCoupon.status}` });
+      // }
 
       // If available → reduce count
       if (userCoupon.status === "available") {
