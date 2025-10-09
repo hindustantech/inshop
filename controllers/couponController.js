@@ -1642,15 +1642,13 @@ export const transferCoupon = async (req, res) => {
       throw new Error("Receiver already used coupon twice");
     }
 
-    const receiverAvailableCoupon = await UserCoupon.findOne({
+    let receiverAvailableCoupon = await UserCoupon.findOne({
       userId: receiverId,
       couponId,
       status: 'available'
     }).session(session);
 
-    // if (receiverAvailableCoupon) {
-    //   throw new Error("Receiver already has this coupon");
-    // }
+    
 
     let senderCoupon = await UserCoupon.findOne({ userId: senderId, couponId }).session(session);
     let receiverUsedCoupon = await UserCoupon.findOne({ userId: receiverId, couponId }).session(session);
@@ -1681,7 +1679,14 @@ export const transferCoupon = async (req, res) => {
       receiverUsedCoupon.count += 1;
       receiverUsedCoupon.qrCode = qrCode;
       await receiverUsedCoupon.save({ session });
-    } else {
+
+    } else if (receiverAvailableCoupon && receiverUsedCoupon.status === 'available') {
+      receiverUsedCoupon.senders.push({ senderId, sentAt: new Date() });
+      receiverUsedCoupon.count += 1;
+      receiverUsedCoupon.qrCode = qrCode;
+      await receiverUsedCoupon.save({ session });
+    }
+    else {
       const newUserCoupon = new UserCoupon({
         couponId,
         userId: receiverId,
