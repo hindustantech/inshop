@@ -1754,7 +1754,14 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           validTill: 1,
           tag: 1,
           distance: 1,
-          createdAt: 1, // Needed if sortByLatest
+          createdAt: 1,
+          userStatus: 0, // This causes the error
+          repeatArray: 0,
+          instanceIndex: 0,
+          baseDisplayTag: 0,
+          distance: 0,
+          createdAt: 0,
+          tag: 0, // Needed if sortByLatest
         },
       },
     ];
