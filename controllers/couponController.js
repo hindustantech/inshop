@@ -1648,9 +1648,9 @@ export const transferCoupon = async (req, res) => {
       status: 'available'
     }).session(session);
 
-    if (receiverAvailableCoupon) {
-      throw new Error("Receiver already has this coupon");
-    }
+    // if (receiverAvailableCoupon) {
+    //   throw new Error("Receiver already has this coupon");
+    // }
 
     let senderCoupon = await UserCoupon.findOne({ userId: senderId, couponId }).session(session);
     let receiverUsedCoupon = await UserCoupon.findOne({ userId: receiverId, couponId }).session(session);
