@@ -1708,7 +1708,7 @@ export const transferCoupon = async (req, res) => {
         userId: receiverId,
         status: 'available',
         senders: [{ senderId, sentAt: new Date() }],
-        count: 2,
+        count: 1,
         qrCode
       });
       await newUserCoupon.save({ session });
@@ -1719,7 +1719,7 @@ export const transferCoupon = async (req, res) => {
         userId: receiverId,
         status: 'available',
         senders: [{ senderId, sentAt: new Date() }],
-        count: 1,
+        count: 2,
         qrCode
       });
       await newUserCoupon.save({ session });
