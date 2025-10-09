@@ -2085,7 +2085,7 @@ export const completeSale = async (req, res) => {
   try {
     const { saleId, total, final, discount } = req.body;
 
-    if (!saleId || !totalAmount) {
+    if (!saleId || !total) {
       return res.status(400).json({ success: false, message: "Sale ID and total amount are required" });
     }
 
