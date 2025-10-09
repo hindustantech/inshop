@@ -6,7 +6,7 @@ import Banner from "../models/Banner.js";
 import ManualAddress from "../models/ManualAddress.js";
 import UserCoupon from '../models/UserCoupon.js';
 import Salses from '../models/Sales.js'
-import ReferralUsage from "../models/ReferralUsage.js";
+
 // 1️⃣ Create a new Ad
 export const createAd = async (req, res) => {
   try {
@@ -191,26 +191,29 @@ export const getBannersByLocation = async (req, res) => {
 };
 
 
+
+
 export const getAdUserCityByCopunWithGeo = async (req, res) => {
   try {
-    // 1️⃣ Validate user ID
+    // Determine user ID (null for guests)
     let userId = null;
     if (req.user?.id && mongoose.isValidObjectId(req.user.id)) {
       userId = new mongoose.Types.ObjectId(req.user.id);
     }
 
-    // 2️⃣ Parse and validate query parameters
-    const {
-      radius = 100000,
-      search = '',
-      page = 1,
-      limit = 50,
-      manualCode,
-      lat,
-      lng,
-      promotion,
+    // Validate query parameters
+    const { 
+      radius = 100000, 
+      search = '', 
+      page = 1, 
+      limit = 50, 
+      manualCode, 
+      lat, 
+      lng, 
+      category,
+      promotion // New promotion filter parameter
     } = req.query;
-
+    
     const parsedPage = parseInt(page);
     const parsedLimit = parseInt(limit);
     const parsedRadius = parseInt(radius);
@@ -221,94 +224,103 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
       return res.status(400).json({ success: false, message: 'Invalid limit, must be between 1 and 100' });
     }
-    if (
-      (lat && (isNaN(Number(lat)) || Number(lat) < -90 || Number(lat) > 90)) ||
-      (lng && (isNaN(Number(lng)) || Number(lng) < -180 || Number(lng) > 180))
-    ) {
-      return res.status(400).json({ success: false, message: 'Invalid latitude (-90 to 90) or longitude (-180 to 180)' });
+    if ((lat && isNaN(Number(lat))) || (lng && isNaN(Number(lng)))) {
+      return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
     }
     if (isNaN(parsedRadius) || parsedRadius < 0) {
       return res.status(400).json({ success: false, message: 'Invalid radius' });
     }
 
-    // 3️⃣ Validate promotion IDs
-    let promotionFilter = null;
-    if (promotion) {
-      const promotionIds = Array.isArray(promotion) ? promotion : [promotion];
-      const invalidIds = promotionIds.filter((id) => !mongoose.isValidObjectId(id));
-      if (invalidIds.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid promotion ID(s): ${invalidIds.join(', ')}`,
-        });
+    // Enhanced category validation
+    let categoryFilter = null;
+    if (category) {
+      const categoryIds = Array.isArray(category) ? category : category.split(',');
+      const validIds = categoryIds.filter(id => mongoose.isValidObjectId(id));
+      if (validIds.length !== categoryIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more invalid category IDs' });
       }
-      const ads = await Ad.find({ _id: { $in: promotionIds.map((id) => new mongoose.Types.ObjectId(id)) } })
-        .select('_id')
-        .lean();
-      if (ads.length !== promotionIds.length) {
-        return res.status(400).json({
-          success: false,
-          message: `One or more promotion IDs not found`,
-        });
+      const foundCategories = await Category.find({ _id: { $in: validIds } }).select('_id');
+      if (foundCategories.length !== validIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more categories not found' });
       }
-      promotionFilter = { $in: promotionIds.map((id) => new mongoose.Types.ObjectId(id)) };
+      categoryFilter = { $in: validIds.map(id => new mongoose.Types.ObjectId(id)) };
     }
 
-    // 4️⃣ Determine base location and mode
-    let baseLocation = null;
+    // Promotion filter validation and setup
+    let promotionFilter = null;
+    if (promotion) {
+      const promotionIds = Array.isArray(promotion) ? promotion : promotion.split(',');
+      const validPromotionIds = promotionIds.filter(id => mongoose.isValidObjectId(id));
+      
+      if (validPromotionIds.length !== promotionIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more invalid promotion IDs' });
+      }
+      
+      // Verify that the promotion IDs exist in the Ad collection
+      const foundPromotions = await Ad.find({ _id: { $in: validPromotionIds } }).select('_id');
+      if (foundPromotions.length !== validPromotionIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more promotions not found' });
+      }
+      
+      promotionFilter = { $in: validPromotionIds.map(id => new mongoose.Types.ObjectId(id)) };
+    }
+
+    const skip = (parsedPage - 1) * parsedLimit;
+
     let mode = userId ? 'user' : 'guest';
+    let baseLocation = null;
     let effectiveRadius = parsedRadius;
     let sortByLatest = false;
 
-    // Logged-in user location
+    // 1️⃣ Logged-in user: Get latestLocation
     if (userId) {
-      const user = await User.findById(userId).select('latestLocation').lean();
-      if (user?.latestLocation?.coordinates?.length === 2 && user.latestLocation.coordinates[0] !== 0 && user.latestLocation.coordinates[1] !== 0) {
+      const user = await User.findById(userId).select('latestLocation');
+      if (user?.latestLocation?.coordinates && user.latestLocation.coordinates[0] !== 0 && user.latestLocation.coordinates[1] !== 0) {
         const [userLng, userLat] = user.latestLocation.coordinates;
         baseLocation = { type: 'Point', coordinates: [userLng, userLat] };
       }
     }
 
-    // Manual location with distance check
+    // 2️⃣ Manual location (via manualCode)
+    let manualLocation = null;
     if (manualCode) {
-      const manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode, isActive: true })
-        .select('location')
-        .lean();
+      manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('city state location');
       if (manualLocation?.location?.coordinates) {
         if (!baseLocation) {
           baseLocation = manualLocation.location;
           mode = 'manual';
+          effectiveRadius = parsedRadius;
         } else {
-          const [check] = await ManualAddress.aggregate([
+          const check = await ManualAddress.aggregate([
             {
               $geoNear: {
                 near: baseLocation,
                 distanceField: 'distance',
                 spherical: true,
-                query: { uniqueCode: manualCode, isActive: true },
+                query: { uniqueCode: manualCode },
               },
             },
             { $project: { distance: 1 } },
           ]);
-          const distance = check?.distance || 0;
+
+          const distance = check[0]?.distance || 0;
           if (distance > 100000) {
-            baseLocation = manualLocation.location;
             mode = 'manual';
+            baseLocation = manualLocation.location;
+            effectiveRadius = parsedRadius;
           }
         }
-      } else {
-        return res.status(400).json({ success: false, message: 'Invalid or inactive manual code' });
       }
     }
 
-    // Query-based custom location
+    // 3️⃣ Custom location from query params (lat, lng)
     if (lat && lng) {
       baseLocation = { type: 'Point', coordinates: [Number(lng), Number(lat)] };
       mode = 'custom';
-      effectiveRadius = parsedRadius;
+      effectiveRadius = parsedRadius || 100000;
     }
 
-    // Default fallback (center of India, no radius for latest coupons)
+    // 4️⃣ Fallback: Default location (center of India) with no radius for latest coupons
     if (!baseLocation) {
       baseLocation = { type: 'Point', coordinates: [78.9629, 20.5937] };
       mode = 'default';
@@ -316,39 +328,36 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       sortByLatest = true;
     }
 
-    // 5️⃣ Build search regex with sanitization
-    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const searchRegex = new RegExp(escapedSearch, 'i');
+    // 5️⃣ Build search regex
+    const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-    // 6️⃣ Get referred users for special coupons (if logged-in)
+    // 6️⃣ Get referred users for the logged-in user (if applicable)
     let referredUserIds = [];
     if (userId) {
+      // Find users who were referred by special coupon users
       const specialCouponUsers = await Coupon.find({ is_spacial_copun: true })
-        .distinct('is_spacial_copun_user')
-        .lean();
+        .distinct('is_spacial_copun_user');
       const referralUsages = await ReferralUsage.find({
         referrerId: { $in: specialCouponUsers },
-      })
-        .distinct('referredUserId')
-        .lean();
-      referredUserIds = referralUsages.map((id) => new mongoose.Types.ObjectId(id));
+      }).distinct('referredUserId');
+      referredUserIds = referralUsages.map(id => new mongoose.Types.ObjectId(id));
     }
 
-    // 7️⃣ Build geo query with promotion filter
+    // 7️⃣ Build match query for geoNear
     const geoQuery = {
-      active: true,
+      ...(categoryFilter ? { category: categoryFilter } : {}),
       ...(promotionFilter ? { promotion: promotionFilter } : {}),
     };
 
-    // 8️⃣ Build aggregation pipeline with $facet for data and count
-    const pipeline = [
+    // 8️⃣ Build aggregation pipeline
+    const dataPipeline = [
       {
         $geoNear: {
           near: baseLocation,
           distanceField: 'distance',
           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
           spherical: true,
-          key: 'shop_location', // Fixed typo
+          key: 'shope_location',
           query: geoQuery,
         },
       },
@@ -371,12 +380,12 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
           {
             $match: {
               $or: [
-                { is_spacial_copun: false }, // Non-special coupons visible to all
+                { is_spacial_copun: false }, // Non-special coupons are visible to all
                 {
                   is_spacial_copun: true,
                   $or: [
                     { is_spacial_copun_user: userId }, // User is in special coupon user list
-                    { is_spacial_copun_user: { $in: referredUserIds } }, // User was referred
+                    { is_spacial_copun_user: { $in: referredUserIds } }, // User was referred by a special coupon user
                   ],
                 },
               ],
@@ -384,7 +393,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
           },
           {
             $lookup: {
-              from: 'usercoupons', // Assuming this collection exists
+              from: 'usercoupons',
               let: { couponId: '$_id' },
               pipeline: [
                 {
@@ -423,7 +432,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
           },
           {
             $addFields: {
-              couponCount: { $ifNull: ['$userStatus.count', '$couponCount'] }, // Use User.couponCount as fallback
+              couponCount: { $ifNull: ['$userStatus.count', 1] },
             },
           },
           {
@@ -456,39 +465,144 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
             },
           },
         ]),
+      // Add promotion lookup to get promotion details
       {
-        $facet: {
-          data: [
-            {
-              $project: {
-                title: 1,
-                shop_name: 1,
-                copuon_image: 1, // Note: Consider renaming to coupon_image
-                manual_address: 1,
-                coupon_srno: 1,
-                coupon_color: 1,
-                is_spacial_copun: 1, // Note: Consider renaming to is_special_coupon
-                isTransferable: 1,
-                discountPercentage: 1,
-                validTill: 1,
-                displayTag: 1,
-                distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
-              },
-            },
-            { $sort: sortByLatest ? { validTill: -1, createdAt: -1 } : { distance: 1, validTill: -1 } },
-            { $skip: (parsedPage - 1) * parsedLimit },
-            { $limit: parsedLimit },
-          ],
-          count: [{ $count: 'total' }],
+        $lookup: {
+          from: 'ads',
+          localField: 'promotion',
+          foreignField: '_id',
+          as: 'promotionDetails'
+        }
+      },
+      {
+        $project: {
+          title: 1,
+          shop_name: 1,
+          copuon_image: 1,
+          manual_address: 1,
+          copuon_srno: 1,
+          coupon_color: 1,
+          is_spacial_copun: 1,
+          isTransferable: 1,
+          discountPercentage: 1,
+          validTill: 1,
+          displayTag: 1,
+          distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
+          promotion: 1,
+          promotionDetails: {
+            name: 1,
+            desc: 1
+          },
         },
       },
+      { $sort: sortByLatest ? { validTill: -1, createdAt: -1 } : { distance: 1, validTill: -1 } },
+      { $skip: skip },
+      { $limit: parsedLimit },
     ];
 
-    const [result] = await Coupon.aggregate(pipeline);
-    const coupons = result.data || [];
-    const total = result.count[0]?.total || 0;
+    const coupons = await Coupon.aggregate(dataPipeline);
 
-    // 9️⃣ Return response
+    // 9️⃣ Count pipeline
+    const countPipeline = [
+      {
+        $geoNear: {
+          near: baseLocation,
+          distanceField: 'distance',
+          ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+          spherical: true,
+          key: 'shope_location',
+          query: geoQuery,
+        },
+      },
+      ...(search.trim()
+        ? [
+          {
+            $match: {
+              $or: [
+                { manual_address: searchRegex },
+                { title: searchRegex },
+                { tag: { $elemMatch: { $regex: searchRegex } } },
+              ],
+            },
+          },
+        ]
+        : []),
+      ...(userId
+        ? [
+          // Filter for special coupons
+          {
+            $match: {
+              $or: [
+                { is_spacial_copun: false },
+                {
+                  is_spacial_copun: true,
+                  $or: [
+                    { is_spacial_copun_user: userId },
+                    { is_spacial_copun_user: { $in: referredUserIds } },
+                  ],
+                },
+              ],
+            },
+          },
+          {
+            $lookup: {
+              from: 'usercoupons',
+              let: { couponId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$couponId', '$$couponId'] },
+                        { $eq: ['$userId', userId] },
+                      ],
+                    },
+                  },
+                },
+                { $project: { status: 1, count: 1, _id: 0 } },
+              ],
+              as: 'userStatus',
+            },
+          },
+          { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+          {
+            $match: {
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+              $or: [
+                { userStatus: { $exists: false } },
+                {
+                  $and: [
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                    { 'userStatus.count': { $gte: 1 } },
+                  ],
+                },
+              ],
+            },
+          },
+          { $count: 'total' },
+        ]
+        : [
+          {
+            $match: {
+              is_spacial_copun: false,
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+            },
+          },
+          { $count: 'total' },
+        ]),
+    ];
+
+    const totalResult = await Coupon.aggregate(countPipeline);
+    const total = totalResult[0]?.total || 0;
+
     res.status(200).json({
       success: true,
       mode,
@@ -497,15 +611,13 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       limit: parsedLimit,
       total,
       pages: Math.ceil(total / parsedLimit),
-      promotionFilter: promotionFilter ? promotionIds : 'all',
     });
   } catch (error) {
-    console.error('Error fetching coupons:', error.message);
-    const status = error.name === 'ValidationError' ? 400 : 500;
-    const message = error.name === 'ValidationError' ? error.message : 'Internal server error';
-    res.status(status).json({ success: false, message });
+    console.error('Error fetching coupons:', error);
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
+
 
 // export const getAdUserCityByCopunWithGeo = async (req, res) => {
 //   try {
