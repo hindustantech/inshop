@@ -11,6 +11,7 @@ import jwt from "jsonwebtoken";
 import QRCode from "qrcode";
 import admin from '../utils/firebaseadmin.js'
 import ReferralUsage from '../models/ReferralUsage.js';
+
 const statesAndUTs = [
   'Andhra Pradesh',
   'Arunachal Pradesh',
@@ -2150,7 +2151,7 @@ export const getSalesByCouponOwner = async (req, res) => {
       // 3️⃣ Join with User collection to get user details
       {
         $lookup: {
-          from: "User", // Updated to match the collection name from the schema
+          from: "users",
           localField: "userId",
           foreignField: "_id",
           as: "user"
