@@ -10,7 +10,7 @@ import { exportToCSV } from '../utils/exportcsv.js';
 import jwt from "jsonwebtoken";
 import QRCode from "qrcode";
 import admin from '../utils/firebaseadmin.js'
-
+import ReferralUsage from '../models/ReferralUsage.js';
 const statesAndUTs = [
   'Andhra Pradesh',
   'Arunachal Pradesh',
