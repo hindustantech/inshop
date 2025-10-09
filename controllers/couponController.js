@@ -1252,7 +1252,6 @@ const toggleActive = async (req, res) => {
 //   }
 // };
 
-
 export const getAllCouponsWithStatusTag = async (req, res) => {
   try {
     // Determine user ID (null for guests)
@@ -1408,7 +1407,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                     },
                   },
                 },
-                { $project: { status: 1, count: 1, _id: 0 } }, // Include count in projection
+                { $project: { status: 1, count: 1, _id: 0 } },
               ],
               as: 'userStatus',
             },
@@ -1427,35 +1426,29 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 {
                   $and: [
                     { 'userStatus.status': { $nin: ['used', 'transferred'] } },
-                    { 'userStatus.count': { $gte: 1 } }, // Only include if count >= 1
+                    { 'userStatus.count': { $gte: 1 } },
                   ],
                 },
               ],
             },
           },
-          // Add count field, default to 1 if no userStatus
+          // Add fields for couponCount and formatted displayTag (e.g., "Available coupon: 1")
           {
             $addFields: {
               couponCount: { $ifNull: ['$userStatus.count', 1] },
+            },
+          },
+          {
+            $addFields: {
               displayTag: {
-                $switch: {
-                  branches: [
-                    { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
-                    { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
-                  ],
-                  default: 'Available',
+                $cond: {
+                  if: { $eq: ['$userStatus.status', 'cancelled'] },
+                  then: { $concat: ['Cancelled coupon: ', { $toString: '$couponCount' }] },
+                  else: { $concat: ['Available coupon: ', { $toString: '$couponCount' }] },
                 },
               },
             },
           },
-          // Generate an array based on count to repeat documents
-          {
-            $addFields: {
-              repeatArray: { $range: [0, '$couponCount'] },
-            },
-          },
-          // Unwind the repeatArray to duplicate documents
-          { $unwind: '$repeatArray' },
         ]
         : [
           {
@@ -1469,8 +1462,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           },
           {
             $addFields: {
-              displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
-              couponCount: 1, // Default to 1 for guests
+              displayTag: 'Available coupon: 1',
             },
           },
         ]),
@@ -1497,7 +1489,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     const coupons = await Coupon.aggregate(dataPipeline);
 
-    // 8️⃣ Count pipeline
+    // 8️⃣ Count pipeline (now counts unique coupons, not summed instances)
     const countPipeline = [
       {
         $geoNear: {
@@ -1553,23 +1545,17 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 { validTill: null },
               ],
               $or: [
-                { userStatus: { $exists: false } }, // Coupons not claimed by the user
+                { userStatus: { $exists: false } },
                 {
                   $and: [
                     { 'userStatus.status': { $nin: ['used', 'transferred'] } },
-                    { 'userStatus.count': { $gte: 1 } }, // Only include if count >= 1
+                    { 'userStatus.count': { $gte: 1 } },
                   ],
                 },
               ],
             },
           },
-          // Sum the count values to get total number of coupons
-          {
-            $group: {
-              _id: null,
-              total: { $sum: { $ifNull: ['$userStatus.count', 1] } },
-            },
-          },
+          { $count: 'total' },
         ]
         : [
           {
