@@ -5,9 +5,9 @@ const couponSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  shop_name:{
-    type:String,
-    require:true,
+  shop_name: {
+    type: String,
+    require: true,
   },
   createdby: {
     type: mongoose.Schema.Types.ObjectId, // references id from another table
@@ -132,10 +132,18 @@ const couponSchema = new mongoose.Schema({
     type: String,
     required: true // इसको fill करना जरूरी होगा
   },
-  is_spacial_copun: {  
+  is_spacial_copun: {
     type: Boolean,
     default: false, //if false  then not a spcical copun
   },
+  is_spacial_copun_user: [
+    {
+      type: mongoose.Schema.Types.ObjectId, // references id from another table
+      ref: 'User', // assuming you have an 'Owner' model or similar
+      required: true
+    }
+  ],
+
   isTransferable: {
     type: Boolean,
     default: false // Default: not transferable

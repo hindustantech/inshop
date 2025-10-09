@@ -998,7 +998,7 @@ const toggleActive = async (req, res) => {
 //         if (!baseLocation) {
 //           baseLocation = manualLocation.location;
 //           mode = 'manual';
-//           effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
+//           effectiveRadius = parsedRadius;
 //         } else {
 //           const check = await ManualAddress.aggregate([
 //             {
@@ -1016,7 +1016,7 @@ const toggleActive = async (req, res) => {
 //           if (distance > 100000) {
 //             mode = 'manual';
 //             baseLocation = manualLocation.location;
-//             effectiveRadius = parsedRadius; // ✅ FIX: Use the parsed radius instead of null
+//             effectiveRadius = parsedRadius;
 //           }
 //         }
 //       }
@@ -1087,13 +1087,13 @@ const toggleActive = async (req, res) => {
 //                     },
 //                   },
 //                 },
-//                 { $project: { status: 1, _id: 0 } },
+//                 { $project: { status: 1, count: 1, _id: 0 } },
 //               ],
 //               as: 'userStatus',
 //             },
 //           },
 //           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-//           // Only include active coupons that are not used or transferred
+//           // Only include active coupons that are not used or transferred and have count > 0
 //           {
 //             $match: {
 //               active: true,
@@ -1103,19 +1103,28 @@ const toggleActive = async (req, res) => {
 //               ],
 //               $or: [
 //                 { userStatus: { $exists: false } }, // Coupons not claimed by the user
-//                 { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
+//                 {
+//                   $and: [
+//                     { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+//                     { 'userStatus.count': { $gte: 1 } },
+//                   ],
+//                 },
 //               ],
+//             },
+//           },
+//           // Add fields for couponCount and formatted displayTag (e.g., "Available coupon: 1")
+//           {
+//             $addFields: {
+//               couponCount: { $ifNull: ['$userStatus.count', 1] },
 //             },
 //           },
 //           {
 //             $addFields: {
 //               displayTag: {
-//                 $switch: {
-//                   branches: [
-//                     { case: { $eq: ['$userStatus.status', 'available'] }, then: 'Available' },
-//                     { case: { $eq: ['$userStatus.status', 'cancelled'] }, then: 'Cancelled' },
-//                   ],
-//                   default: 'Available',
+//                 $cond: {
+//                   if: { $eq: ['$userStatus.status', 'cancelled'] },
+//                   then: { $concat: ['Cancelled: ', { $toString: '$couponCount' }] },
+//                   else: { $concat: ['Available: ', { $toString: '$couponCount' }] },
 //                 },
 //               },
 //             },
@@ -1133,7 +1142,7 @@ const toggleActive = async (req, res) => {
 //           },
 //           {
 //             $addFields: {
-//               displayTag: { $ifNull: [{ $arrayElemAt: ['$tag', 0] }, 'Available'] },
+//               displayTag: 'Available coupon: 1',
 //             },
 //           },
 //         ]),
@@ -1145,6 +1154,8 @@ const toggleActive = async (req, res) => {
 //           manual_address: 1,
 //           copuon_srno: 1,
 //           coupon_color: 1,
+//           is_spacial_copun: 1,
+//           isTransferable: 1,
 //           discountPercentage: 1,
 //           validTill: 1,
 //           displayTag: 1,
@@ -1158,7 +1169,7 @@ const toggleActive = async (req, res) => {
 
 //     const coupons = await Coupon.aggregate(dataPipeline);
 
-//     // 8️⃣ Count pipeline
+//     // 8️⃣ Count pipeline (now counts unique coupons, not summed instances)
 //     const countPipeline = [
 //       {
 //         $geoNear: {
@@ -1200,7 +1211,7 @@ const toggleActive = async (req, res) => {
 //                     },
 //                   },
 //                 },
-//                 { $project: { status: 1, _id: 0 } },
+//                 { $project: { status: 1, count: 1, _id: 0 } },
 //               ],
 //               as: 'userStatus',
 //             },
@@ -1214,11 +1225,17 @@ const toggleActive = async (req, res) => {
 //                 { validTill: null },
 //               ],
 //               $or: [
-//                 { userStatus: { $exists: false } }, // Coupons not claimed by the user
-//                 { 'userStatus.status': { $nin: ['used', 'transferred'] } }, // Exclude used or transferred
+//                 { userStatus: { $exists: false } },
+//                 {
+//                   $and: [
+//                     { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+//                     { 'userStatus.count': { $gte: 1 } },
+//                   ],
+//                 },
 //               ],
 //             },
 //           },
+//           { $count: 'total' },
 //         ]
 //         : [
 //           {
@@ -1230,8 +1247,8 @@ const toggleActive = async (req, res) => {
 //               ],
 //             },
 //           },
+//           { $count: 'total' },
 //         ]),
-//       { $count: 'total' },
 //     ];
 
 //     const totalResult = await Coupon.aggregate(countPipeline);
@@ -1251,6 +1268,7 @@ const toggleActive = async (req, res) => {
 //     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
 //   }
 // };
+
 
 export const getAllCouponsWithStatusTag = async (req, res) => {
   try {
@@ -1279,7 +1297,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid radius' });
     }
 
-    // Enhanced category validation (supports single or multiple IDs)
+    // Enhanced category validation
     let categoryFilter = null;
     if (category) {
       const categoryIds = Array.isArray(category) ? category : category.split(',');
@@ -1360,12 +1378,24 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     // 5️⃣ Build search regex
     const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-    // 6️⃣ Build match query for geoNear
+    // 6️⃣ Get referred users for the logged-in user (if applicable)
+    let referredUserIds = [];
+    if (userId) {
+      // Find users who were referred by special coupon users
+      const specialCouponUsers = await Coupon.find({ is_spacial_copun: true })
+        .distinct('is_spacial_copun_user');
+      const referralUsages = await ReferralUsage.find({
+        referrerId: { $in: specialCouponUsers },
+      }).distinct('referredUserId');
+      referredUserIds = referralUsages.map(id => new mongoose.Types.ObjectId(id));
+    }
+
+    // 7️⃣ Build match query for geoNear
     const geoQuery = {
       ...(categoryFilter ? { category: categoryFilter } : {}),
     };
 
-    // 7️⃣ Build aggregation pipeline
+    // 8️⃣ Build aggregation pipeline
     const dataPipeline = [
       {
         $geoNear: {
@@ -1392,6 +1422,21 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         : []),
       ...(userId
         ? [
+          // Filter for special coupons
+          {
+            $match: {
+              $or: [
+                { is_spacial_copun: false }, // Non-special coupons are visible to all
+                {
+                  is_spacial_copun: true,
+                  $or: [
+                    { is_spacial_copun_user: userId }, // User is in special coupon user list
+                    { is_spacial_copun_user: { $in: referredUserIds } }, // User was referred by a special coupon user
+                  ],
+                },
+              ],
+            },
+          },
           {
             $lookup: {
               from: 'usercoupons',
@@ -1413,7 +1458,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
             },
           },
           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-          // Only include active coupons that are not used or transferred and have count > 0
           {
             $match: {
               active: true,
@@ -1422,7 +1466,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 { validTill: null },
               ],
               $or: [
-                { userStatus: { $exists: false } }, // Coupons not claimed by the user
+                { userStatus: { $exists: false } },
                 {
                   $and: [
                     { 'userStatus.status': { $nin: ['used', 'transferred'] } },
@@ -1432,7 +1476,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               ],
             },
           },
-          // Add fields for couponCount and formatted displayTag (e.g., "Available coupon: 1")
           {
             $addFields: {
               couponCount: { $ifNull: ['$userStatus.count', 1] },
@@ -1451,8 +1494,10 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           },
         ]
         : [
+          // For guest users, only show non-special coupons
           {
             $match: {
+              is_spacial_copun: false,
               active: true,
               $or: [
                 { validTill: { $gt: new Date() } },
@@ -1489,7 +1534,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     const coupons = await Coupon.aggregate(dataPipeline);
 
-    // 8️⃣ Count pipeline (now counts unique coupons, not summed instances)
+    // 9️⃣ Count pipeline
     const countPipeline = [
       {
         $geoNear: {
@@ -1516,6 +1561,21 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         : []),
       ...(userId
         ? [
+          // Filter for special coupons
+          {
+            $match: {
+              $or: [
+                { is_spacial_copun: false },
+                {
+                  is_spacial_copun: true,
+                  $or: [
+                    { is_spacial_copun_user: userId },
+                    { is_spacial_copun_user: { $in: referredUserIds } },
+                  ],
+                },
+              ],
+            },
+          },
           {
             $lookup: {
               from: 'usercoupons',
@@ -1560,6 +1620,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         : [
           {
             $match: {
+              is_spacial_copun: false,
               active: true,
               $or: [
                 { validTill: { $gt: new Date() } },
@@ -1588,7 +1649,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
-
 
 export const transferCoupon = async (req, res) => {
   const session = await mongoose.startSession();
