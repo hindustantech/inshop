@@ -1631,6 +1631,7 @@ export const transferCoupon = async (req, res) => {
       throw new Error("Sender has insufficient coupon count");
     }
 
+
     // Check receiver coupon usage
     const usedCount = await Salses.countDocuments({
       couponId,
@@ -1654,21 +1655,20 @@ export const transferCoupon = async (req, res) => {
       status: 'transferred'
     }).session(session);
 
-    let senderTranferCoupon = await UserCoupon.findOne({
-      userId: receiverId,
-      couponId,
-      status: 'transferred'
-    }).session(session);
-
-    let senderAvailableCoupon = await UserCoupon.findOne({
-      userId: receiverId,
-      couponId,
-      status: 'available'
-    }).session(session);
-
 
 
     let senderCoupon = await UserCoupon.findOne({ userId: senderId, couponId }).session(session);
+    let senderTranferCoupon = await UserCoupon.findOne({
+      userId: receiverId,
+      couponId,
+      senders: { $elemMatch: { senderId: senderId } }
+    }).session(session)
+    
+    if (senderTranferCoupon) {
+
+      throw new Error("Sender Can not ")
+    };
+
     let receiverUsedCoupon = await UserCoupon.findOne({ userId: receiverId, couponId }).session(session);
 
     const qrCode = `qr-${couponId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
