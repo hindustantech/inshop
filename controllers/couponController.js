@@ -1648,7 +1648,25 @@ export const transferCoupon = async (req, res) => {
       status: 'available'
     }).session(session);
 
-    
+    let reciverTranferCoupon = await UserCoupon.findOne({
+      userId: receiverId,
+      couponId,
+      status: 'transferred'
+    }).session(session);
+
+    let senderTranferCoupon = await UserCoupon.findOne({
+      userId: receiverId,
+      couponId,
+      status: 'transferred'
+    }).session(session);
+
+    let senderAvailableCoupon = await UserCoupon.findOne({
+      userId: receiverId,
+      couponId,
+      status: 'available'
+    }).session(session);
+
+
 
     let senderCoupon = await UserCoupon.findOne({ userId: senderId, couponId }).session(session);
     let receiverUsedCoupon = await UserCoupon.findOne({ userId: receiverId, couponId }).session(session);
@@ -1668,8 +1686,6 @@ export const transferCoupon = async (req, res) => {
       await senderCoupon.save({ session });
     } else if (senderCoupon.status === 'available') {
       senderCoupon.count -= 1;
-      senderCoupon.userId = receiverId;
-      senderCoupon.transferDate = new Date();
       await senderCoupon.save({ session });
     }
 
@@ -1686,13 +1702,24 @@ export const transferCoupon = async (req, res) => {
       receiverUsedCoupon.qrCode = qrCode;
       await receiverUsedCoupon.save({ session });
     }
-    else {
+    else if (reciverTranferCoupon) {
       const newUserCoupon = new UserCoupon({
         couponId,
         userId: receiverId,
         status: 'available',
         senders: [{ senderId, sentAt: new Date() }],
         count: 2,
+        qrCode
+      });
+      await newUserCoupon.save({ session });
+    }
+    else {
+      const newUserCoupon = new UserCoupon({
+        couponId,
+        userId: receiverId,
+        status: 'available',
+        senders: [{ senderId, sentAt: new Date() }],
+        count: 1,
         qrCode
       });
       await newUserCoupon.save({ session });
