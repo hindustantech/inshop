@@ -1590,127 +1590,127 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 };
 
 
-// export const transferCoupon = async (req, res) => {
-//   const session = await mongoose.startSession();
-//   try {
-//     session.startTransaction();
+export const transferCoupon = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
 
-//     const senderId = req.user._id;
-//     const { receiverId, couponId } = req.body;
+    const senderId = req.user._id;
+    const { receiverId, couponId } = req.body;
 
-//     if (!mongoose.Types.ObjectId.isValid(receiverId) || !mongoose.Types.ObjectId.isValid(couponId)) {
-//       throw new Error("Invalid receiver or coupon ID");
-//     }
+    if (!mongoose.Types.ObjectId.isValid(receiverId) || !mongoose.Types.ObjectId.isValid(couponId)) {
+      throw new Error("Invalid receiver or coupon ID");
+    }
 
-//     if (senderId.toString() === receiverId) {
-//       throw new Error("Cannot transfer coupon to yourself");
-//     }
+    if (senderId.toString() === receiverId) {
+      throw new Error("Cannot transfer coupon to yourself");
+    }
 
-//     // Fetch sequentially with session
-//     const sender = await User.findById(senderId).session(session);
-//     const receiver = await User.findById(receiverId).session(session);
-//     const coupon = await Coupon.findById(couponId).session(session);
+    // Fetch sequentially with session
+    const sender = await User.findById(senderId).session(session);
+    const receiver = await User.findById(receiverId).session(session);
+    const coupon = await Coupon.findById(couponId).session(session);
 
-//     if (!sender || !receiver || !coupon) {
-//       throw new Error("Sender, receiver, or coupon not found");
-//     }
+    if (!sender || !receiver || !coupon) {
+      throw new Error("Sender, receiver, or coupon not found");
+    }
 
-//     if (!coupon.active || (coupon.validTill && new Date(coupon.validTill) < new Date())) {
-//       throw new Error("Coupon is inactive or expired");
-//     }
+    if (!coupon.active || (coupon.validTill && new Date(coupon.validTill) < new Date())) {
+      throw new Error("Coupon is inactive or expired");
+    }
 
-//     if (coupon.is_spacial_copun || !coupon.isTransferable) {
-//       throw new Error("spacial coupon is not Transferable");
-//     }
+    if (coupon.is_spacial_copun || !coupon.isTransferable) {
+      throw new Error("spacial coupon is not Transferable");
+    }
 
-//     if (coupon.maxDistributions > 0 && coupon.currentDistributions >= coupon.maxDistributions) {
-//       throw new Error("Max distributions reached");
-//     }
+    if (coupon.maxDistributions > 0 && coupon.currentDistributions >= coupon.maxDistributions) {
+      throw new Error("Max distributions reached");
+    }
 
-//     if (sender.couponCount < 1) {
-//       throw new Error("Sender has insufficient coupon count");
-//     }
+    if (sender.couponCount < 1) {
+      throw new Error("Sender has insufficient coupon count");
+    }
 
-//     // Check receiver coupon usage
-//     const usedCount = await Salses.countDocuments({
-//       couponId,
-//       userId: receiverId,
-//       status: 'completed'
-//     }).session(session);
+    // Check receiver coupon usage
+    const usedCount = await Salses.countDocuments({
+      couponId,
+      userId: receiverId,
+      status: 'completed'
+    }).session(session);
 
-//     if (usedCount >= 2) {
-//       throw new Error("Receiver already used coupon twice");
-//     }
+    if (usedCount >= 2) {
+      throw new Error("Receiver already used coupon twice");
+    }
 
-//     const receiverAvailableCoupon = await UserCoupon.findOne({
-//       userId: receiverId,
-//       couponId,
-//       status: 'available'
-//     }).session(session);
+    const receiverAvailableCoupon = await UserCoupon.findOne({
+      userId: receiverId,
+      couponId,
+      status: 'available'
+    }).session(session);
 
-//     if (receiverAvailableCoupon) {
-//       throw new Error("Receiver already has this coupon");
-//     }
+    if (receiverAvailableCoupon) {
+      throw new Error("Receiver already has this coupon");
+    }
 
-//     let senderCoupon = await UserCoupon.findOne({ userId: senderId, couponId }).session(session);
-//     let receiverUsedCoupon = await UserCoupon.findOne({ userId: receiverId, couponId }).session(session);
+    let senderCoupon = await UserCoupon.findOne({ userId: senderId, couponId }).session(session);
+    let receiverUsedCoupon = await UserCoupon.findOne({ userId: receiverId, couponId }).session(session);
 
-//     const qrCode = `qr-${couponId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const qrCode = `qr-${couponId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-//     if (!senderCoupon) {
-//       senderCoupon = new UserCoupon({
-//         couponId,
-//         userId: senderId,
-//         status: 'transferred',
-//         transferredTo: receiverId,
-//         transferDate: new Date(),
-//         count: 0,
-//         qrCode: qrCode + '-sender'
-//       });
-//       await senderCoupon.save({ session });
-//     } else if (senderCoupon.status === 'available') {
-//       senderCoupon.count -= 1;
-//       senderCoupon.userId = receiverId;
-//       senderCoupon.transferDate = new Date();
-//       await senderCoupon.save({ session });
-//     }
+    if (!senderCoupon) {
+      senderCoupon = new UserCoupon({
+        couponId,
+        userId: senderId,
+        status: 'transferred',
+        transferredTo: receiverId,
+        transferDate: new Date(),
+        count: 0,
+        qrCode: qrCode + '-sender'
+      });
+      await senderCoupon.save({ session });
+    } else if (senderCoupon.status === 'available') {
+      senderCoupon.count -= 1;
+      senderCoupon.userId = receiverId;
+      senderCoupon.transferDate = new Date();
+      await senderCoupon.save({ session });
+    }
 
-//     if (receiverUsedCoupon && receiverUsedCoupon.status === 'used') {
-//       receiverUsedCoupon.status = 'available';
-//       receiverUsedCoupon.senders.push({ senderId, sentAt: new Date() });
-//       receiverUsedCoupon.count += 1;
-//       receiverUsedCoupon.qrCode = qrCode;
-//       await receiverUsedCoupon.save({ session });
-//     } else {
-//       const newUserCoupon = new UserCoupon({
-//         couponId,
-//         userId: receiverId,
-//         status: 'available',
-//         senders: [{ senderId, sentAt: new Date() }],
-//         count: 1,
-//         qrCode
-//       });
-//       await newUserCoupon.save({ session });
-//     }
+    if (receiverUsedCoupon && receiverUsedCoupon.status === 'used') {
+      receiverUsedCoupon.status = 'available';
+      receiverUsedCoupon.senders.push({ senderId, sentAt: new Date() });
+      receiverUsedCoupon.count += 1;
+      receiverUsedCoupon.qrCode = qrCode;
+      await receiverUsedCoupon.save({ session });
+    } else {
+      const newUserCoupon = new UserCoupon({
+        couponId,
+        userId: receiverId,
+        status: 'available',
+        senders: [{ senderId, sentAt: new Date() }],
+        count: 1,
+        qrCode
+      });
+      await newUserCoupon.save({ session });
+    }
 
-//     sender.couponCount -= 1;
-//     receiver.couponCount += 1;
-//     await sender.save({ session });
-//     await receiver.save({ session });
+    sender.couponCount -= 1;
+    receiver.couponCount += 1;
+    await sender.save({ session });
+    await receiver.save({ session });
 
-//     coupon.currentDistributions += 1;
-//     await coupon.save({ session });
+    coupon.currentDistributions += 1;
+    await coupon.save({ session });
 
-//     await session.commitTransaction();
-//     return res.status(200).json({ success: true, message: "Coupon transferred" });
+    await session.commitTransaction();
+    return res.status(200).json({ success: true, message: "Coupon transferred" });
 
-//   } catch (error) {
-//     await session.abortTransaction();
-//     return res.status(400).json({ success: false, message: error.message });
-//   } finally {
-//     session.endSession();
-//   }
-// };
+  } catch (error) {
+    await session.abortTransaction();
+    return res.status(400).json({ success: false, message: error.message });
+  } finally {
+    session.endSession();
+  }
+};
 
 
 // export const claimCoupon = async (req, res) => {
@@ -1822,170 +1822,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 //   }
 // };
 
-export const transferCoupon = async (req, res) => {
-  const session = await mongoose.startSession();
-  try {
-    session.startTransaction();
 
-    const senderId = req.user._id;
-    const { receiverId, couponId } = req.body;
 
-    // Validate IDs
-    if (!mongoose.Types.ObjectId.isValid(receiverId) || !mongoose.Types.ObjectId.isValid(couponId)) {
-      throw new Error("Invalid receiver or coupon ID");
-    }
-
-    if (senderId.toString() === receiverId) {
-      throw new Error("Cannot transfer coupon to yourself");
-    }
-
-    // Generate a unique transaction ID for tracking
-    const transactionId = `txn-${couponId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    console.log(`Initiating transaction: ${transactionId}`);
-
-    // Fetch sender, receiver, and coupon with session
-    const [sender, receiver, coupon] = await Promise.all([
-      User.findById(senderId).session(session),
-      User.findById(receiverId).session(session),
-      Coupon.findById(couponId).session(session),
-    ]);
-
-    if (!sender || !receiver || !coupon) {
-      throw new Error("Sender, receiver, or coupon not found");
-    }
-
-    // Validate coupon
-    if (!coupon.active || (coupon.validTill && new Date(coupon.validTill) < new Date())) {
-      throw new Error("Coupon is inactive or expired");
-    }
-
-    if (coupon.is_spacial_copun || !coupon.isTransferable) {
-      throw new Error("Special coupon is not transferable");
-    }
-
-    if (coupon.maxDistributions > 0 && coupon.currentDistributions >= coupon.maxDistributions) {
-      throw new Error("Max distributions reached");
-    }
-
-    if (sender.couponCount < 1) {
-      throw new Error("Sender has insufficient coupon count");
-    }
-
-    // Check receiver's coupon usage
-    const usedCount = await Salses.countDocuments({
-      couponId,
-      userId: receiverId,
-      status: 'completed',
-    }).session(session);
-
-    if (usedCount >= 2) {
-      throw new Error("Receiver already used coupon twice");
-    }
-
-    // Check if receiver already has this coupon
-    const receiverCoupon = await UserCoupon.findOne({
-      userId: receiverId,
-      couponId,
-      status: 'available',
-    }).session(session);
-
-    if (receiverCoupon) {
-      throw new Error("Receiver already has this coupon");
-    }
-
-    // Check for in-process transactions (optional, based on your context)
-    const inProcessTransaction = await Salses.findOne({
-      couponId,
-      userId: { $in: [senderId, receiverId] },
-      status: 'in-process',
-    }).session(session);
-
-    if (inProcessTransaction) {
-      console.log(`Found in-process transaction: ${inProcessTransaction._id}`);
-      throw new Error(`An in-process transaction exists for this coupon: ${inProcessTransaction._id}`);
-    }
-
-    // Fetch sender's coupon
-    let senderCoupon = await UserCoupon.findOne({ userId: senderId, couponId }).session(session);
-
-    // Generate QR code for receiver
-    const qrCode = `qr-${couponId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-    // Handle sender's coupon
-    if (!senderCoupon) {
-      senderCoupon = new UserCoupon({
-        couponId,
-        userId: senderId,
-        status: 'transferred',
-        transferredTo: receiverId,
-        transferDate: new Date(),
-        count: 0,
-        transactionId, // Store transaction ID
-      });
-      await senderCoupon.save({ session });
-    } else if (senderCoupon.status === 'available' && senderCoupon.count > 0) {
-      senderCoupon.count -= 1;
-      senderCoupon.status = senderCoupon.count === 0 ? 'transferred' : 'available';
-      senderCoupon.transferredTo = receiverId;
-      senderCoupon.transferDate = new Date();
-      senderCoupon.transactionId = transactionId; // Store transaction ID
-      await senderCoupon.save({ session });
-    } else {
-      throw new Error("Sender does not have an available coupon to transfer");
-    }
-
-    // Handle receiver's coupon
-    let receiverUserCoupon = await UserCoupon.findOne({ userId: receiverId, couponId }).session(session);
-
-    if (receiverUserCoupon) {
-      receiverUserCoupon.status = 'available';
-      receiverUserCoupon.count += 1;
-      receiverUserCoupon.senders.push({ senderId, sentAt: new Date() });
-      receiverUserCoupon.qrCode = qrCode;
-      receiverUserCoupon.transactionId = transactionId; // Store transaction ID
-      await receiverUserCoupon.save({ session });
-    } else {
-      const newUserCoupon = new UserCoupon({
-        couponId,
-        userId: receiverId,
-        status: 'available',
-        senders: [{ senderId, sentAt: new Date() }],
-        count: 1,
-        qrCode,
-        transactionId, // Store transaction ID
-      });
-      await newUserCoupon.save({ session });
-    }
-
-    // Update user coupon counts
-    sender.couponCount -= 1;
-    receiver.couponCount += 1;
-    await Promise.all([
-      sender.save({ session }),
-      receiver.save({ session }),
-    ]);
-
-    // Update coupon distributions
-    coupon.currentDistributions += 1;
-    await coupon.save({ session });
-
-    // Log successful transaction
-    console.log(`Transaction ${transactionId} committed successfully`);
-
-    await session.commitTransaction();
-    return res.status(200).json({
-      success: true,
-      message: "Coupon transferred",
-      transactionId,
-    });
-  } catch (error) {
-    await session.abortTransaction();
-    console.error(`Transaction failed: ${error.message}`);
-    return res.status(400).json({ success: false, message: error.message });
-  } finally {
-    session.endSession();
-  }
-};
 
 export const claimCoupon = async (req, res) => {
   try {
