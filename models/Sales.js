@@ -36,7 +36,7 @@ const salesSchema = new mongoose.Schema({
       
         min: 0
     },
-    discountAmount: {
+    discountAmount: { 
         type: Number,
       
         min: 0

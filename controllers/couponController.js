@@ -1425,6 +1425,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           manual_address: 1,
           copuon_srno: 1,
           coupon_color: 1,
+          is_spacial_copun: 1,
+          isTransferable: 1,
           discountPercentage: 1,
           validTill: 1,
           displayTag: 1,
@@ -1949,7 +1951,7 @@ export const getOngoingServices = async (req, res) => {
     const sales = await Salses.find({ userId, status: "ongoing" })
       .populate({
         path: "couponId",
-        select: "title discountPercentage validTill category copuon_type termsAndConditions tag isTransferable ownerId",
+        select: "title discountPercentage copuon_image validTill category copuon_type termsAndConditions tag isTransferable ownerId",
         populate: [
           { path: "category", select: "name" },
           { path: "ownerId", select: "name phone" },
@@ -2081,7 +2083,7 @@ export const getSalesByCouponOwner = async (req, res) => {
 
 export const completeSale = async (req, res) => {
   try {
-    const { saleId, totalAmount } = req.body;
+    const { saleId, total, final, discount } = req.body;
 
     if (!saleId || !totalAmount) {
       return res.status(400).json({ success: false, message: "Sale ID and total amount are required" });
@@ -2112,7 +2114,9 @@ export const completeSale = async (req, res) => {
 
     // 🔹 Update sale
     sale.status = "completed";
-    sale.finalAmount = totalAmount;
+    sale.totalAmount = total;
+    sale.finalAmount = final;
+    sale.discountAmount = discount;
     await sale.save();
 
     // 🔹 Update coupon distribution
