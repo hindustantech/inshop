@@ -1663,7 +1663,7 @@ export const transferCoupon = async (req, res) => {
       couponId,
       senders: { $elemMatch: { senderId: senderId } }
     }).session(session)
-    
+
     if (senderTranferCoupon) {
 
       throw new Error("Sender Can not ")
@@ -2059,6 +2059,9 @@ export const getOngoingServices = async (req, res) => {
   }
 };
 
+
+
+
 export const getSalesByCouponOwner = async (req, res) => {
   try {
     const userId = req.user.id; // logged-in user
@@ -2084,12 +2087,22 @@ export const getSalesByCouponOwner = async (req, res) => {
           "coupon.ownerId": new mongoose.Types.ObjectId(userId)
         }
       },
-      // 3️⃣ Sort newest first
+      // 3️⃣ Join with User collection to get user details
+      {
+        $lookup: {
+          from: "User", // Updated to match the collection name from the schema
+          localField: "userId",
+          foreignField: "_id",
+          as: "user"
+        }
+      },
+      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } }, // Preserve sales if user is not found
+      // 4️⃣ Sort newest first
       { $sort: { createdAt: -1 } },
-      // 4️⃣ Pagination
+      // 5️⃣ Pagination
       { $skip: skip },
       { $limit: limit },
-      // 5️⃣ Project required fields
+      // 6️⃣ Project required fields, including user name
       {
         $project: {
           _id: 1,
@@ -2107,7 +2120,12 @@ export const getSalesByCouponOwner = async (req, res) => {
           "coupon.discountPercentage": 1,
           "coupon.validTill": 1,
           "coupon.isTransferable": 1,
-          "coupon.copuon_type": 1
+          "coupon.title": 1,
+          "coupon.discountPercentage": 1,
+          "coupon.validTill": 1,
+          "coupon.isTransferable": 1,
+          "coupon.copuon_type": 1,
+          "user.name": 1 // Include the user's name
         }
       }
     ];
@@ -2153,8 +2171,6 @@ export const getSalesByCouponOwner = async (req, res) => {
     });
   }
 };
-
-
 
 export const completeSale = async (req, res) => {
   try {
@@ -2230,9 +2246,9 @@ export const cancelSale = async (req, res) => {
     const sale = await Salses.findById(saleId);
     if (!sale) return res.status(404).json({ success: false, message: "Sale not found" });
 
-    if (sale.userId.toString() !== userId.toString()) {
-      return res.status(403).json({ success: false, message: "Not authorized" });
-    }
+    // if (sale.userId.toString() !== userId.toString()) {
+    //   return res.status(403).json({ success: false, message: "Not authorized" });
+    // }
 
     if (["completed", "cancelled"].includes(sale.status)) {
       return res.status(400).json({ success: false, message: `Sale already ${sale.status}` });
