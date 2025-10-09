@@ -6,7 +6,7 @@ import Banner from "../models/Banner.js";
 import ManualAddress from "../models/ManualAddress.js";
 import UserCoupon from '../models/UserCoupon.js';
 import Salses from '../models/Sales.js'
-
+import ReferralUsage from "../models/ReferralUsage.js";
 // 1️⃣ Create a new Ad
 export const createAd = async (req, res) => {
   try {
