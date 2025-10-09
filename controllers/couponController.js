@@ -1645,7 +1645,7 @@ export const transferCoupon = async (req, res) => {
         couponId: coupon._id,
         userId: receiverId,
         status: 'available',
-        count: 1,
+        count: 2,
         senders: [{ senderId, sentAt: new Date() }]
       });
       await receiverCoupon.save({ session });
