@@ -1667,12 +1667,21 @@ export const transferCoupon = async (req, res) => {
         count: 0,
         qrCode: qrCode + '-sender'
       });
+
+      sender.couponCount -= 1;
+      receiver.couponCount += 1;
       await senderCoupon.save({ session });
+
     } else if (senderCoupon.status === 'available') {
       senderCoupon.count -= 1;
       senderCoupon.userId = receiverId;
       senderCoupon.transferDate = new Date();
+
+      sender.couponCount -= 1;
+      receiver.couponCount += 1;
       await senderCoupon.save({ session });
+
+
     }
 
     if (receiverUsedCoupon && receiverUsedCoupon.status === 'used') {
