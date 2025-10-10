@@ -18,7 +18,8 @@ import {
     findUserByPhone,
     getProfileImageUrl,
     getProfile,
-    updateProfileImage
+    updateProfileImage,
+    getUserIdsAndNamesByReferralCodesController
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
@@ -29,6 +30,8 @@ const upload = multer({ storage });
 upload.single("images")
 
 router.post('/updateUserLocation', authMiddleware, updateUserLocation);
+
+router.get('getuserbyreferal',getUserIdsAndNamesByReferralCodesController);
 
 router.post('/UpdateManualAddress', authMiddleware, UpdateManualAddress);
 

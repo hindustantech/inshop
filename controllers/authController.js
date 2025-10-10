@@ -10,6 +10,42 @@ import admin from '../utils/firebaseadmin.js';
 import notification from '../models/notification.js';
 import ReferralUsage from '../models/ReferralUsage.js'
 
+
+// Controller function to get user IDs and names by referral codes
+export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {
+  try {
+    const { referralCodes } = req.body; // single code or array
+
+    if (!referralCodes || (Array.isArray(referralCodes) && referralCodes.length === 0)) {
+      return res.status(400).json({ success: false, message: 'No referral codes provided' });
+    }
+
+    // Ensure it's an array
+    const codesArray = Array.isArray(referralCodes) ? referralCodes : [referralCodes];
+
+    // Query users with the given referral codes
+    const users = await User.find({ referalCode: { $in: codesArray } }, '_id name referalCode');
+
+    if (!users || users.length === 0) {
+      return res.status(404).json({ success: false, message: 'No users found for these referral codes' });
+    }
+
+    // Map referral codes to user info
+    const result = users.map(user => ({
+      userId: user._id.toString(),
+      name: user.name,
+      referralCode: user.referalCode
+    }));
+
+    res.status(200).json({ success: true, users: result });
+
+  } catch (error) {
+    console.error('Error in getUserIdsAndNamesByReferralCodesController:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+
 export const getProfile = async (req, res) => {
   try {
     const userId = req.user?.id; // from auth middleware
