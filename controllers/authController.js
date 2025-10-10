@@ -12,16 +12,18 @@ import ReferralUsage from '../models/ReferralUsage.js'
 
 
 // Controller function to get user IDs and names by referral codes
+// Controller
 export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {
   try {
-    const { referralCodes } = req.body; // single code or array
+    const { referralCodes } = req.query; // use query params for GET
 
-    if (!referralCodes || (Array.isArray(referralCodes) && referralCodes.length === 0)) {
+    if (!referralCodes) {
       return res.status(400).json({ success: false, message: 'No referral codes provided' });
     }
 
     // Ensure it's an array
-    const codesArray = Array.isArray(referralCodes) ? referralCodes : [referralCodes];
+    // If only one code is sent, it will be a string
+    const codesArray = Array.isArray(referralCodes) ? referralCodes : referralCodes.split(',');
 
     // Query users with the given referral codes
     const users = await User.find({ referalCode: { $in: codesArray } }, '_id name referalCode');
@@ -44,6 +46,9 @@ export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+
+
 
 
 export const getProfile = async (req, res) => {
@@ -531,7 +536,7 @@ const verifyOtp = async (req, res) => {
     await user.save();
 
 
-     // ✅ Store referral usage (only if referral code was used)
+    // ✅ Store referral usage (only if referral code was used)
     if (user.referredBy) {
       const referrer = await User.findOne({ referalCode: user.referredBy });
       if (referrer) {
