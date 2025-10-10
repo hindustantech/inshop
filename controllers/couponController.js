@@ -138,15 +138,255 @@ export const updateCouponByAdmin = async (req, res) => {
 
 
 // helper for image upload
+// export const createCoupon = async (req, res) => {
+//   try {
+//     const {
+//       shop_name,
+//       coupon_color,
+//       title,
+//       is_spacial_copun_user = [],
+//       manual_address,
+//       copuon_srno,
+//       categoryIds,   // ✅ now expecting array of category IDs
+//       discountPercentage,
+//       validTill,
+//       style,
+//       maxDistributions = 0,
+//       fromTime,
+//       toTime,
+//       isFullDay = false,
+//       termsAndConditions,
+//       is_spacial_copun = false,
+//       isTransferable = false,
+//       tag,
+//       shope_location,
+//     } = req.body;
+
+//     const userId = req.user?._id;
+//     if (!userId) {
+//       return res.status(401).json({ message: "Unauthorized: user missing" });
+//     }
+
+//     const { createdBy, ownerId, partnerId } = req.ownership || {};
+
+//     // ------------------ Validations ------------------
+//     // if (
+//     //   !title?.trim() ||
+//     //   !manual_address?.trim() ||
+//     //   !copuon_srno?.trim() ||
+//     //   !Array.isArray(categoryIds) ||
+//     //   categoryIds.length === 0 ||
+//     //   isNaN(parseFloat(discountPercentage)) ||
+//     //   !validTill?.trim() ||
+//     //   !termsAndConditions?.trim()
+//     // ) {
+//     //   return res.status(400).json({
+//     //     message:
+//     //       "Missing/Invalid fields: title, manual_address, copuon_srno, categoryIds[], discountPercentage, validTill, termsAndConditions",
+//     //   });
+//     // }
+
+//     // Parse discountPercentage
+//     const parsedDiscount = parseFloat(discountPercentage);
+//     if (parsedDiscount < 0 || parsedDiscount > 100) {
+//       return res.status(400).json({ message: "discountPercentage must be between 0 and 100" });
+//     }
+
+//     // Validate shope_location
+//     let location = null;
+//     if (!shope_location) {
+//       return res.status(400).json({ message: "shope_location is required" });
+//     }
+//     try {
+//       const parsedLocation = typeof shope_location === "string"
+//         ? JSON.parse(shope_location)
+//         : shope_location;
+
+//       if (
+//         parsedLocation.type !== "Point" ||
+//         !Array.isArray(parsedLocation.coordinates) ||
+//         parsedLocation.coordinates.length !== 2 ||
+//         isNaN(parsedLocation.coordinates[0]) ||
+//         isNaN(parsedLocation.coordinates[1]) ||
+//         !parsedLocation.address?.trim()
+//       ) {
+//         return res.status(400).json({
+//           message: 'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat], address }',
+//         });
+//       }
+//       location = parsedLocation;
+//     } catch (error) {
+//       return res.status(400).json({ message: "Invalid shope_location JSON", error: error.message });
+//     }
+
+//     // Time check
+//     if (!isFullDay && (!fromTime || !toTime)) {
+//       return res.status(400).json({ message: "fromTime and toTime required when isFullDay is false" });
+//     }
+
+//     // Validate tag
+//     if (!tag || !Array.isArray(tag) || tag.length === 0) {
+//       return res.status(400).json({ message: "At least one tag is required" });
+//     }
+
+//     // Validate validTill
+//     if (new Date(validTill) <= new Date() || isNaN(new Date(validTill).getTime())) {
+//       return res.status(400).json({ message: "validTill must be a valid future date" });
+//     }
+
+//     let parsedCategoryIds = categoryIds;
+
+//     // If categoryIds is a string, parse it
+//     if (typeof categoryIds === "string") {
+//       try {
+//         parsedCategoryIds = JSON.parse(categoryIds);
+//       } catch (error) {
+//         return res.status(400).json({ message: "Invalid categoryIds format" });
+//       }
+//     }
+
+//     // Validate array
+//     if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
+//       return res.status(400).json({ message: "categoryIds must be a non-empty array" });
+//     }
+
+//     // Check invalid IDs
+//     const invalidIds = parsedCategoryIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+//     if (invalidIds.length > 0) {
+//       return res.status(400).json({ message: `Invalid category IDs: ${invalidIds.join(", ")}` });
+//     }
+
+//     // Fetch categories
+//     const categories = await Category.find({ _id: { $in: parsedCategoryIds } });
+//     if (categories.length !== parsedCategoryIds.length) {
+//       return res.status(404).json({ message: "One or more categories not found" });
+//     }
+
+
+//     // ------------------ Validate Special Coupon Users ------------------
+//     let parsedSpecialUsers = is_spacial_copun_user;
+//     if (typeof is_spacial_copun_user === "string") {
+//       try {
+//         parsedSpecialUsers = JSON.parse(is_spacial_copun_user);
+//       } catch (error) {
+//         return res.status(400).json({ message: "Invalid is_spacial_copun_user format" });
+//       }
+//     }
+
+//     if (!Array.isArray(parsedSpecialUsers)) {
+//       return res.status(400).json({ message: "is_spacial_copun_user must be an array" });
+//     }
+
+//     const invalidUserIds = parsedSpecialUsers.filter(id => !mongoose.Types.ObjectId.isValid(id));
+//     if (invalidUserIds.length > 0) {
+//       return res.status(400).json({ message: `Invalid user IDs: ${invalidUserIds.join(", ")}` });
+//     }
+
+
+//     // Handle Images
+//     let copuon_image = [];
+//     if (req.files && req.files.length > 0) {
+//       try {
+//         const uploadPromises = req.files.map(file =>
+//           uploadToCloudinary(file.buffer, "coupons")
+//         );
+//         const uploadResults = await Promise.all(uploadPromises);
+//         copuon_image = uploadResults.map(result => result.secure_url);
+//       } catch (error) {
+//         return res.status(500).json({ message: "Error uploading images", error: error.message });
+//       }
+//     }
+
+//     // Save Coupon
+//     const newCoupon = new Coupon({
+//       title,
+//       shop_name,
+//       coupon_color,
+//       manul_address: manual_address,
+//       copuon_srno,
+//       category: categories.map(c => c._id), // ✅ multiple categories
+//       discountPercentage: parsedDiscount,
+//       createdBy,
+//       ownerId: ownerId || partnerId,
+//       createdby: userId,
+//       validTill: new Date(validTill),
+//       style,
+//       active: false,
+//       maxDistributions,
+//       fromTime: isFullDay ? undefined : fromTime,
+//       toTime: isFullDay ? undefined : toTime,
+//       isFullDay,
+//       is_spacial_copun_user: parsedSpecialUsers, // ✅ added here
+//       termsAndConditions,
+//       is_spacial_copun,
+//       isTransferable,
+//       tag,
+//       shope_location: location,
+//       copuon_image,
+//       currentDistributions: 0,
+//       consumersId: [],
+//     });
+
+//     const savedCoupon = await newCoupon.save();
+
+//     // Broadcast notification to users within 50 km
+//     try {
+//       const users = await User.find(
+//         {
+//           latestLocation: {
+//             $near: {
+//               $geometry: { type: "Point", coordinates: location.coordinates },
+//               $maxDistance: 50 * 1000,
+//             },
+//           },
+//           devicetoken: { $ne: null },
+//         },
+//         { uid: 1, name: 1, devicetoken: 1, _id: 0 }
+//       );
+
+//       if (users.length > 0) {
+//         const batchSize = 500;
+//         const batches = [];
+//         for (let i = 0; i < users.length; i += batchSize) {
+//           const batchTokens = users.slice(i, i + batchSize).map(u => u.devicetoken);
+//           batches.push({
+//             notification: {
+//               title: `New Coupon: ${title}`,
+//               body: `Get ${parsedDiscount}% off near you! Valid until ${new Date(validTill).toLocaleDateString()}.`,
+//             },
+//             tokens: batchTokens,
+//           });
+//         }
+
+//         await Promise.all(batches.map(batch => admin.messaging().sendMulticast(batch)));
+//       }
+//     } catch (notificationError) {
+//       console.error("Error sending notifications:", notificationError);
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message: "Coupon created successfully",
+//       coupon: savedCoupon,
+//     });
+
+//   } catch (err) {
+//     console.error("Create coupon error:", err);
+//     return res.status(500).json({ message: "Error creating coupon", error: err.message });
+//   }
+// };
+
+
 export const createCoupon = async (req, res) => {
   try {
     const {
       shop_name,
       coupon_color,
       title,
+      is_spacial_copun_user = [],
       manual_address,
       copuon_srno,
-      categoryIds,   // ✅ now expecting array of category IDs
+      categoryIds,
       discountPercentage,
       validTill,
       style,
@@ -169,22 +409,6 @@ export const createCoupon = async (req, res) => {
     const { createdBy, ownerId, partnerId } = req.ownership || {};
 
     // ------------------ Validations ------------------
-    // if (
-    //   !title?.trim() ||
-    //   !manual_address?.trim() ||
-    //   !copuon_srno?.trim() ||
-    //   !Array.isArray(categoryIds) ||
-    //   categoryIds.length === 0 ||
-    //   isNaN(parseFloat(discountPercentage)) ||
-    //   !validTill?.trim() ||
-    //   !termsAndConditions?.trim()
-    // ) {
-    //   return res.status(400).json({
-    //     message:
-    //       "Missing/Invalid fields: title, manual_address, copuon_srno, categoryIds[], discountPercentage, validTill, termsAndConditions",
-    //   });
-    // }
-
     // Parse discountPercentage
     const parsedDiscount = parseFloat(discountPercentage);
     if (parsedDiscount < 0 || parsedDiscount > 100) {
@@ -234,8 +458,6 @@ export const createCoupon = async (req, res) => {
     }
 
     let parsedCategoryIds = categoryIds;
-
-    // If categoryIds is a string, parse it
     if (typeof categoryIds === "string") {
       try {
         parsedCategoryIds = JSON.parse(categoryIds);
@@ -244,21 +466,42 @@ export const createCoupon = async (req, res) => {
       }
     }
 
-    // Validate array
     if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
       return res.status(400).json({ message: "categoryIds must be a non-empty array" });
     }
 
-    // Check invalid IDs
     const invalidIds = parsedCategoryIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
     if (invalidIds.length > 0) {
       return res.status(400).json({ message: `Invalid category IDs: ${invalidIds.join(", ")}` });
     }
 
-    // Fetch categories
     const categories = await Category.find({ _id: { $in: parsedCategoryIds } });
     if (categories.length !== parsedCategoryIds.length) {
       return res.status(404).json({ message: "One or more categories not found" });
+    }
+
+    // Validate Special Coupon Users
+    let parsedSpecialUsers = is_spacial_copun_user;
+    if (typeof is_spacial_copun_user === "string") {
+      try {
+        parsedSpecialUsers = JSON.parse(is_spacial_copun_user);
+      } catch (error) {
+        return res.status(400).json({ message: "Invalid is_spacial_copun_user format" });
+      }
+    }
+
+    if (!Array.isArray(parsedSpecialUsers)) {
+      return res.status(400).json({ message: "is_spacial_copun_user must be an array" });
+    }
+
+    const invalidUserIds = parsedSpecialUsers.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidUserIds.length > 0) {
+      return res.status(400).json({ message: `Invalid user IDs: ${invalidUserIds.join(", ")}` });
+    }
+
+    // New validation: Require is_spacial_copun_user when is_spacial_copun is true
+    if (is_spacial_copun && parsedSpecialUsers.length === 0) {
+      return res.status(400).json({ message: "is_spacial_copun_user must contain at least one user ID when is_spacial_copun is true" });
     }
 
     // Handle Images
@@ -282,7 +525,7 @@ export const createCoupon = async (req, res) => {
       coupon_color,
       manul_address: manual_address,
       copuon_srno,
-      category: categories.map(c => c._id), // ✅ multiple categories
+      category: categories.map(c => c._id),
       discountPercentage: parsedDiscount,
       createdBy,
       ownerId: ownerId || partnerId,
@@ -294,6 +537,7 @@ export const createCoupon = async (req, res) => {
       fromTime: isFullDay ? undefined : fromTime,
       toTime: isFullDay ? undefined : toTime,
       isFullDay,
+      is_spacial_copun_user: parsedSpecialUsers,
       termsAndConditions,
       is_spacial_copun,
       isTransferable,
