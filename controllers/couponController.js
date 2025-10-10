@@ -11,6 +11,7 @@ import jwt from "jsonwebtoken";
 import QRCode from "qrcode";
 import admin from '../utils/firebaseadmin.js'
 import ReferralUsage from '../models/ReferralUsage.js';
+import { sendNotification } from '../utils/SendNotificaion.js';
 
 const statesAndUTs = [
   'Andhra Pradesh',
@@ -1794,6 +1795,26 @@ export const transferCoupon = async (req, res) => {
     coupon.currentDistributions += 1;
     await coupon.save({ session });
 
+
+    if (sender.deviceToken) {
+      await sendNotification(
+        sender.deviceToken,
+        "Coupon Transferred 📤",
+        `You have successfully transferred the coupon "${coupon.title}" to ${receiver.name || "a user"}.`,
+        { type: "coupon_transferred", couponId: coupon._id.toString() }
+      );
+    }
+
+    if (receiver.deviceToken) {
+      await sendNotification(
+        receiver.deviceToken,
+        "Coupon Received 🎁",
+        `${sender.name || "Someone"} has sent you a coupon "${coupon.title}".`,
+        { type: "coupon_received", couponId: coupon._id.toString() }
+      );
+    }
+
+
     await session.commitTransaction();
     return res.status(200).json({ success: true, message: "Coupon transferred" });
 
@@ -1995,6 +2016,27 @@ export const claimCoupon = async (req, res) => {
         });
         await sale.save();
 
+
+        // 🔔 Send notification to claimer
+        const user = await User.findById(userId);
+        if (user?.devicetoken) {
+          await sendNotification(
+            user.devicetoken,
+            "Coupon Claimed 🎉",
+            `You successfully claimed the coupon "${coupon.title}".`,
+            { type: "coupon_claimed", couponId: coupon._id.toString() }
+          );
+        }
+
+        // 🔔 Notify the owner (optional)
+        if (ownerUser?.devicetoken) {
+          await sendNotification(
+            ownerUser.devicetoken,
+            "Coupon Used 💡",
+            `${user.name || 'Someone'} has used your coupon "${coupon.title}".`,
+            { type: "coupon_used", couponId: coupon._id.toString() }
+          );
+        }
         return res.status(200).json({
           success: true,
           message: "Coupon usage updated",
@@ -2282,6 +2324,15 @@ export const completeSale = async (req, res) => {
     await sale.save();
 
 
+    // 🔔 Send Notification
+    if (user.devicetoken) {
+      await sendNotification(
+        user.devicetoken,
+        "Sale Completed ✅",
+        `Your purchase using coupon "${coupon.title}" is successfully completed.`,
+        { type: "sale_completed", saleId: sale._id.toString() }
+      );
+    }
 
     return res.status(200).json({
       success: true,
@@ -2349,6 +2400,17 @@ export const cancelSale = async (req, res) => {
       await coupon.save();
     }
 
+
+
+    const user = await User.findById(userId);
+    if (user?.devicetoken) {
+      await sendNotification(
+        user.devicetoken,
+        "Sale Cancelled ❌",
+        `Your sale using coupon "${coupon?.title || 'Unknown'}" was cancelled successfully.`,
+        { type: "sale_cancelled", saleId: sale._id.toString() }
+      );
+    }
     return res.status(200).json({
       success: true,
       message: "Sale cancelled, coupon count restored, distributions updated",
