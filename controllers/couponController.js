@@ -1795,23 +1795,29 @@ export const transferCoupon = async (req, res) => {
     coupon.currentDistributions += 1;
     await coupon.save({ session });
 
-
-    if (sender.deviceToken) {
+    console.log("Start the notification......")
+    if (sender.devicetoken) {
+      console.log("devicetoken  found the notification......")
       await sendNotification(
-        sender.deviceToken,
+        sender.devicetoken,
         "Coupon Transferred 📤",
         `You have successfully transferred the coupon "${coupon.title}" to ${receiver.name || "a user"}.`,
         { type: "coupon_transferred", couponId: coupon._id.toString() }
       );
+      console.log("Notification send succesfully  found the notification......")
     }
 
-    if (receiver.deviceToken) {
+    if (receiver.devicetoken) {
+      console.log("devicetoken  found the notification......")
+
       await sendNotification(
-        receiver.deviceToken,
+        receiver.devicetoken,
         "Coupon Received 🎁",
         `${sender.name || "Someone"} has sent you a coupon "${coupon.title}".`,
         { type: "coupon_received", couponId: coupon._id.toString() }
       );
+      console.log("Notification send succesfully  found the notification......")
+
     }
 
 
