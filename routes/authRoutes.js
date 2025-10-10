@@ -31,7 +31,7 @@ upload.single("images")
 
 router.post('/updateUserLocation', authMiddleware, updateUserLocation);
 
-router.get('getuserbyreferal',getUserIdsAndNamesByReferralCodesController);
+router.get('/getuserbyreferal',getUserIdsAndNamesByReferralCodesController);
 
 router.post('/UpdateManualAddress', authMiddleware, UpdateManualAddress);
 
