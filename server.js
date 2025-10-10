@@ -31,7 +31,8 @@ connectDB();
 const app = express();
 
 app.set('view engine', 'ejs');
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));          // For JSON requests
+app.use(express.urlencoded({ limit: "50mb", extended: true })); // For 
 
 // Configure CORS (Allow all origins by default)
 app.use(cors());

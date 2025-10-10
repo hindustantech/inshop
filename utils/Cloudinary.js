@@ -17,6 +17,7 @@ export const uploadToCloudinary = (buffer, folder = 'products') => {
       {
         folder,
         resource_type: 'auto',
+        quality: 'auto:best',
         transformation: [
           { width: 800, height: 800, crop: 'limit' },
           { quality: 'auto' }
