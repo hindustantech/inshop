@@ -140,7 +140,7 @@ const couponSchema = new mongoose.Schema({
     {
       type: mongoose.Schema.Types.ObjectId, // references id from another table
       ref: 'User', // assuming you have an 'Owner' model or similar
-      required: true
+    
     }
   ],
 

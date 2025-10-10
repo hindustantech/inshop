@@ -499,10 +499,7 @@ export const createCoupon = async (req, res) => {
       return res.status(400).json({ message: `Invalid user IDs: ${invalidUserIds.join(", ")}` });
     }
 
-    // New validation: Require is_spacial_copun_user when is_spacial_copun is true
-    if (is_spacial_copun && parsedSpecialUsers.length === 0) {
-      return res.status(400).json({ message: "is_spacial_copun_user must contain at least one user ID when is_spacial_copun is true" });
-    }
+ 
 
     // Handle Images
     let copuon_image = [];
