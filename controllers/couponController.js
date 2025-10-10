@@ -1953,6 +1953,16 @@ export const claimCoupon = async (req, res) => {
       return res.status(400).json({ success: false, message: "Coupon limit reached" });
     }
 
+
+
+    // 🔹 Update coupon distribution
+    if (coupon.maxDistributions === 0 || coupon.currentDistributions + useCount <= coupon.maxDistributions) {
+      coupon.currentDistributions += useCount;
+      await coupon.save();
+    } else {
+      return res.status(400).json({ success: false, message: "Coupon max distribution limit exceeded" });
+    }
+
     // ✅ Check if user already has this coupon
     let userCoupon = await UserCoupon.findOne({ couponId, userId });
 
@@ -2008,7 +2018,7 @@ export const claimCoupon = async (req, res) => {
       couponId,
       userId,
       status: "ongoing",
-      usedCount: 0
+      usedCount: useCount
     });
     await sale.save();
 
@@ -2271,13 +2281,7 @@ export const completeSale = async (req, res) => {
     sale.discountAmount = discount;
     await sale.save();
 
-    // 🔹 Update coupon distribution
-    if (coupon.maxDistributions === 0 || coupon.currentDistributions + sale.usedCount <= coupon.maxDistributions) {
-      coupon.currentDistributions += sale.usedCount;
-      await coupon.save();
-    } else {
-      return res.status(400).json({ success: false, message: "Coupon max distribution limit exceeded" });
-    }
+
 
     return res.status(200).json({
       success: true,
