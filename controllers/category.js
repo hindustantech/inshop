@@ -43,7 +43,7 @@ export const getCategories = async (req, res) => {
     }
 
     // If user is not authenticated or not super_admin, only fetch active categories
-    if (!req.user || req.user.userType !== "super_admin") {
+    if (!req.user || req.user.type !== "super_admin") {
       query.isActive = true;
     }
 
