@@ -121,7 +121,7 @@ export const toggleCategory = async (req, res) => {
     }
 
     // Restrict toggle to super_admin
-    if (!req.user || req.user.userType !== "super_admin") {
+    if (!req.user || req.user.type !== "super_admin") {
       return res.status(403).json({ message: "Access denied: Super admin only" });
     }
 
