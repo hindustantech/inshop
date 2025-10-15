@@ -184,6 +184,6 @@ userSchema.pre('save', async function (next) {
 });
 
 userSchema.index({ latestLocation: "2dsphere" });
-userSchema.index({ referalCode: 1 });
+// userSchema.index({ referalCode: 1 });
 const User = mongoose.model('User', userSchema);
 export default User;
