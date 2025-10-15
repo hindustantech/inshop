@@ -88,7 +88,7 @@ export const getProfile = async (req, res) => {
 
         const profile = await PatnerProfile.findOne({ User_id: userId }).populate(
             "User_id",
-            "name phone"
+            "name phone referral_code"
         );
 
         if (!profile) {
