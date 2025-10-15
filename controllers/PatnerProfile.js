@@ -86,10 +86,8 @@ export const getProfile = async (req, res) => {
     try {
         const { userId } = req.params;
 
-        const profile = await PatnerProfile.findOne({ User_id: userId }).populate(
-            "User_id",
-            "name phone referral_code"
-        );
+        const profile = await PatnerProfile.findOne({ User_id: mongoose.Types.ObjectId(userId) })
+            .populate("User_id", "name phone referalCode");
 
         if (!profile) {
             return res
