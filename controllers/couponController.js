@@ -402,6 +402,11 @@ export const createCoupon = async (req, res) => {
     } = req.body;
 
     const userId = req.user?._id;
+
+
+
+    console.log("🔥 Ownership Debug:", req.ownership);
+    console.log("🔥 Body ownerId:", req.body.ownerId);
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized: user missing" });
     }
@@ -515,6 +520,7 @@ export const createCoupon = async (req, res) => {
       }
     }
     const finalOwnerId = ownerId || partnerId || createdBy;
+    console.log("🔥 Final Owner ID:", finalOwnerId);
 
     // Save Coupon
     const newCoupon = new Coupon({
