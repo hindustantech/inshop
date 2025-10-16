@@ -499,7 +499,7 @@ export const createCoupon = async (req, res) => {
       return res.status(400).json({ message: `Invalid user IDs: ${invalidUserIds.join(", ")}` });
     }
 
- 
+
 
     // Handle Images
     let copuon_image = [];
@@ -514,6 +514,7 @@ export const createCoupon = async (req, res) => {
         return res.status(500).json({ message: "Error uploading images", error: error.message });
       }
     }
+    const finalOwnerId = ownerId || partnerId || createdBy;
 
     // Save Coupon
     const newCoupon = new Coupon({
@@ -525,7 +526,7 @@ export const createCoupon = async (req, res) => {
       category: categories.map(c => c._id),
       discountPercentage: parsedDiscount,
       createdBy,
-      ownerId: ownerId || partnerId,
+      ownerId: finalOwnerId,
       createdby: userId,
       validTill: new Date(validTill),
       style,
