@@ -734,16 +734,16 @@ export const getUserNearestBanners = async (req, res) => {
           : []),
         ...(search.trim()
           ? [
-              {
-                $match: {
-                  $or: [
-                    { title: { $regex: search, $options: 'i' } },
-                    { keyword: { $regex: search, $options: 'i' } },
-                    { main_keyword: { $regex: search, $options: 'i' } },
-                  ],
-                },
+            {
+              $match: {
+                $or: [
+                  { title: { $regex: search, $options: 'i' } },
+                  { keyword: { $regex: search, $options: 'i' } },
+                  { main_keyword: { $regex: search, $options: 'i' } },
+                ],
               },
-            ]
+            },
+          ]
           : []),
         { $sort: { createdAt: -1 } }, // Sort by newest first
         { $skip: skip },
@@ -808,16 +808,16 @@ export const getUserNearestBanners = async (req, res) => {
           : []),
         ...(search.trim()
           ? [
-              {
-                $match: {
-                  $or: [
-                    { title: { $regex: search, $options: 'i' } },
-                    { keyword: { $regex: search, $options: 'i' } },
-                    { main_keyword: { $regex: search, $options: 'i' } },
-                  ],
-                },
+            {
+              $match: {
+                $or: [
+                  { title: { $regex: search, $options: 'i' } },
+                  { keyword: { $regex: search, $options: 'i' } },
+                  { main_keyword: { $regex: search, $options: 'i' } },
+                ],
               },
-            ]
+            },
+          ]
           : []),
         { $count: 'total' },
       ];
@@ -914,7 +914,124 @@ export const getBannerById = async (req, res) => {
   }
 };
 
+// Update banner controller
+export const updateBanner = async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    // Validate banner ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid banner ID' });
+    }
+
+    // Extract form data
+    const {
+      title,
+      google_location_url,
+      website_url,
+      banner_type,
+      search_radius,
+      manual_address,
+      main_keyword,
+      keyword,
+      expiryDays,
+      category,
+      ownerId,
+      'location[type]': locationType,
+      'location[coordinates][0]': lng,
+      'location[coordinates][1]': lat,
+    } = req.body;
+
+    // Prepare update object
+    const updateData = {};
+
+    // Handle fields conditionally
+    if (title) updateData.title = title.trim();
+    if (google_location_url) updateData.google_location_url = google_location_url.trim();
+    if (website_url) updateData.website_url = website_url.trim();
+    if (banner_type && ['Changeable', 'Unchangeable'].includes(banner_type)) {
+      updateData.banner_type = banner_type;
+    }
+    if (search_radius && !isNaN(search_radius)) {
+      updateData.search_radius = Number(search_radius);
+    }
+    if (manual_address) updateData.manual_address = manual_address.trim();
+    if (main_keyword) updateData.main_keyword = main_keyword.split(',').map(k => k.trim()).filter(k => k);
+    if (keyword) updateData.keyword = keyword.split(',').map(k => k.trim()).filter(k => k);
+    if (expiryDays && !isNaN(expiryDays)) {
+      const days = Number(expiryDays);
+      if (days >= 0) {
+        updateData.expiryAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      }
+    }
+    if (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) {
+      updateData.ownerId = ownerId;
+    }
+
+    // Handle category array
+    if (category) {
+      const categories = Array.isArray(category) ? category : [category];
+      if (categories.every(id => mongoose.Types.ObjectId.isValid(id))) {
+        updateData.category = categories;
+      } else {
+        return res.status(400).json({ success: false, message: 'Invalid category IDs' });
+      }
+    }
+
+    // Handle location
+    if (locationType && lng && lat) {
+      const longitude = Number(lng);
+      const latitude = Number(lat);
+      if (locationType === 'Point' && !isNaN(longitude) && !isNaN(latitude)) {
+        updateData.location = {
+          type: 'Point',
+          coordinates: [longitude, latitude],
+        };
+      } else {
+        return res.status(400).json({ success: false, message: 'Invalid location data' });
+      }
+    }
+
+    // Handle file upload
+    if (req.file) {
+      try {
+        const result = await cloudinary.uploader.upload(req.file.path, {
+          folder: 'banners',
+          public_id: `banner_${id}_${Date.now()}`,
+        });
+        updateData.banner_image = result.secure_url;
+      } catch (error) {
+        return res.status(500).json({ success: false, message: 'Failed to upload image' });
+      }
+    }
+
+    // Check if updateData is empty
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ success: false, message: 'No valid fields provided for update' });
+    }
+
+    // Find and update banner
+    const banner = await Banner.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).populate('category ownerId createdby promotion');
+
+    if (!banner) {
+      return res.status(404).json({ success: false, message: 'Banner not found' });
+    }
+
+    // Return updated banner
+    return res.status(200).json({
+      success: true,
+      data: banner,
+      message: 'Banner updated successfully',
+    });
+  } catch (error) {
+    console.error('Error updating banner:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
 
 
 

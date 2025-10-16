@@ -583,7 +583,7 @@ export const createCoupon = async (req, res) => {
           });
         }
 
-        await Promise.all(batches.map(batch => admin.messaging().sendMulticast(batch)));
+        await Promise.all(batches.map(batch => admin.messaging().sendEach(batch)));
       }
     } catch (notificationError) {
       console.error("Error sending notifications:", notificationError);

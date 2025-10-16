@@ -1,5 +1,5 @@
 import express from 'express';
-import { createBanner, getUserNearestBanners, getMyBanners, getAllBannersForAdmin, getBannerById, updateBannerExpiry } from '../controllers/BannerController.js';
+import {updateBanner, createBanner, getUserNearestBanners, getMyBanners, getAllBannersForAdmin, getBannerById, updateBannerExpiry } from '../controllers/BannerController.js';
 import multer from 'multer';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1 } from '../middlewares/checkuser.js';
@@ -13,6 +13,9 @@ const upload = multer({ storage });
 
 
 router.post('/createbanner', authMiddleware, upload.single("images"), createBanner);
+
+router.put('/updatebanner/:id', authMiddleware, upload.single('images'), updateBanner);
+
 router.get('/getbanner', authMiddleware1, getUserNearestBanners);
 
 router.get("/banners/my", authMiddleware, getMyBanners);
