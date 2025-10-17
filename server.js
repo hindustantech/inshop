@@ -25,6 +25,7 @@ import PromotionalBanner from './routes/promotionalRoute.js';
 import notification from './routes/notificationRoutes.js';
 import Referal from './routes/ReferlRoute.js'
 import './controllers/crronjob.js'
+import agencyDashboardRoutes from './routes/agencyDashboardRoutes.js';
 dotenv.config();
 connectDB();
 
@@ -80,6 +81,7 @@ app.use('/api/patnerProfile', patnerProfile);
 app.use('/api/salesRoute', salesRoute);
 app.use('/api/referal', Referal);
 
+app.use('/api/agency', agencyDashboardRoutes);
 // Add this after your existing middleware setup
 app.use('/uploads', express.static('uploads'));
 

@@ -2,6 +2,7 @@ import express from 'express';
 import { getAdUserCityByCopunWithGeo, getBannersByLocation, createAd, getAllAds, updateAd, addOrUpdateAds, appendAds, removeAds, bulkUpdateAds } from '../controllers/AdController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1 } from '../middlewares/checkuser.js';
+import { checkPermission } from '../middlewares/checkPermission.js';
 const router = express.Router();
 
 // ➕ Create a new Ad
