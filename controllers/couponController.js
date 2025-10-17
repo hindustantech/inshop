@@ -1024,7 +1024,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
     // Role-based filtering
     if (req.user.type === "agency") {
-      filter.createdby = mongoose.Types.ObjectId(req.user.id); // agency only sees their created coupons
+      filter.createdby = new mongoose.Types.ObjectId(req.user.id); // agency only sees their created coupons
     }
     else if (req.user.type !== "super_admin") {
       return res
@@ -1042,7 +1042,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
     if (tag) filter.tag = { $in: [tag] };
 
     // 📂 Category filter
-    if (category && mongoose.Types.ObjectId.isValid(category))
+    if (category && new mongoose.Types.ObjectId.isValid(category))
       filter.category = category;
 
     // ⚙️ Active / Inactive filter
