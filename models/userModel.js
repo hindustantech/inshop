@@ -63,7 +63,7 @@ const userSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['user', 'partner', 'agency', 'admin','super_admin'],
+    enum: ['user', 'partner', 'agency', 'admin', 'super_admin'],
     default: 'user'
   },
   data: {
@@ -123,6 +123,13 @@ const userSchema = new mongoose.Schema({
     index: true, // 🔑 fast lookup
 
   },
+  permissions: [
+    {
+      type: String,
+      lowercase: true, // ensure keys like 'user.create' are always lowercase
+      trim: true,
+    }
+  ],
   // Store latest location in GeoJSON format
   latestLocation: {
     type: {
