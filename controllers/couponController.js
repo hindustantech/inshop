@@ -1022,34 +1022,33 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
     let filter = {};
 
-    // Role-based filtering
+    // Role-based filter
     if (req.user.type === "agency") {
-      filter.createdby = new mongoose.Types.ObjectId(req.user.id); // agency only sees their created coupons
-    }
-    else if (req.user.type !== "super_admin") {
+      filter.createdby = new mongoose.Types.ObjectId(req.user.id);
+    } else if (req.user.type !== "super_admin") {
       return res
         .status(403)
         .json({ success: false, message: "Access denied" });
     }
 
-    // 🔍 Search filter
+    // Search filter
     if (search) {
       const regex = new RegExp(search, "i");
       filter.$or = [{ title: regex }, { tag: { $in: [regex] } }];
     }
 
-    // 🎯 Tag filter
+    // Tag filter
     if (tag) filter.tag = { $in: [tag] };
 
-    // 📂 Category filter
+    // Category filter
     if (category && new mongoose.Types.ObjectId.isValid(category))
       filter.category = category;
 
-    // ⚙️ Active / Inactive filter
+    // Active / Inactive filter
     if (status === "active") filter.active = true;
     else if (status === "inactive") filter.active = false;
 
-    // 📅 Date range filter
+    // Date range filter
     if (fromDate || toDate) {
       filter.creationDate = {};
       if (fromDate) filter.creationDate.$gte = new Date(fromDate);
@@ -1067,61 +1066,64 @@ export const getAllCouponsForAdmin = async (req, res) => {
       .populate("createdby", "name phone type")
       .populate("ownerId", "name phone type");
 
-    const total = await Coupon.countDocuments(filter);
+    // Dynamic summary filter (same as role filter)
+    const summaryFilter = { ...filter };
 
-    // Summary counts
     const now = new Date();
     const expiringSoonDate = new Date();
     expiringSoonDate.setDate(now.getDate() + 7);
 
-    const [activeCount, inactiveCount, expiringSoonCount] = await Promise.all([
-      Coupon.countDocuments({ active: true }),
-      Coupon.countDocuments({ active: false }),
+    const [total, activeCount, inactiveCount, expiringSoonCount] = await Promise.all([
+      Coupon.countDocuments(summaryFilter),
+      Coupon.countDocuments({ ...summaryFilter, active: true }),
+      Coupon.countDocuments({ ...summaryFilter, active: false }),
       Coupon.countDocuments({
+        ...summaryFilter,
         active: true,
         validTill: { $gte: now, $lte: expiringSoonDate },
       }),
     ]);
 
-    // If exportCSV not requested
-    if (!exportCSV) {
-      let coupons = await query.skip(skip).limit(Number(limit)).lean();
+    // CSV Export
+    if (exportCSV) {
+      let allCoupons = await query.lean();
+      const exportData = allCoupons.map((c) => ({
+        Title: c.title,
+        Discount: c.discountPercentage,
+        Category: c.category?.name,
+        CreatedBy: c.createdby?.name,
+        OwnerBy: c.ownerId?.name,
+        CreatedAt: c.creationDate,
+        ValidTill: c.validTill,
+        Status: c.active ? "Active" : "Inactive",
+      }));
 
-      for (const coupon of coupons) {
-        coupon.used = await UserCoupon.countDocuments({
-          couponId: coupon._id,
-          status: "used",
-        });
-      }
+      return exportToCSV(res, exportData, "all_coupons.csv");
+    }
 
-      return res.status(200).json({
-        success: true,
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        summary: {
-          active: activeCount,
-          inactive: inactiveCount,
-          expiringSoon: expiringSoonCount,
-        },
-        data: coupons,
+    // Normal Pagination
+    let coupons = await query.skip(skip).limit(Number(limit)).lean();
+
+    // Add used count for each coupon
+    for (const coupon of coupons) {
+      coupon.used = await UserCoupon.countDocuments({
+        couponId: coupon._id,
+        status: "used",
       });
     }
 
-    // CSV Export
-    let allCoupons = await query.lean();
-    const exportData = allCoupons.map((c) => ({
-      Title: c.title,
-      Discount: c.discountPercentage,
-      Category: c.category?.name,
-      CreatedBy: c.createdby?.name,
-      OwnerBy: c.ownerId?.name,
-      CreatedAt: c.creationDate,
-      ValidTill: c.validTill,
-      Status: c.active ? "Active" : "Inactive",
-    }));
-
-    return exportToCSV(res, exportData, "all_coupons.csv");
+    return res.status(200).json({
+      success: true,
+      page: Number(page),
+      limit: Number(limit),
+      total,
+      summary: {
+        active: activeCount,
+        inactive: inactiveCount,
+        expiringSoon: expiringSoonCount,
+      },
+      data: coupons,
+    });
   } catch (error) {
     console.error("Error in getAllCouponsForAdmin:", error);
     res.status(500).json({ success: false, message: error.message });
