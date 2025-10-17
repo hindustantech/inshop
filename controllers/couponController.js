@@ -1006,13 +1006,9 @@ export const getMyCoupons = async (req, res) => {
 
 
 /* 2. Get All Coupons (SuperAdmin) */
+
 export const getAllCouponsForAdmin = async (req, res) => {
   try {
-    if (req.user.type !== "super_admin") {
-      return res
-        .status(403)
-        .json({ success: false, message: "Access denied" });
-    }
 
     const {
       page = 1,
@@ -1029,6 +1025,16 @@ export const getAllCouponsForAdmin = async (req, res) => {
     let filter = {};
 
     // 🔍 Search filter
+
+    if (req.user.type === "agency") {
+      filter.createdby = mongoose.Types.ObjectId(req.user.id); // agency only sees their created coupons
+    }
+    else if (req.user.type !== "super_admin") {
+      return res
+        .status(403)
+        .json({ success: false, message: "Access denied" });
+    }
+
     if (search) {
       const regex = new RegExp(search, "i");
       filter.$or = [{ title: regex }, { tag: { $in: [regex] } }];
