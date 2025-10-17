@@ -1,7 +1,7 @@
 
 import mongoose from 'mongoose';
-import Coupon from '../models/coupunModel';
-import Banner from '../models/Banner';
+import Coupon from '../models/coupunModel.js';
+import Banner from '../models/Banner.js';
 
 export const getAgencyDashboard = async (req, res) => {
   try {
