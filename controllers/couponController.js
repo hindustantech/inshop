@@ -1027,7 +1027,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
     // 🔍 Search filter
 
     if (req.user.type === "agency") {
-      filter.createdby = mongoose.Types.ObjectId(req.user.id); // agency only sees their created coupons
+      filter.createdby = new mongoose.Types.ObjectId(req.user.id); // agency only sees their created coupons
     }
     else if (req.user.type !== "super_admin") {
       return res
