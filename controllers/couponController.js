@@ -1006,10 +1006,8 @@ export const getMyCoupons = async (req, res) => {
 
 
 /* 2. Get All Coupons (SuperAdmin) */
-
 export const getAllCouponsForAdmin = async (req, res) => {
   try {
-
     const {
       page = 1,
       limit = 10,
@@ -1024,10 +1022,9 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
     let filter = {};
 
-    // 🔍 Search filter
-
+    // Role-based filtering
     if (req.user.type === "agency") {
-      filter.createdby = new mongoose.Types.ObjectId(req.user.id); // agency only sees their created coupons
+      filter.createdby = mongoose.Types.ObjectId(req.user.id); // agency only sees their created coupons
     }
     else if (req.user.type !== "super_admin") {
       return res
@@ -1035,6 +1032,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
         .json({ success: false, message: "Access denied" });
     }
 
+    // 🔍 Search filter
     if (search) {
       const regex = new RegExp(search, "i");
       filter.$or = [{ title: regex }, { tag: { $in: [regex] } }];
@@ -1051,7 +1049,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
     if (status === "active") filter.active = true;
     else if (status === "inactive") filter.active = false;
 
-    // 📅 Date range filter (by creationDate)
+    // 📅 Date range filter
     if (fromDate || toDate) {
       filter.creationDate = {};
       if (fromDate) filter.creationDate.$gte = new Date(fromDate);
@@ -1071,10 +1069,10 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
     const total = await Coupon.countDocuments(filter);
 
-    // 📊 Summary counts (Active, Inactive, Expiring Soon)
+    // Summary counts
     const now = new Date();
     const expiringSoonDate = new Date();
-    expiringSoonDate.setDate(now.getDate() + 7); // within next 7 days
+    expiringSoonDate.setDate(now.getDate() + 7);
 
     const [activeCount, inactiveCount, expiringSoonCount] = await Promise.all([
       Coupon.countDocuments({ active: true }),
@@ -1085,11 +1083,10 @@ export const getAllCouponsForAdmin = async (req, res) => {
       }),
     ]);
 
-    // 📤 If exportCSV is not requested
+    // If exportCSV not requested
     if (!exportCSV) {
       let coupons = await query.skip(skip).limit(Number(limit)).lean();
 
-      // Add "used" count for each coupon
       for (const coupon of coupons) {
         coupon.used = await UserCoupon.countDocuments({
           couponId: coupon._id,
@@ -1111,7 +1108,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
       });
     }
 
-    // 📦 CSV Export
+    // CSV Export
     let allCoupons = await query.lean();
     const exportData = allCoupons.map((c) => ({
       Title: c.title,
@@ -1130,6 +1127,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 
 export const getById = async (req, res) => {
