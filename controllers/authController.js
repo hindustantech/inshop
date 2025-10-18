@@ -144,8 +144,14 @@ export const broadcastNotification = async (req, res) => {
 
     // Construct query based on address type
     const query = Array.isArray(address)
-      ? { manul_address: { $in: address }, devicetoken: { $ne: null, $ne: '' } }
-      : { manul_address: address, devicetoken: { $ne: null, $ne: '' } };
+      ? {
+        manul_address: { $in: address },
+        devicetoken: { $exists: true, $nin: ["", null] },
+      }
+      : {
+        manul_address: address,
+        devicetoken: { $exists: true, $nin: ["", null] },
+      };
 
     // Fetch users
     const users = await User.find(query, {
@@ -154,6 +160,7 @@ export const broadcastNotification = async (req, res) => {
       devicetoken: 1,
       manul_address: 1,
     }).lean();
+
 
     if (!users.length) {
       return res.status(404).json({
