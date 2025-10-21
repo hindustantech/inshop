@@ -10,6 +10,3 @@ export function isValidReferralCode(code) {
 
 // Example usage:
 // const code = generateReferralCode();
-// console.log(code); // e.g., IN123456
-// console.log(isValidReferralCode(code)); // true
-// console.log(isValidReferralCode('XX123456')); // false

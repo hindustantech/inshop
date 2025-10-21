@@ -26,6 +26,8 @@ import notification from './routes/notificationRoutes.js';
 import Referal from './routes/ReferlRoute.js'
 import './controllers/crronjob.js'
 import agencyDashboardRoutes from './routes/agencyDashboardRoutes.js';
+import permissionRoutes from './routes/permissionRoutes.js';
+
 dotenv.config();
 connectDB();
 
@@ -82,6 +84,7 @@ app.use('/api/salesRoute', salesRoute);
 app.use('/api/referal', Referal);
 
 app.use('/api/agency', agencyDashboardRoutes);
+app.use('/api/permissionRoutes', permissionRoutes);
 // Add this after your existing middleware setup
 app.use('/uploads', express.static('uploads'));
 

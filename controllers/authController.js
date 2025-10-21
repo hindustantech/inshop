@@ -42,7 +42,7 @@ export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {
     res.status(200).json({ success: true, users: result });
 
   } catch (error) {
-    console.error('Error in getUserIdsAndNamesByReferralCodesController:', error);
+   
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -69,7 +69,7 @@ export const getProfile = async (req, res) => {
 
     res.status(200).json({ success: true, data: user });
   } catch (error) {
-    console.error("Error fetching user profile:", error);
+  
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -98,7 +98,7 @@ export const updateProfileImage = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Profile image updated", data: user });
   } catch (error) {
-    console.error("Error updating profile image:", error);
+
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -140,7 +140,7 @@ export const broadcastNotification = async (req, res) => {
       });
     }
 
-    console.log(`🔔 Starting notification broadcast: ${title}`);
+
 
     // Construct query based on address type
     const query = Array.isArray(address)
@@ -169,7 +169,7 @@ export const broadcastNotification = async (req, res) => {
       });
     }
 
-    console.log(`📱 Found ${users.length} users with device tokens`);
+
 
     const results = {
       totalSuccess: 0,
@@ -218,7 +218,7 @@ export const broadcastNotification = async (req, res) => {
 
       // Log progress
       const progress = ((processedCount / users.length) * 100).toFixed(1);
-      console.log(`📊 Progress: ${progress}% (${processedCount}/${users.length})`);
+    
 
       // Delay between batches
       if (delay > 0 && i + concurrency < users.length) {
@@ -229,7 +229,7 @@ export const broadcastNotification = async (req, res) => {
     // Cleanup invalid tokens
     if (results.invalidTokens.length > 0) {
       await cleanupInvalidTokensBulk(results.invalidTokens);
-      console.log(`🧹 Cleaned up ${results.invalidTokens.length} invalid tokens`);
+     
     }
 
     // Save notification in DB
@@ -246,9 +246,7 @@ export const broadcastNotification = async (req, res) => {
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
 
-    console.log(
-      `✅ Broadcast completed in ${duration}s: ${results.totalSuccess} successful, ${results.totalFailures} failed`
-    );
+    s
 
     return res.status(200).json({
       success: true,
@@ -262,7 +260,6 @@ export const broadcastNotification = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('❌ Error broadcasting notification:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to send notifications',
@@ -322,9 +319,7 @@ const cleanupInvalidTokensBulk = async (invalidTokens) => {
       { _id: { $in: userIds } },
       { $set: { devicetoken: null } }
     );
-    console.log(`Successfully cleaned up ${invalidTokens.length} invalid tokens`);
   } catch (error) {
-    console.error('❌ Error cleaning up invalid tokens:', error);
     throw error;
   }
 };
@@ -432,7 +427,6 @@ export const UpdateManualAddress = async (req, res) => {
       data: updatedUser,
     });
   } catch (error) {
-    console.error(error);
     res.status(500).json({
       success: false,
       message: "Server error",
@@ -503,7 +497,6 @@ const signup = async (req, res) => {
 
     // Send WhatsApp OTP
     const otpResponse = await sendWhatsAppOtp(phone);
-    console.log(otpResponse);
     if (!otpResponse.success) {
       return res.status(500).json({ message: 'Failed to send OTP', error: otpResponse.error });
     }
@@ -608,7 +601,6 @@ const login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error); // helps debugging
     return res.status(500).json({ message: 'Login failed', error: error.message });
   }
 };
@@ -712,8 +704,7 @@ const updateProfile = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    console.log('UserID:', userId);
-    console.log('Request Body:', req.body);
+ 
 
     const isDataNotEmpty = Object.keys(req.body).length > 0;
 
@@ -733,7 +724,7 @@ const updateProfile = async (req, res) => {
     res.json(updatedUser);
 
   } catch (error) {
-    console.error('Error updating profile:', error);
+
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -747,7 +738,7 @@ const getProfileData = async (req, res) => {
     }
     res.json({ data: user.data, _id: userId, isApproved: user.isVerified, isProfileCompleted: user.isProfileCompleted, name: user.name, email: user.email, type: user.type });
   } catch (error) {
-    console.error('Error getting profile data:', error);
+ 
     res.status(500).json({ message: 'Server error' });
   }
 }
@@ -761,7 +752,7 @@ const getOwner = async (req, res) => {
     }
     res.json({ data: user.data, name: user.name, email: user.email });
   } catch (error) {
-    console.error('Error getting Owner data:', error);
+  
     res.status(500).json({ message: 'Server error' });
   }
 }
@@ -793,10 +784,8 @@ const uploadProfileImage = async (req, res) => {
       { new: true }
     );
 
-    console.log({ message: 'Profile image uploaded successfully', imageUrl: newImageUrl, user: updatedUser });
     return res.json({ message: 'Profile image uploaded successfully', imageUrl: newImageUrl, user: updatedUser });
   } catch (error) {
-    console.error('Error uploading profile image:', error);
     return res.status(500).json({ message: 'Error uploading profile image' });
   }
 };
@@ -804,14 +793,12 @@ const uploadProfileImage = async (req, res) => {
 
 const getProfileImageUrl = async (req, res) => {
   try {
-    console.log(req.user)
     const user = await User.findById(req.user._id).select('profileImage');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
     return res.json({ profileImage: user.profileImage });
   } catch (error) {
-    console.error('Error fetching profile image URL:', error);
     return res.status(500).json({ message: 'Error fetching profile image URL' });
   }
 };

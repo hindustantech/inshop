@@ -21,7 +21,7 @@ export const createAd = async (req, res) => {
 
     res.status(201).json({ success: true, message: "Ad created successfully", data: newAd });
   } catch (error) {
-    console.error(error);
+    
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -32,7 +32,7 @@ export const getAllAds = async (req, res) => {
     const ads = await Ad.find().sort({ createdAt: -1 }); // Latest first
     res.status(200).json({ success: true, data: ads });
   } catch (error) {
-    console.error(error);
+    
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -55,7 +55,7 @@ export const updateAd = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Ad updated successfully", data: updatedAd });
   } catch (error) {
-    console.error(error);
+   
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -182,7 +182,7 @@ export const getBannersByLocation = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error:', error);
+  
     res.status(500).json({
       success: false,
       message: 'Server error'
@@ -613,7 +613,7 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       pages: Math.ceil(total / parsedLimit),
     });
   } catch (error) {
-    console.error('Error fetching coupons:', error);
+    
     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };
@@ -877,7 +877,7 @@ export const addOrUpdateAds = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error adding/updating ads:', error);
+
 
     if (error.message.includes('Invalid adId')) {
       return res.status(400).json({ success: false, message: error.message });
@@ -1004,7 +1004,7 @@ export const appendAds = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error appending ads:', error);
+
 
     if (error.message.includes('Invalid adId')) {
       return res.status(400).json({
@@ -1137,7 +1137,7 @@ export const removeAds = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error removing ads:', error);
+
 
     if (error.message.includes('Invalid adId')) {
       return res.status(400).json({
@@ -1250,7 +1250,7 @@ export const bulkUpdateAds = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error in bulk update:', error);
+
     res.status(500).json({
       success: false,
       message: 'Server error during bulk update'

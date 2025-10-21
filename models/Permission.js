@@ -1,7 +1,6 @@
 // models/Permission.js
 import { Schema, model } from 'mongoose';
-import User from './User.js'; // import User model
-
+import User from './userModel.js';
 const DEFAULT_ACTIONS = [
     'create', 'read', 'update', 'delete',
     'list', 'export', 'import',

@@ -25,7 +25,6 @@ export const uploadToCloudinary = (buffer, folder = 'products') => {
       },
       (error, result) => {
         if (error) {
-          console.error('Cloudinary upload error:', error);
           return reject(new Error('Failed to upload file to Cloudinary'));
         }
         resolve(result);

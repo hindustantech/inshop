@@ -133,7 +133,7 @@ export const getAgencyDashboard = async (req, res) => {
       leafletSummary,
     });
   } catch (error) {
-    console.error(error);
+    
     res.status(500).json({ message: 'Server error' });
   }
 };

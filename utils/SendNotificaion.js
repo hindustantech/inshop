@@ -25,10 +25,10 @@ export const sendNotification = async (deviceToken, title, body, data = {}) => {
     };
 
     const response = await admin.messaging().send(message);
-    console.log('✅ Notification sent successfully:', response);
+  
     return { success: true, response };
   } catch (error) {
-    console.error('❌ Error sending notification:', error);
+    
     return { success: false, error };
   }
 };
@@ -83,10 +83,8 @@ export const createAndSendNotification = async ({
       };
 
       const response = await admin.messaging().sendMulticast(messagePayload);
-      console.log(`✅ Notifications sent: ${response.successCount}/${tokens.length}`);
-    } else {
-      console.log('⚠️ No valid device tokens found for this notification.');
-    }
+     
+    } 
 
     // 🧾 Save to MongoDB
     const notifications = new notification({
@@ -99,11 +97,11 @@ export const createAndSendNotification = async ({
     });
 
     await notifications.save();
-    console.log('🗂️ Notification saved in MongoDB:', notification._id);
+
 
     return { success: true, notification };
   } catch (error) {
-    console.error('❌ Error in createAndSendNotification:', error);
+   
     return { success: false, error };
   }
 };
