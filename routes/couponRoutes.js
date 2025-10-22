@@ -59,8 +59,8 @@ router.get('/getAllCouponsWithStatusTag', authMiddleware1, getAllCouponsWithStat
 
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);
-router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
-// router.get("/coupons/admin", authMiddleware,checkPermission(coupon.list), getAllCouponsForAdmin);
+// router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
+router.get("/coupons/admin", authMiddleware,checkPermission(coupon.list), getAllCouponsForAdmin);
 router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
 
 router.post("/claimCoupon", authMiddleware, claimCoupon);
