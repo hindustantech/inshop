@@ -27,6 +27,7 @@ import {
     updateCouponByAdmin
 
 } from '../controllers/couponController.js';
+import { checkPermission } from '../middlewares/checkPermission.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1, isSuperAdmin } from '../middlewares/checkuser.js';
 import { roleBasedOwnership } from '../middlewares/rolebasedownership.js';
@@ -58,7 +59,8 @@ router.get('/getAllCouponsWithStatusTag', authMiddleware1, getAllCouponsWithStat
 
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);
-router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
+router.get("/coupons/admin", authMiddleware,checkPermission(coupon.list), getAllCouponsForAdmin);
+// router.get("/coupons/admin", authMiddleware,checkPermission(coupon.list), getAllCouponsForAdmin);
 router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
 
 router.post("/claimCoupon", authMiddleware, claimCoupon);

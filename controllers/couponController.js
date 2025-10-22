@@ -1024,7 +1024,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
     // Role-based filter
     if (req.user.type === "agency") {
       filter.createdby = new mongoose.Types.ObjectId(req.user.id);
-    } else if (req.user.type !== "super_admin") {
+    } else if (req.user.type !== "super_admin" || req.user.type !== "admin") {
       return res
         .status(403)
         .json({ success: false, message: "Access denied" });
