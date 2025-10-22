@@ -24,7 +24,8 @@ import {
     getOwnerCouponDetails,
     getOwnerCoupons,
     updateCouponDeatils,
-    updateCouponByAdmin
+    updateCouponByAdmin,
+    createCouponAdmin
 
 } from '../controllers/couponController.js';
 import { checkPermission } from '../middlewares/checkPermission.js';
@@ -53,6 +54,15 @@ router.post(
     upload.array("images", 5),
     roleBasedOwnership,
     createCoupon
+);
+
+router.post(
+    '/createCouponAdmin',
+    authMiddleware,
+    checkPermission('coupon.create'),
+    upload.array("images", 5),
+    roleBasedOwnership,
+    createCouponAdmin
 );
 
 router.get('/getAllCouponsWithStatusTag', authMiddleware1, getAllCouponsWithStatusTag);

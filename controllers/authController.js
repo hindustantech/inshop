@@ -104,6 +104,8 @@ export const updateProfileImage = async (req, res) => {
 };
 
 export const broadcastNotification = async (req, res) => {
+
+  const userId = req.user?.id; // from auth middleware
   const startTime = Date.now();
   let processedCount = 0;
 
