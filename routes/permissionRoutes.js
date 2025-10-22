@@ -23,7 +23,7 @@ const router = express.Router();
 // Permission CRUD
 router.post('/', authMiddleware, checkPermission('permission.create'), createPermission);
 router.get('/', authMiddleware, checkPermission('permission.read'), getAllPermissions);
-router.get('/:id', authMiddleware, checkPermission('permission.read'), getPermission);
+// router.get('/:id', authMiddleware, checkPermission('permission.read'), getPermission);
 router.put('/:id', authMiddleware, checkPermission('permission.update'), updatePermission);
 router.delete('/:id', authMiddleware, checkPermission('permission.delete'), deletePermission);
 
@@ -31,6 +31,6 @@ router.delete('/:id', authMiddleware, checkPermission('permission.delete'), dele
 router.post('/assign', authMiddleware, checkPermission('permission.assign'), assignPermission);
 router.post('/remove', authMiddleware, checkPermission('permission.assign'), removePermission);
 // Any admin can view
-router.get('/:userId', authMiddleware, checkPermission('permission.read'), getUserPermissions);
+router.get('/:userId', authMiddleware, getUserPermissions);
 
 export default router;
