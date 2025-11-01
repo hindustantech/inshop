@@ -1267,7 +1267,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
     if (tag) filter.tag = { $in: [tag] };
 
     // Category filter
-    if (category && new mongoose.Types.ObjectId.isValid(category))
+    if (category &&  mongoose.Types.ObjectId.isValid(category))
       filter.category = category;
 
     // Active / Inactive filter

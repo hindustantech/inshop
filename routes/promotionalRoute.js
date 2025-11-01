@@ -2,6 +2,8 @@ import express from "express";
 import { getPromotionalBanners, getAllPromotionalBanners, createPromotionalBanner, updatePromotionalBanner, deletePromotionalBanner, toggleBannerStatus } from "../controllers/promotionalBannerController.js";
 import { authMiddleware1 } from "../middlewares/checkuser.js";
 import multer from 'multer';
+import authMiddleware from "../middlewares/authMiddleware.js";
+import { checkPermission } from "../middlewares/checkPermission.js";
 
 const router = express.Router();
 
@@ -13,10 +15,10 @@ const upload = multer({
     },
 });
 
-router.post("/", upload.single('bannerImage'), createPromotionalBanner);
-router.put("/:id", updatePromotionalBanner);
-router.delete("/:id", deletePromotionalBanner);
-router.patch("/:id/status", toggleBannerStatus);
+router.post("/", upload.single('bannerImage'), authMiddleware, checkPermission('promotional.create'), createPromotionalBanner);
+router.put("/:id", authMiddleware, checkPermission('promotional.update'), updatePromotionalBanner);
+router.delete("/:id", authMiddleware, checkPermission('promotional.delete'), deletePromotionalBanner);
+router.patch("/:id/status", authMiddleware, checkPermission('promotional.update'), toggleBannerStatus);
 router.get("/", getAllPromotionalBanners);
 router.get('/my-banners', authMiddleware1, getPromotionalBanners);
 

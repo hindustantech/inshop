@@ -27,6 +27,7 @@ import Referal from './routes/ReferlRoute.js'
 import './controllers/crronjob.js'
 import agencyDashboardRoutes from './routes/agencyDashboardRoutes.js';
 import permissionRoutes from './routes/permissionRoutes.js';
+import paymentroute from './routes/paymentRoutes.js';
 
 dotenv.config();
 connectDB();
@@ -75,6 +76,7 @@ app.use('/download', downloadRoutes);
 app.use('/api/send', sendnotification);
 app.use('/api/notification', notification);
 app.use('/api/banner', banner);
+
 app.use('/api/PromotionalBanner', PromotionalBanner);
 
 app.use('/api/manul', manuladdress);
@@ -82,6 +84,9 @@ app.use('/api/category', Categoryroute);
 app.use('/api/patnerProfile', patnerProfile);
 app.use('/api/salesRoute', salesRoute);
 app.use('/api/referal', Referal);
+
+// payment route
+app.use('/api/paymentroute', paymentroute);
 
 app.use('/api/agency', agencyDashboardRoutes);
 app.use('/api/permissionRoutes', permissionRoutes);
