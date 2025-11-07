@@ -440,7 +440,8 @@ export const UpdateManualAddress = async (req, res) => {
 
 const signup = async (req, res) => {
   try {
-    const { name, email,deviceId, phone, type, password, referralCode } = req.body;
+    // deviceId,
+    const { name, email, phone, type, password, referralCode } = req.body;
 
 
     if (!name || !email || !phone || !password) {
@@ -488,10 +489,10 @@ const signup = async (req, res) => {
     // Create new user
     const newUser = new User({
       name,
-      email,
+      email,                               // deviceId,
+
       type,
       phone,
-      deviceId,
       password: hashedPassword,
       type,
       referalCode: uniqueReferralCode,
