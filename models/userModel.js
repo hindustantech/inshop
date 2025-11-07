@@ -123,6 +123,12 @@ const userSchema = new mongoose.Schema({
     index: true, // 🔑 fast lookup
 
   },
+  deviceId: {
+    type: String,
+    required: true,
+    unique: true
+  }, // UNIQUE device
+
   permissions: [
     {
       type: String,
