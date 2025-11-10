@@ -597,7 +597,7 @@ const verifyOtp = async (req, res) => {
   }
 };
 
-export const login = async (req, res) => {
+const login = async (req, res) => {
   try {
     const { phone, password, deviceId, deviceToken } = req.body;
 
