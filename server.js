@@ -28,6 +28,7 @@ import './controllers/crronjob.js'
 import agencyDashboardRoutes from './routes/agencyDashboardRoutes.js';
 import permissionRoutes from './routes/permissionRoutes.js';
 import paymentroute from './routes/paymentRoutes.js';
+import dashroute from './routes/Dashboard.js'
 
 dotenv.config();
 connectDB();
@@ -84,6 +85,8 @@ app.use('/api/category', Categoryroute);
 app.use('/api/patnerProfile', patnerProfile);
 app.use('/api/salesRoute', salesRoute);
 app.use('/api/referal', Referal);
+
+app.use('/api/dashroute', dashroute);
 
 // payment route
 app.use('/api/paymentroute', paymentroute);
