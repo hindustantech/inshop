@@ -123,11 +123,13 @@ const userSchema = new mongoose.Schema({
     index: true, // 🔑 fast lookup
 
   },
-   deviceId: {
-     type: String,
-     required: true,
-     unique: true
-   }, // UNIQUE device
+  deviceId: {
+    type: String,
+    unique: true,
+    sparse: true,  // allows null values
+    required: true,
+  }, // UNIQUE device
+
 
   permissions: [
     {
@@ -197,6 +199,8 @@ userSchema.pre('save', async function (next) {
 });
 
 userSchema.index({ latestLocation: "2dsphere" });
+userSchema.index({ deviceId: 1 }, { unique: true });
+
 // userSchema.index({ referalCode: 1 });
 const User = mongoose.model('User', userSchema);
 export default User;

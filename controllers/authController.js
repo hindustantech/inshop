@@ -42,7 +42,7 @@ export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {
     res.status(200).json({ success: true, users: result });
 
   } catch (error) {
-   
+
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
@@ -69,7 +69,7 @@ export const getProfile = async (req, res) => {
 
     res.status(200).json({ success: true, data: user });
   } catch (error) {
-  
+
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -220,7 +220,7 @@ export const broadcastNotification = async (req, res) => {
 
       // Log progress
       const progress = ((processedCount / users.length) * 100).toFixed(1);
-    
+
 
       // Delay between batches
       if (delay > 0 && i + concurrency < users.length) {
@@ -231,7 +231,7 @@ export const broadcastNotification = async (req, res) => {
     // Cleanup invalid tokens
     if (results.invalidTokens.length > 0) {
       await cleanupInvalidTokensBulk(results.invalidTokens);
-     
+
     }
 
     // Save notification in DB
@@ -441,7 +441,7 @@ export const UpdateManualAddress = async (req, res) => {
 const signup = async (req, res) => {
   try {
     // deviceId,
-    const { name, email, phone, type, password, referralCode,deviceId } = req.body;
+    const { name, email, phone, type, password, referralCode, deviceId } = req.body;
 
 
     if (!name || !email || !phone || !password) {
@@ -458,10 +458,40 @@ const signup = async (req, res) => {
       return res.status(401).json({ success: false, message: "Unauthorized Access Denied" });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
+    // Find user by email, phone, or deviceId
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phone }, { deviceId }]
+    });
+
     if (existingUser) {
-      return res.status(400).json({ message: 'User with this email or phone already exists' });
+      // ✅ If device is already registered with another phone/email
+      if (
+        existingUser.deviceId === deviceId &&
+        (existingUser.phone !== phone || existingUser.email !== email)
+      ) {
+        return res.status(400).json({
+          message: 'This device is already registered with another account.'
+        });
+      }
+
+      // ✅ If same user tries again (same device + same email/phone)
+      if (
+        existingUser.deviceId === deviceId &&
+        existingUser.phone === phone &&
+        existingUser.email === email
+      ) {
+        return res.status(200).json({
+          message: 'You are already registered. Please log in instead.'
+        });
+      }
+
+      // ✅ If email or phone already exists for another device
+      if (existingUser.email === email) {
+        return res.status(400).json({ message: 'Email is already registered.' });
+      }
+      if (existingUser.phone === phone) {
+        return res.status(400).json({ message: 'Phone number is already registered.' });
+      }
     }
 
     // Generate referral code
@@ -489,7 +519,7 @@ const signup = async (req, res) => {
     // Create new user
     const newUser = new User({
       name,
-      email, 
+      email,
       deviceId,                              // deviceId,
       type,
       phone,
@@ -498,6 +528,8 @@ const signup = async (req, res) => {
       referalCode: uniqueReferralCode,
       referredBy: referralCode || null,
     });
+
+
 
     // Send WhatsApp OTP
     const otpResponse = await sendWhatsAppOtp(phone);
@@ -565,47 +597,83 @@ const verifyOtp = async (req, res) => {
   }
 };
 
-const login = async (req, res) => {
+export const login = async (req, res) => {
   try {
-    const { phone, password, deviceToken } = req.body;
+    const { phone, password, deviceId, deviceToken } = req.body;
 
-    // Check if phone & password are provided
-    if (!phone || !password) {
-      return res.status(400).json({ message: 'Phone and password are required' });
+    // ✅ 1. Basic validation
+    if (!phone || !password || !deviceId || !deviceToken) {
+      return res.status(400).json({
+        message: 'Phone, password, deviceId, and deviceToken are required'
+      });
     }
 
-    // Find user by phone
+    // ✅ 2. Find user by phone
     const user = await User.findOne({ phone });
     if (!user) {
       return res.status(400).json({ message: 'Invalid phone number or password' });
     }
 
-    // Compare password
+    // ✅ 3. Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid phone number or password' });
     }
 
-    // Update device token if provided
-    if (deviceToken) {
-      user.devicetoken = deviceToken; // ensure your schema field is `deviceToken` not `devicetoken`
-      await user.save();
+    // ✅ 4. Check if deviceId already used by another user
+    const deviceIdInUse = await User.findOne({
+      deviceId,
+      _id: { $ne: user._id }
+    });
+    if (deviceIdInUse) {
+      return res.status(400).json({
+        message: 'This device ID is already registered with another account.'
+      });
     }
 
-    // ✅ Always make sure generateToken receives valid params
+    // ✅ 5. Check if deviceToken already used by another user
+    const deviceTokenInUse = await User.findOne({
+      deviceToken,
+      _id: { $ne: user._id }
+    });
+    if (deviceTokenInUse) {
+      return res.status(400).json({
+        message: 'This device token is already registered with another account.'
+      });
+    }
+
+    // ✅ 6. Save or update both if missing or changed
+    let updated = false;
+    if (user.deviceId !== deviceId) {
+      user.deviceId = deviceId;
+      updated = true;
+    }
+    if (user.deviceToken !== deviceToken) {
+      user.deviceToken = deviceToken;
+      updated = true;
+    }
+    if (updated) await user.save();
+
+    // ✅ 7. Generate JWT token
     const token = generateToken(user._id.toString(), user.type);
 
-    return res.json({
+    // ✅ 8. Send response
+    return res.status(200).json({
+      success: true,
       token,
       name: user.name,
       type: user.type,
-      isApproved: user.isVerified,        // make sure field names match your schema
+      isApproved: user.isVerified,
       isProfileCompleted: user.isProfileCompleted,
       message: 'Login successful'
     });
 
   } catch (error) {
-    return res.status(500).json({ message: 'Login failed', error: error.message });
+    console.error('Login Error:', error);
+    return res.status(500).json({
+      message: 'Login failed',
+      error: error.message
+    });
   }
 };
 
@@ -708,7 +776,7 @@ const updateProfile = async (req, res) => {
   try {
     const userId = req.user._id;
 
- 
+
 
     const isDataNotEmpty = Object.keys(req.body).length > 0;
 
@@ -742,7 +810,7 @@ const getProfileData = async (req, res) => {
     }
     res.json({ data: user.data, _id: userId, isApproved: user.isVerified, isProfileCompleted: user.isProfileCompleted, name: user.name, email: user.email, type: user.type });
   } catch (error) {
- 
+
     res.status(500).json({ message: 'Server error' });
   }
 }
@@ -756,7 +824,7 @@ const getOwner = async (req, res) => {
     }
     res.json({ data: user.data, name: user.name, email: user.email });
   } catch (error) {
-  
+
     res.status(500).json({ message: 'Server error' });
   }
 }
