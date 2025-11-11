@@ -454,13 +454,21 @@ export const getCouponsList = async (req, res) => {
 };
 
 // ==============================
-// ENHANCED DASHBOARD STATISTICS CONTROLLER
+// FIXED DASHBOARD STATISTICS CONTROLLER
 // ==============================
 
 export const getDashboardStats = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const { fromDate, toDate, period = 'all-time' } = req.query;
+        // Extract user ID safely
+        const userId = req?.user?.id;
+        if (!userId) {
+            return res?.status ? res.status(401).json({
+                success: false,
+                message: "User not authenticated"
+            }) : { success: false, message: "User not authenticated" };
+        }
+
+        const { fromDate, toDate, period = 'all-time' } = req?.query || {};
 
         // Get partner profile
         const partnerProfile = await PatnerProfile.findOne({ User_id: userId });
@@ -506,7 +514,7 @@ export const getDashboardStats = async (req, res) => {
                 }
             ]),
 
-            // Sales statistics
+            // Sales statistics - FIXED: Added proper error handling for lookup
             Sales.aggregate([
                 {
                     $lookup: {
@@ -517,7 +525,10 @@ export const getDashboardStats = async (req, res) => {
                     }
                 },
                 {
-                    $unwind: "$couponInfo"
+                    $unwind: {
+                        path: "$couponInfo",
+                        preserveNullAndEmptyArrays: false // Only include records with valid coupon info
+                    }
                 },
                 {
                     $match: {
@@ -538,7 +549,7 @@ export const getDashboardStats = async (req, res) => {
                 }
             ]),
 
-            // User coupon statistics
+            // User coupon statistics - FIXED: Added proper error handling
             UserCoupon.aggregate([
                 {
                     $lookup: {
@@ -549,7 +560,10 @@ export const getDashboardStats = async (req, res) => {
                     }
                 },
                 {
-                    $unwind: "$couponInfo"
+                    $unwind: {
+                        path: "$couponInfo",
+                        preserveNullAndEmptyArrays: false
+                    }
                 },
                 {
                     $match: {
@@ -591,24 +605,24 @@ export const getDashboardStats = async (req, res) => {
             ])
         ]);
 
-        // Extract values with fallbacks
+        // Extract values with fallbacks - FIXED: Added proper default values
         const couponData = couponStats[0] || {};
         const salesData = salesStats[0] || {};
         const userCouponData = userCouponStats || [];
 
-        const totalAmount = formatCurrency(salesData.totalAmount);
-        const totalDiscount = formatCurrency(salesData.totalDiscount);
-        const totalFinalAmount = formatCurrency(salesData.totalFinalAmount);
+        const totalAmount = formatCurrency(salesData.totalAmount || 0);
+        const totalDiscount = formatCurrency(salesData.totalDiscount || 0);
+        const totalFinalAmount = formatCurrency(salesData.totalFinalAmount || 0);
         const totalMaxDistributions = couponData.totalMaxDistributions || 0;
         const totalCurrentDistributions = couponData.totalCurrentDistributions || 0;
-        const avgDiscountPercentage = formatCurrency(couponData.avgDiscountPercentage);
+        const avgDiscountPercentage = formatCurrency(couponData.avgDiscountPercentage || 0);
         const totalSales = salesData.totalSales || 0;
         const totalCoupons = couponData.totalCoupons || 0;
         const activeCoupons = couponData.activeCoupons || 0;
 
         // Calculate user coupon status counts
-        const usedCoupons = userCouponData.find(item => item._id === 'used')?.count || 0;
-        const availableCoupons = userCouponData.find(item => item._id === 'available')?.count || 0;
+        const usedCoupons = userCouponData.find(item => item?._id === 'used')?.count || 0;
+        const availableCoupons = userCouponData.find(item => item?._id === 'available')?.count || 0;
 
         const redeemRate = calculateRedeemRate(totalCurrentDistributions, totalMaxDistributions);
         const salesConversionRate = calculateRedeemRate(usedCoupons, totalCurrentDistributions);
@@ -634,7 +648,7 @@ export const getDashboardStats = async (req, res) => {
                     totalAmount,
                     totalDiscount,
                     totalFinalAmount,
-                    avgTransactionValue: formatCurrency(salesData.avgTransactionValue),
+                    avgTransactionValue: formatCurrency(salesData.avgTransactionValue || 0),
 
                     // Coupon Metrics
                     totalCoupons,
@@ -654,7 +668,7 @@ export const getDashboardStats = async (req, res) => {
                     // User Coupon Status
                     availableCoupons,
                     usedCoupons,
-                    transferredCoupons: userCouponData.find(item => item._id === 'transferred')?.count || 0
+                    transferredCoupons: userCouponData.find(item => item?._id === 'transferred')?.count || 0
                 },
                 topCoupons: topCoupons.map(coupon => ({
                     title: coupon.title,
@@ -667,15 +681,27 @@ export const getDashboardStats = async (req, res) => {
             }
         };
 
-        res.status(200).json(response);
+        // Return based on context (API call or internal call)
+        if (res?.status) {
+            return res.status(200).json(response);
+        } else {
+            return response;
+        }
 
     } catch (error) {
         console.error("Dashboard stats error:", error);
-        res.status(500).json({
+
+        const errorResponse = {
             success: false,
             message: "Error fetching dashboard statistics",
             error: error.message
-        });
+        };
+
+        if (res?.status) {
+            return res.status(500).json(errorResponse);
+        } else {
+            return errorResponse;
+        }
     }
 };
 
@@ -683,10 +709,22 @@ export const getDashboardStats = async (req, res) => {
 // ENHANCED SALES ANALYTICS CONTROLLER
 // ==============================
 
+// ==============================
+// FIXED SALES ANALYTICS CONTROLLER
+// ==============================
+
 export const getSalesAnalytics = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const { fromDate, toDate, period = 'all-time', groupBy = 'day' } = req.query;
+        // Extract user ID safely
+        const userId = req?.user?.id;
+        if (!userId) {
+            return res?.status ? res.status(401).json({
+                success: false,
+                message: "User not authenticated"
+            }) : { success: false, message: "User not authenticated" };
+        }
+
+        const { fromDate, toDate, period = 'all-time', groupBy = 'day' } = req?.query || {};
 
         // Build date filters
         let dateFilter = buildDateFilter(fromDate, toDate);
@@ -695,7 +733,6 @@ export const getSalesAnalytics = async (req, res) => {
         }
 
         let groupFormat;
-        let dateFormat;
 
         switch (groupBy) {
             case 'hour':
@@ -705,21 +742,18 @@ export const getSalesAnalytics = async (req, res) => {
                     month: { $month: "$createdAt" },
                     year: { $year: "$createdAt" }
                 };
-                dateFormat = "%Y-%m-%d %H:00";
                 break;
             case 'week':
                 groupFormat = {
                     week: { $week: "$createdAt" },
                     year: { $year: "$createdAt" }
                 };
-                dateFormat = "Week %U, %Y";
                 break;
             case 'month':
                 groupFormat = {
                     month: { $month: "$createdAt" },
                     year: { $year: "$createdAt" }
                 };
-                dateFormat = "%B %Y";
                 break;
             default: // day
                 groupFormat = {
@@ -727,7 +761,6 @@ export const getSalesAnalytics = async (req, res) => {
                     month: { $month: "$createdAt" },
                     year: { $year: "$createdAt" }
                 };
-                dateFormat = "%Y-%m-%d";
         }
 
         const analytics = await Sales.aggregate([
@@ -740,7 +773,10 @@ export const getSalesAnalytics = async (req, res) => {
                 }
             },
             {
-                $unwind: "$couponInfo"
+                $unwind: {
+                    path: "$couponInfo",
+                    preserveNullAndEmptyArrays: false
+                }
             },
             {
                 $match: {
@@ -810,22 +846,22 @@ export const getSalesAnalytics = async (req, res) => {
             return {
                 ...item,
                 label,
-                totalAmount: formatCurrency(item.totalAmount),
-                totalDiscount: formatCurrency(item.totalDiscount),
-                totalFinalAmount: formatCurrency(item.totalFinalAmount),
-                averageOrderValue: formatCurrency(item.averageOrderValue)
+                totalAmount: formatCurrency(item.totalAmount || 0),
+                totalDiscount: formatCurrency(item.totalDiscount || 0),
+                totalFinalAmount: formatCurrency(item.totalFinalAmount || 0),
+                averageOrderValue: formatCurrency(item.averageOrderValue || 0)
             };
         });
 
         // Calculate summary statistics
         const summary = formattedAnalytics.reduce((acc, curr) => ({
-            totalRevenue: acc.totalRevenue + curr.totalFinalAmount,
-            totalDiscount: acc.totalDiscount + curr.totalDiscount,
-            totalTransactions: acc.totalTransactions + curr.totalSales,
+            totalRevenue: acc.totalRevenue + (curr.totalFinalAmount || 0),
+            totalDiscount: acc.totalDiscount + (curr.totalDiscount || 0),
+            totalTransactions: acc.totalTransactions + (curr.totalSales || 0),
             periodCount: acc.periodCount + 1
         }), { totalRevenue: 0, totalDiscount: 0, totalTransactions: 0, periodCount: 0 });
 
-        res.status(200).json({
+        const response = {
             success: true,
             data: {
                 analytics: formattedAnalytics,
@@ -844,15 +880,29 @@ export const getSalesAnalytics = async (req, res) => {
                     dateRangeLabel: getDateRangeLabel(fromDate, toDate, period)
                 }
             }
-        });
+        };
+
+        // Return based on context
+        if (res?.status) {
+            return res.status(200).json(response);
+        } else {
+            return response;
+        }
 
     } catch (error) {
         console.error("Sales analytics error:", error);
-        res.status(500).json({
+
+        const errorResponse = {
             success: false,
             message: "Error fetching sales analytics",
             error: error.message
-        });
+        };
+
+        if (res?.status) {
+            return res.status(500).json(errorResponse);
+        } else {
+            return errorResponse;
+        }
     }
 };
 
@@ -869,10 +919,22 @@ Date.prototype.getWeek = function () {
 // ENHANCED COUPONS ANALYTICS CONTROLLER
 // ==============================
 
+// ==============================
+// FIXED COUPONS ANALYTICS CONTROLLER
+// ==============================
+
 export const getCouponsAnalytics = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const { fromDate, toDate, period = 'all-time' } = req.query;
+        // Extract user ID safely
+        const userId = req?.user?.id;
+        if (!userId) {
+            return res?.status ? res.status(401).json({
+                success: false,
+                message: "User not authenticated"
+            }) : { success: false, message: "User not authenticated" };
+        }
+
+        const { fromDate, toDate, period = 'all-time' } = req?.query || {};
 
         // Build date filters
         let dateFilter = buildDateFilter(fromDate, toDate);
@@ -987,11 +1049,13 @@ export const getCouponsAnalytics = async (req, res) => {
 
         const data = analytics[0] || {};
         const statusDistribution = couponStatus.reduce((acc, curr) => {
-            acc[curr._id] = curr.count;
+            if (curr?._id && curr?.count) {
+                acc[curr._id] = curr.count;
+            }
             return acc;
         }, {});
 
-        res.status(200).json({
+        const response = {
             success: true,
             data: {
                 overview: {
@@ -1002,11 +1066,11 @@ export const getCouponsAnalytics = async (req, res) => {
                     totalDistributions: data.totalDistributions || 0,
                     usedDistributions: data.usedDistributions || 0,
                     remainingDistributions: Math.max(0, (data.totalDistributions || 0) - (data.usedDistributions || 0)),
-                    avgDiscount: formatCurrency(data.avgDiscount),
-                    utilizationRate: calculateRedeemRate(data.usedDistributions, data.totalDistributions),
-                    totalPotentialRevenue: formatCurrency(data.totalPotentialRevenue),
-                    totalActualRevenue: formatCurrency(data.totalActualRevenue),
-                    revenueEfficiency: calculateRedeemRate(data.totalActualRevenue, data.totalPotentialRevenue)
+                    avgDiscount: formatCurrency(data.avgDiscount || 0),
+                    utilizationRate: calculateRedeemRate(data.usedDistributions || 0, data.totalDistributions || 0),
+                    totalPotentialRevenue: formatCurrency(data.totalPotentialRevenue || 0),
+                    totalActualRevenue: formatCurrency(data.totalActualRevenue || 0),
+                    revenueEfficiency: calculateRedeemRate(data.totalActualRevenue || 0, data.totalPotentialRevenue || 0)
                 },
                 statusDistribution,
                 filters: {
@@ -1016,18 +1080,31 @@ export const getCouponsAnalytics = async (req, res) => {
                     dateRangeLabel: getDateRangeLabel(fromDate, toDate, period)
                 }
             }
-        });
+        };
+
+        // Return based on context
+        if (res?.status) {
+            return res.status(200).json(response);
+        } else {
+            return response;
+        }
 
     } catch (error) {
         console.error("Coupons analytics error:", error);
-        res.status(500).json({
+
+        const errorResponse = {
             success: false,
             message: "Error fetching coupons analytics",
             error: error.message
-        });
+        };
+
+        if (res?.status) {
+            return res.status(500).json(errorResponse);
+        } else {
+            return errorResponse;
+        }
     }
 };
-
 // ==============================
 // PREMIUM PDF EXPORT CONTROLLER
 // ==============================
@@ -1040,13 +1117,24 @@ export const exportDashboardPDF = async (req, res) => {
         const userId = req.user.id;
         const { fromDate, toDate, period = 'all-time' } = req.query;
 
-        // Fetch all data in parallel
+        // Create mock request objects for internal calls
+        const mockReq = {
+            user: { id: userId },
+            query: { fromDate, toDate, period }
+        };
+
+        // Fetch all data in parallel using the fixed functions
         const [partnerProfile, statsRes, salesRes, couponsRes] = await Promise.all([
             PatnerProfile.findOne({ User_id: userId }),
-            getDashboardStats({ user: { id: userId }, query: { fromDate, toDate, period } }),
-            getSalesAnalytics({ user: { id: userId }, query: { fromDate, toDate, period, groupBy: 'day' } }),
-            getCouponsAnalytics({ user: { id: userId }, query: { fromDate, toDate, period } })
+            getDashboardStats(mockReq), // Call without res object
+            getSalesAnalytics(mockReq), // Call without res object
+            getCouponsAnalytics(mockReq) // Call without res object
         ]);
+
+        // Check if any of the responses failed
+        if (!statsRes.success || !salesRes.success || !couponsRes.success) {
+            throw new Error('Failed to fetch data for PDF generation');
+        }
 
         const stats = statsRes.data;
         const salesData = salesRes.data;
