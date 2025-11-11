@@ -1,5 +1,6 @@
 import Coupon from "../models/coupunModel.js";
 import Sales from "../models/Sales.js";
+import UserCoupon from "../models/UserCoupon.js";
 import PatnerProfile from "../models/PatnerProfile.js";
 import PDFDocument from 'pdfkit';
 import mongoose from "mongoose";
@@ -98,7 +99,7 @@ const getCouponStatus = (validTill, currentDistributions, maxDistributions) => {
 };
 
 // ==============================
-// DASHBOARD STATISTICS CONTROLLER
+// DASHBOARD STATISTICS CONTROLLER - FIXED WITH ACCURATE FLOW
 // ==============================
 
 export const getDashboardStats = async (req, res) => {
@@ -115,36 +116,16 @@ export const getDashboardStats = async (req, res) => {
             dateFilter = { ...dateFilter, ...buildPeriodFilter(period) };
         }
 
-        // Base match conditions
-        const salesMatch = {
-            userId: new mongoose.Types.ObjectId(userId),
-            status: "completed",
-            ...dateFilter
-        };
-
-        const couponMatch = {
-            ownerId: new mongoose.Types.ObjectId(userId),
-            ...(dateFilter.createdAt ? { createdAt: dateFilter.createdAt } : {})
-        };
-
         // Execute parallel queries for better performance
-        const [totalStats, couponStats, salesByCoupon] = await Promise.all([
-            // Total sales statistics
-            Sales.aggregate([
-                { $match: salesMatch },
-                {
-                    $group: {
-                        _id: null,
-                        totalAmount: { $sum: "$amount" },
-                        totalDiscount: { $sum: "$discountAmount" },
-                        totalSales: { $sum: 1 }
-                    }
-                }
-            ]),
-
-            // Coupon statistics using maxDistributions and currentDistributions
+        const [couponStats, salesStats, userCouponStats] = await Promise.all([
+            // Coupon statistics
             Coupon.aggregate([
-                { $match: couponMatch },
+                {
+                    $match: {
+                        ownerId: new mongoose.Types.ObjectId(userId),
+                        ...(dateFilter.createdAt ? { createdAt: dateFilter.createdAt } : {})
+                    }
+                },
                 {
                     $group: {
                         _id: null,
@@ -156,39 +137,79 @@ export const getDashboardStats = async (req, res) => {
                 }
             ]),
 
-            // Sales grouped by coupon for average discount calculation
+            // Sales statistics - get sales for coupons owned by this partner
             Sales.aggregate([
-                { $match: salesMatch },
                 {
-                    $group: {
-                        _id: "$couponId",
-                        totalDiscount: { $sum: "$discountAmount" },
-                        salesCount: { $sum: 1 }
+                    $lookup: {
+                        from: "coupons",
+                        localField: "couponId",
+                        foreignField: "_id",
+                        as: "couponInfo"
+                    }
+                },
+                {
+                    $unwind: "$couponInfo"
+                },
+                {
+                    $match: {
+                        "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                        status: "completed",
+                        ...dateFilter
                     }
                 },
                 {
                     $group: {
                         _id: null,
-                        totalDiscountAmount: { $sum: "$totalDiscount" },
-                        totalCouponsUsed: { $sum: "$salesCount" },
-                        avgDiscountPerCoupon: { $avg: "$totalDiscount" }
+                        totalAmount: { $sum: "$amount" },
+                        totalDiscount: { $sum: "$discountAmount" },
+                        totalSales: { $sum: 1 },
+                        totalFinalAmount: { $sum: "$finalAmount" }
+                    }
+                }
+            ]),
+
+            // User coupon statistics - get used coupons count
+            UserCoupon.aggregate([
+                {
+                    $lookup: {
+                        from: "coupons",
+                        localField: "couponId",
+                        foreignField: "_id",
+                        as: "couponInfo"
+                    }
+                },
+                {
+                    $unwind: "$couponInfo"
+                },
+                {
+                    $match: {
+                        "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                        status: "used",
+                        ...dateFilter
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalUsedCoupons: { $sum: 1 }
                     }
                 }
             ])
         ]);
 
         // Extract values with fallbacks
-        const totalAmount = formatCurrency(totalStats[0]?.totalAmount || 0);
-        const totalDiscount = formatCurrency(totalStats[0]?.totalDiscount || salesByCoupon[0]?.totalDiscountAmount || 0);
+        const totalAmount = formatCurrency(salesStats[0]?.totalAmount || 0);
+        const totalDiscount = formatCurrency(salesStats[0]?.totalDiscount || 0);
+        const totalFinalAmount = formatCurrency(salesStats[0]?.totalFinalAmount || 0);
         const totalMaxDistributions = couponStats[0]?.totalMaxDistributions || 0;
         const totalCurrentDistributions = couponStats[0]?.totalCurrentDistributions || 0;
         const avgDiscountPercentage = formatCurrency(couponStats[0]?.avgDiscountPercentage || 0);
-        const avgDiscountPerCouponValue = formatCurrency(salesByCoupon[0]?.avgDiscountPerCoupon || 0);
-        const totalCouponsUsed = salesByCoupon[0]?.totalCouponsUsed || 0;
-        const totalSales = totalStats[0]?.totalSales || 0;
+        const totalSales = salesStats[0]?.totalSales || 0;
         const totalCoupons = couponStats[0]?.totalCoupons || 0;
+        const totalUsedCoupons = userCouponStats[0]?.totalUsedCoupons || 0;
 
         const redeemRate = calculateRedeemRate(totalCurrentDistributions, totalMaxDistributions);
+        const salesConversionRate = calculateRedeemRate(totalUsedCoupons, totalCurrentDistributions);
 
         const response = {
             success: true,
@@ -207,15 +228,16 @@ export const getDashboardStats = async (req, res) => {
                 overview: {
                     totalAmount,
                     totalDiscount,
+                    totalFinalAmount,
                     totalCoupons,
                     totalMaxDistributions,
                     totalCurrentDistributions,
+                    totalUsedCoupons,
                     remainingDistributions: totalMaxDistributions - totalCurrentDistributions,
                     avgDiscountPercentage,
-                    avgDiscountPerCoupon: avgDiscountPerCouponValue,
                     redeemRate: formatCurrency(redeemRate),
-                    totalSales,
-                    totalCouponsUsed
+                    salesConversionRate: formatCurrency(salesConversionRate),
+                    totalSales
                 }
             }
         };
@@ -233,7 +255,7 @@ export const getDashboardStats = async (req, res) => {
 };
 
 // ==============================
-// COUPONS LIST CONTROLLER
+// COUPONS LIST CONTROLLER - FIXED
 // ==============================
 
 export const getCouponsList = async (req, res) => {
@@ -287,21 +309,66 @@ export const getCouponsList = async (req, res) => {
         };
 
         // Execute queries in parallel
-        const [coupons, totalCoupons] = await Promise.all([
+        const [coupons, totalCoupons, salesData] = await Promise.all([
             Coupon.find(baseFilter)
                 .select('title validTill discountPercentage maxDistributions currentDistributions shop_name copuon_srno createdAt')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .lean(),
-            Coupon.countDocuments(baseFilter)
+            Coupon.countDocuments(baseFilter),
+
+            // Get sales data for these coupons
+            Sales.aggregate([
+                {
+                    $lookup: {
+                        from: "coupons",
+                        localField: "couponId",
+                        foreignField: "_id",
+                        as: "couponInfo"
+                    }
+                },
+                {
+                    $unwind: "$couponInfo"
+                },
+                {
+                    $match: {
+                        "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                        status: "completed"
+                    }
+                },
+                {
+                    $group: {
+                        _id: "$couponId",
+                        totalSales: { $sum: 1 },
+                        totalRevenue: { $sum: "$amount" },
+                        totalDiscount: { $sum: "$discountAmount" }
+                    }
+                }
+            ])
         ]);
+
+        // Create sales map for quick lookup
+        const salesMap = {};
+        salesData.forEach(sale => {
+            salesMap[sale._id.toString()] = {
+                totalSales: sale.totalSales,
+                totalRevenue: sale.totalRevenue,
+                totalDiscount: sale.totalDiscount
+            };
+        });
 
         // Format coupon data
         const formattedCoupons = coupons.map(coupon => {
             const baseAmount = coupon.maxDistributions * 100; // Assuming 100 per distribution
             const discountPercentage = parseFloat(coupon.discountPercentage) || 0;
             const discountAmount = (baseAmount * discountPercentage) / 100;
+
+            const couponSales = salesMap[coupon._id.toString()] || {
+                totalSales: 0,
+                totalRevenue: 0,
+                totalDiscount: 0
+            };
 
             const status = getCouponStatus(
                 coupon.validTill,
@@ -323,6 +390,11 @@ export const getCouponsList = async (req, res) => {
                 discountAmount: formatCurrency(discountAmount),
                 usedCount: coupon.currentDistributions,
                 totalDistributed: coupon.maxDistributions,
+                salesData: {
+                    totalSales: couponSales.totalSales,
+                    totalRevenue: formatCurrency(couponSales.totalRevenue),
+                    totalDiscount: formatCurrency(couponSales.totalDiscount)
+                },
                 status,
                 isExpired: new Date(coupon.validTill) < new Date(),
                 isFullyRedeemed: coupon.currentDistributions >= coupon.maxDistributions,
@@ -362,7 +434,7 @@ export const getCouponsList = async (req, res) => {
 };
 
 // ==============================
-// SALES ANALYTICS CONTROLLER
+// SALES ANALYTICS CONTROLLER - FIXED
 // ==============================
 
 export const getSalesAnalytics = async (req, res) => {
@@ -390,8 +462,19 @@ export const getSalesAnalytics = async (req, res) => {
 
         const analytics = await Sales.aggregate([
             {
+                $lookup: {
+                    from: "coupons",
+                    localField: "couponId",
+                    foreignField: "_id",
+                    as: "couponInfo"
+                }
+            },
+            {
+                $unwind: "$couponInfo"
+            },
+            {
                 $match: {
-                    userId: new mongoose.Types.ObjectId(userId),
+                    "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
                     status: "completed",
                     ...dateFilter
                 }
@@ -401,6 +484,7 @@ export const getSalesAnalytics = async (req, res) => {
                     _id: groupFormat,
                     totalAmount: { $sum: "$amount" },
                     totalDiscount: { $sum: "$discountAmount" },
+                    totalFinalAmount: { $sum: "$finalAmount" },
                     totalSales: { $sum: 1 },
                     date: { $first: "$createdAt" }
                 }
@@ -438,11 +522,69 @@ export const getSalesAnalytics = async (req, res) => {
 };
 
 // ==============================
-// ENHANCED PDF EXPORT CONTROLLER
+// USER COUPONS ANALYTICS - NEW ENDPOINT
+// ==============================
+
+export const getUserCouponsAnalytics = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { fromDate, toDate } = req.query;
+
+        const dateFilter = buildDateFilter(fromDate, toDate);
+
+        const analytics = await UserCoupon.aggregate([
+            {
+                $lookup: {
+                    from: "coupons",
+                    localField: "couponId",
+                    foreignField: "_id",
+                    as: "couponInfo"
+                }
+            },
+            {
+                $unwind: "$couponInfo"
+            },
+            {
+                $match: {
+                    "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                    ...dateFilter
+                }
+            },
+            {
+                $group: {
+                    _id: "$status",
+                    count: { $sum: 1 },
+                    coupons: { $push: "$couponId" }
+                }
+            }
+        ]);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                analytics,
+                filters: {
+                    fromDate: fromDate || null,
+                    toDate: toDate || null
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error("User coupons analytics error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching user coupons analytics",
+            error: error.message
+        });
+    }
+};
+
+// ==============================
+// ENHANCED PDF EXPORT CONTROLLER - FIXED
 // ==============================
 
 export const exportDashboardPDF = async (req, res) => {
-    // Set timeout for large reports
     req.socket.setTimeout(10 * 60 * 1000);
     res.setTimeout(10 * 60 * 1000);
 
@@ -450,22 +592,232 @@ export const exportDashboardPDF = async (req, res) => {
         const userId = req.user.id;
         const { fromDate, toDate, period } = req.query;
 
-        // Fetch all data in parallel
-        const [partnerProfile, statsRes, couponsRes, analyticsRes] = await Promise.all([
-            PatnerProfile.findOne({ User_id: userId }),
-            getDashboardStats({ user: { id: userId }, query: { fromDate, toDate, period } }),
-            getCouponsList({ user: { id: userId }, query: { fromDate, toDate, limit: 100 } }),
-            getSalesAnalytics({ user: { id: userId }, query: { fromDate, toDate, groupBy: 'day' } }).catch(() => ({ data: { analytics: [] } }))
+        // Get partner profile
+        const partnerProfile = await PatnerProfile.findOne({ User_id: userId });
+
+        // Build date filters
+        let dateFilter = buildDateFilter(fromDate, toDate);
+        if (period && !fromDate && !toDate) {
+            const periodFilter = buildPeriodFilter(period);
+            dateFilter = { ...dateFilter, ...periodFilter };
+        }
+
+        // Fetch all data in parallel using direct database queries instead of controller functions
+        const [couponStats, salesStats, userCouponStats, coupons, salesAnalytics] = await Promise.all([
+            // Coupon statistics
+            Coupon.aggregate([
+                {
+                    $match: {
+                        ownerId: new mongoose.Types.ObjectId(userId),
+                        ...(dateFilter.createdAt ? { createdAt: dateFilter.createdAt } : {})
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalMaxDistributions: { $sum: "$maxDistributions" },
+                        totalCurrentDistributions: { $sum: "$currentDistributions" },
+                        avgDiscountPercentage: { $avg: { $toDouble: "$discountPercentage" } },
+                        totalCoupons: { $sum: 1 }
+                    }
+                }
+            ]),
+
+            // Sales statistics
+            Sales.aggregate([
+                {
+                    $lookup: {
+                        from: "coupons",
+                        localField: "couponId",
+                        foreignField: "_id",
+                        as: "couponInfo"
+                    }
+                },
+                {
+                    $unwind: "$couponInfo"
+                },
+                {
+                    $match: {
+                        "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                        status: "completed",
+                        ...dateFilter
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalAmount: { $sum: "$amount" },
+                        totalDiscount: { $sum: "$discountAmount" },
+                        totalSales: { $sum: 1 },
+                        totalFinalAmount: { $sum: "$finalAmount" }
+                    }
+                }
+            ]),
+
+            // User coupon statistics
+            UserCoupon.aggregate([
+                {
+                    $lookup: {
+                        from: "coupons",
+                        localField: "couponId",
+                        foreignField: "_id",
+                        as: "couponInfo"
+                    }
+                },
+                {
+                    $unwind: "$couponInfo"
+                },
+                {
+                    $match: {
+                        "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                        status: "used",
+                        ...dateFilter
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalUsedCoupons: { $sum: 1 }
+                    }
+                }
+            ]),
+
+            // Coupons list
+            Coupon.find({
+                ownerId: userId,
+                ...(dateFilter.createdAt ? { createdAt: dateFilter.createdAt } : {})
+            })
+                .select('title validTill discountPercentage maxDistributions currentDistributions shop_name copuon_srno createdAt')
+                .sort({ createdAt: -1 })
+                .limit(50)
+                .lean(),
+
+            // Sales analytics
+            Sales.aggregate([
+                {
+                    $lookup: {
+                        from: "coupons",
+                        localField: "couponId",
+                        foreignField: "_id",
+                        as: "couponInfo"
+                    }
+                },
+                {
+                    $unwind: "$couponInfo"
+                },
+                {
+                    $match: {
+                        "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                        status: "completed",
+                        ...dateFilter
+                    }
+                },
+                {
+                    $group: {
+                        _id: {
+                            day: { $dayOfMonth: "$createdAt" },
+                            month: { $month: "$createdAt" },
+                            year: { $year: "$createdAt" }
+                        },
+                        totalAmount: { $sum: "$amount" },
+                        totalDiscount: { $sum: "$discountAmount" },
+                        totalFinalAmount: { $sum: "$finalAmount" },
+                        totalSales: { $sum: 1 },
+                        date: { $first: "$createdAt" }
+                    }
+                },
+                {
+                    $sort: {
+                        "_id.year": 1,
+                        "_id.month": 1,
+                        "_id.day": 1
+                    }
+                }
+            ])
         ]);
 
-        const stats = statsRes.data;
-        const allCoupons = couponsRes.data.coupons;
-        const analytics = analyticsRes.data.analytics || [];
+        // Calculate stats (same logic as getDashboardStats)
+        const totalAmount = formatCurrency(salesStats[0]?.totalAmount || 0);
+        const totalDiscount = formatCurrency(salesStats[0]?.totalDiscount || 0);
+        const totalFinalAmount = formatCurrency(salesStats[0]?.totalFinalAmount || 0);
+        const totalMaxDistributions = couponStats[0]?.totalMaxDistributions || 0;
+        const totalCurrentDistributions = couponStats[0]?.totalCurrentDistributions || 0;
+        const avgDiscountPercentage = formatCurrency(couponStats[0]?.avgDiscountPercentage || 0);
+        const totalSales = salesStats[0]?.totalSales || 0;
+        const totalCoupons = couponStats[0]?.totalCoupons || 0;
+        const totalUsedCoupons = userCouponStats[0]?.totalUsedCoupons || 0;
 
-        // Sort coupons by performance (most distributions first)
+        const redeemRate = calculateRedeemRate(totalCurrentDistributions, totalMaxDistributions);
+        const salesConversionRate = calculateRedeemRate(totalUsedCoupons, totalCurrentDistributions);
+
+        const stats = {
+            partnerInfo: {
+                firmName: partnerProfile?.firm_name || "Your Firm",
+                logo: partnerProfile?.logo || null,
+                city: partnerProfile?.address?.city || "",
+                state: partnerProfile?.address?.state || ""
+            },
+            filters: {
+                fromDate: fromDate || null,
+                toDate: toDate || null,
+                period: period || 'all-time'
+            },
+            overview: {
+                totalAmount,
+                totalDiscount,
+                totalFinalAmount,
+                totalCoupons,
+                totalMaxDistributions,
+                totalCurrentDistributions,
+                totalUsedCoupons,
+                remainingDistributions: totalMaxDistributions - totalCurrentDistributions,
+                avgDiscountPercentage,
+                redeemRate: formatCurrency(redeemRate),
+                salesConversionRate: formatCurrency(salesConversionRate),
+                totalSales
+            }
+        };
+
+        // Format coupons (same logic as getCouponsList)
+        const formattedCoupons = coupons.map(coupon => {
+            const baseAmount = coupon.maxDistributions * 100;
+            const discountPercentage = parseFloat(coupon.discountPercentage) || 0;
+            const discountAmount = (baseAmount * discountPercentage) / 100;
+
+            const status = getCouponStatus(
+                coupon.validTill,
+                coupon.currentDistributions,
+                coupon.maxDistributions
+            );
+
+            return {
+                id: coupon._id,
+                title: coupon.title,
+                shopName: coupon.shop_name,
+                couponSerial: coupon.copuon_srno,
+                validTill: coupon.validTill,
+                discountPercentage: coupon.discountPercentage,
+                maxDistributions: coupon.maxDistributions,
+                currentDistributions: coupon.currentDistributions,
+                remainingDistributions: coupon.maxDistributions - coupon.currentDistributions,
+                amount: baseAmount,
+                discountAmount: formatCurrency(discountAmount),
+                usedCount: coupon.currentDistributions,
+                totalDistributed: coupon.maxDistributions,
+                status,
+                isExpired: new Date(coupon.validTill) < new Date(),
+                isFullyRedeemed: coupon.currentDistributions >= coupon.maxDistributions,
+                createdAt: coupon.createdAt
+            };
+        });
+
+        const allCoupons = formattedCoupons;
+        const analytics = salesAnalytics;
+
+        // Sort coupons by performance
         const topCoupons = [...allCoupons]
             .sort((a, b) => b.currentDistributions - a.currentDistributions)
-            .slice(0, 30);
+            .slice(0, 20);
 
         // Create PDF document
         const doc = new PDFDocument({
@@ -479,7 +831,6 @@ export const exportDashboardPDF = async (req, res) => {
             }
         });
 
-        // Set response headers
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition',
             `attachment; filename="${stats.partnerInfo.firmName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${new Date().toISOString().slice(0, 10)}.pdf"`
@@ -487,18 +838,17 @@ export const exportDashboardPDF = async (req, res) => {
 
         doc.pipe(res);
 
-        // Colors and styling
+        // ===== PDF CONTENT =====
         const primaryColor = '#1a365d';
         const accentColor = '#3182ce';
         const successColor = '#48bb78';
         const warningColor = '#ed8936';
         const dangerColor = '#f56565';
 
-        // Font setup
         const bold = 'Helvetica-Bold';
         const regular = 'Helvetica';
 
-        // ===== HEADER SECTION =====
+        // Header Section
         doc.fillColor(primaryColor)
             .fontSize(20)
             .font(bold)
@@ -512,10 +862,10 @@ export const exportDashboardPDF = async (req, res) => {
         }
 
         doc.fontSize(16)
-            .text('Coupon Performance Report', { align: 'center', underline: true })
+            .text('Performance Analytics Report', { align: 'center', underline: true })
             .moveDown(1.5);
 
-        // ===== REPORT PERIOD INFO =====
+        // Report Period Info
         const periodText = period
             ? period.charAt(0).toUpperCase() + period.slice(1)
             : fromDate && toDate
@@ -527,33 +877,16 @@ export const exportDashboardPDF = async (req, res) => {
             .text(`Report Period: ${periodText}`, 50, doc.y)
             .text(`Generated: ${new Date().toLocaleString()}`, 50, doc.y + 15)
             .text(`Total Coupons: ${stats.overview.totalCoupons.toLocaleString()}`, 50, doc.y + 30)
-            .text(`Total Distributions: ${stats.overview.totalMaxDistributions.toLocaleString()}`, 50, doc.y + 45)
-            .text(`Used Distributions: ${stats.overview.totalCurrentDistributions.toLocaleString()}`, 50, doc.y + 60);
+            .text(`Total Distributions: ${stats.overview.totalMaxDistributions.toLocaleString()}`, 50, doc.y + 45);
 
-        doc.moveDown(4);
+        doc.moveDown(3);
 
-        // ===== KEY METRICS SECTION =====
+        // Key Metrics Section
         const metrics = [
-            {
-                label: "Total Revenue",
-                value: `₹${stats.overview.totalAmount.toLocaleString()}`,
-                color: successColor
-            },
-            {
-                label: "Total Discount",
-                value: `₹${stats.overview.totalDiscount.toLocaleString()}`,
-                color: warningColor
-            },
-            {
-                label: "Total Distributions",
-                value: stats.overview.totalMaxDistributions.toLocaleString(),
-                color: accentColor
-            },
-            {
-                label: "Redeem Rate",
-                value: `${stats.overview.redeemRate}%`,
-                color: primaryColor
-            },
+            { label: "Total Revenue", value: `₹${stats.overview.totalAmount.toLocaleString()}`, color: successColor },
+            { label: "Total Discount", value: `₹${stats.overview.totalDiscount.toLocaleString()}`, color: warningColor },
+            { label: "Total Sales", value: stats.overview.totalSales.toLocaleString(), color: accentColor },
+            { label: "Redeem Rate", value: `${stats.overview.redeemRate}%`, color: primaryColor },
         ];
 
         const boxWidth = 120;
@@ -566,43 +899,23 @@ export const exportDashboardPDF = async (req, res) => {
             const x = 50 + col * (boxWidth + 30);
             const y = startY + row * (boxHeight + 20);
 
-            // Metric box
             doc.rect(x, y, boxWidth, boxHeight)
                 .fill(metric.color)
                 .stroke();
 
-            // Metric value
             doc.fillColor('white')
                 .font(bold)
                 .fontSize(14)
                 .text(metric.value, x + 10, y + 15, { width: boxWidth - 20, align: 'center' });
 
-            // Metric label
             doc.font(regular)
                 .fontSize(10)
                 .text(metric.label, x + 10, y + 35, { width: boxWidth - 20, align: 'center' });
         });
 
-        doc.moveDown(8);
+        doc.moveDown(6);
 
-        // ===== DISTRIBUTION SUMMARY =====
-        doc.fillColor(primaryColor)
-            .fontSize(14)
-            .font(bold)
-            .text('Distribution Summary', { underline: true })
-            .moveDown(0.5);
-
-        doc.fillColor('#4a5568')
-            .fontSize(10)
-            .font(regular)
-            .text(`Total Available Distributions: ${stats.overview.totalMaxDistributions.toLocaleString()}`)
-            .text(`Used Distributions: ${stats.overview.totalCurrentDistributions.toLocaleString()}`)
-            .text(`Remaining Distributions: ${stats.overview.remainingDistributions.toLocaleString()}`)
-            .text(`Utilization Rate: ${stats.overview.redeemRate}%`);
-
-        doc.moveDown(2);
-
-        // ===== TOP PERFORMING COUPONS SECTION =====
+        // Top Performing Coupons Section
         if (topCoupons.length > 0) {
             doc.addPage();
             doc.fillColor(primaryColor)
@@ -612,7 +925,6 @@ export const exportDashboardPDF = async (req, res) => {
                 .moveDown(1);
 
             topCoupons.forEach((coupon, index) => {
-                // Check page bounds
                 if (doc.y > 650) {
                     doc.addPage();
                     doc.fillColor(primaryColor)
@@ -626,13 +938,11 @@ export const exportDashboardPDF = async (req, res) => {
                     ? ((coupon.currentDistributions / coupon.maxDistributions) * 100).toFixed(1)
                     : 0;
 
-                // Coupon header
                 doc.fillColor(accentColor)
                     .fontSize(12)
                     .font(bold)
                     .text(`${index + 1}. ${coupon.title}`);
 
-                // Coupon details
                 doc.fillColor('#2d3748')
                     .fontSize(10)
                     .font(regular)
@@ -645,7 +955,7 @@ export const exportDashboardPDF = async (req, res) => {
             });
         }
 
-        // ===== SALES ANALYTICS SECTION =====
+        // Sales Analytics Section
         if (analytics.length > 0) {
             doc.addPage();
             doc.fillColor(primaryColor)
@@ -678,9 +988,7 @@ export const exportDashboardPDF = async (req, res) => {
 
                 const date = item._id.day
                     ? `${item._id.day}/${item._id.month}/${item._id.year}`
-                    : item._id.week
-                        ? `Week ${item._id.week}, ${item._id.year}`
-                        : `${item._id.month}/${item._id.year}`;
+                    : `${item._id.month}/${item._id.year}`;
 
                 doc.fillColor('#2d3748')
                     .fontSize(9)
@@ -693,12 +1001,10 @@ export const exportDashboardPDF = async (req, res) => {
             });
         }
 
-        // ===== FOOTER ON EVERY PAGE =====
+        // Footer on every page
         const totalPages = doc.bufferedPageRange().count;
         for (let i = 0; i < totalPages; i++) {
             doc.switchToPage(i);
-
-            // Page footer
             doc.fillColor('#a0aec0')
                 .fontSize(8)
                 .text(
