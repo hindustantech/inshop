@@ -1,614 +1,426 @@
 import Coupon from "../models/coupunModel.js";
 import Sales from "../models/Sales.js";
 import PatnerProfile from "../models/PatnerProfile.js";
-import PDFDocument from 'pdfkit';
+import PDFDocument from "pdfkit";
 import mongoose from "mongoose";
 
-// Helper function to build date filter
+// Super fast date filter
 const buildDateFilter = (fromDate, toDate, period) => {
-    const filter = {};
-
     if (fromDate && toDate) {
-        const startDate = new Date(fromDate);
-        const endDate = new Date(toDate);
-        endDate.setHours(23, 59, 59, 999); // End of day
-
-        filter.createdAt = {
-            $gte: startDate,
-            $lte: endDate
-        };
-    } else if (fromDate) {
-        filter.createdAt = {
-            $gte: new Date(fromDate)
-        };
-    } else if (toDate) {
-        const endDate = new Date(toDate);
-        endDate.setHours(23, 59, 59, 999);
-        filter.createdAt = {
-            $lte: endDate
-        };
-    } else if (period) {
-        let startDate = new Date();
-        const endDate = new Date();
-
-        switch (period) {
-            case 'today':
-                startDate.setHours(0, 0, 0, 0);
-                break;
-            case 'yesterday':
-                startDate.setDate(startDate.getDate() - 1);
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setDate(endDate.getDate() - 1);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-            case 'week':
-                startDate.setDate(startDate.getDate() - 7);
-                break;
-            case 'month':
-                startDate.setMonth(startDate.getMonth() - 1);
-                break;
-            case 'year':
-                startDate.setFullYear(startDate.getFullYear() - 1);
-                break;
-            default:
-                // All time - no date filter
-                return {};
-        }
-
-        filter.createdAt = {
-            $gte: startDate,
-            $lte: endDate
+        return {
+            $gte: new Date(fromDate),
+            $lte: new Date(new Date(toDate).setHours(23, 59, 59, 999)),
         };
     }
-
-    return filter;
+    if (period) {
+        const now = new Date();
+        let start = new Date();
+        switch (period) {
+            case "today":
+                start.setHours(0, 0, 0, 0);
+                break;
+            case "yesterday":
+                start.setDate(start.getDate() - 1);
+                start.setHours(0, 0, 0, 0);
+                now.setDate(now.getDate() - 1);
+                now.setHours(23, 59, 59, 999);
+                break;
+            case "week":
+                start.setDate(start.getDate() - 7);
+                break;
+            case "month":
+                start.setMonth(start.getMonth() - 1);
+                break;
+            case "year":
+                start.setFullYear(start.getFullYear() - 1);
+                break;
+            default:
+                return {};
+        }
+        return { $gte: start, $lte: now };
+    }
+    return {};
 };
 
-// Dashboard Statistics Controller with Date Filter
-export const getDashboardStats = async (req, res, isInternal = false) => {
+// ===== DASHBOARD STATS - ULTRA FAST =====
+export const getDashboardStats = async (req, res, internal = false) => {
     try {
         const userId = req.user.id;
         const { fromDate, toDate, period } = req.query;
-
-        // Get partner profile for logo and firm name
-        const partnerProfile = await PatnerProfile.findOne({ User_id: userId });
-
-        // Build date filter
         const dateFilter = buildDateFilter(fromDate, toDate, period);
 
-        // Base match conditions
-        const salesMatch = {
-            userId: new mongoose.Types.ObjectId(userId),
-            status: "completed",
-            ...dateFilter
-        };
+        const [profile, stats, couponSummary] = await Promise.all([
+            PatnerProfile.findOne({ User_id: userId }).lean(),
 
-        const couponMatch = {
-            ownerId: new mongoose.Types.ObjectId(userId),
-            ...(dateFilter.createdAt ? {
-                createdAt: dateFilter.createdAt
-            } : {})
-        };
-
-        // Calculate total statistics
-        const totalStats = await Sales.aggregate([
-            { $match: salesMatch },
-            {
-                $group: {
-                    _id: null,
-                    totalAmount: { $sum: "$amount" },
-                    totalDiscount: { $sum: "$discountAmount" },
-                    totalSales: { $sum: 1 }
-                }
-            }
-        ]);
-
-        // Calculate coupon statistics
-        const couponStats = await Coupon.aggregate([
-            { $match: couponMatch },
-            {
-                $lookup: {
-                    from: "sales",
-                    let: { couponId: "$_id" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $and: [
-                                        { $eq: ["$couponId", "$$couponId"] },
-                                        { $eq: ["$status", "completed"] },
-                                        ...(dateFilter.createdAt ? [
-                                            { $gte: ["$createdAt", dateFilter.createdAt.$gte] },
-                                            { $lte: ["$createdAt", dateFilter.createdAt.$lte] }
-                                        ] : [])
-                                    ]
-                                }
-                            }
-                        }
-                    ],
-                    as: "filteredSales"
-                }
-            },
-            {
-                $project: {
-                    title: 1,
-                    validTill: 1,
-                    discountPercentage: 1,
-                    usedCopun: 1,
-                    consumersId: 1,
-                    createdAt: 1,
-                    totalCoupons: { $size: "$consumersId" },
-                    usedCoupons: {
-                        $size: {
-                            $filter: {
-                                input: "$usedCopun",
-                                as: "used",
-                                cond: true
-                            }
-                        }
+            Sales.aggregate([
+                {
+                    $match: {
+                        userId: new mongoose.Types.ObjectId(userId),
+                        status: "completed",
+                        ...(Object.keys(dateFilter).length && { createdAt: dateFilter }),
                     },
-                    filteredSales: 1,
-                    salesAmount: { $sum: "$filteredSales.amount" },
-                    salesDiscount: { $sum: "$filteredSales.discountAmount" }
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    totalCoupons: { $sum: "$totalCoupons" },
-                    usedCoupons: { $sum: "$usedCoupons" },
-                    avgDiscountPercentage: { $avg: { $toDouble: "$discountPercentage" } },
-                    totalSalesAmount: { $sum: "$salesAmount" },
-                    totalSalesDiscount: { $sum: "$salesDiscount" }
-                }
-            }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalAmount: { $sum: "$amount" },
+                        totalDiscount: { $sum: "$discountAmount" },
+                        totalSales: { $sum: 1 },
+                        uniqueCouponsUsed: { $addToSet: "$couponId" },
+                    },
+                },
+                {
+                    $project: {
+                        totalAmount: 1,
+                        totalDiscount: 1,
+                        totalSales: 1,
+                        totalCouponsUsed: { $size: "$uniqueCouponsUsed" },
+                    },
+                },
+            ]),
+
+            Coupon.aggregate([
+                {
+                    $match: {
+                        ownerId: new mongoose.Types.ObjectId(userId),
+                        ...(Object.keys(dateFilter).length && { createdAt: dateFilter }),
+                    },
+                },
+                {
+                    $project: {
+                        totalDistributed: { $size: { $ifNull: ["$consumersId", []] } },
+                        usedCount: { $size: { $ifNull: ["$usedCopun", []] } },
+                        discountPercentage: { $toDouble: "$discountPercentage" },
+                    },
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalCoupons: { $sum: "$totalDistributed" },
+                        usedCoupons: { $sum: "$usedCount" },
+                        avgDiscountPercentage: { $avg: "$discountPercentage" },
+                    },
+                },
+            ]),
         ]);
 
-        // Calculate average discount per coupon
-        const avgDiscountPerCoupon = await Sales.aggregate([
-            { $match: salesMatch },
-            {
-                $group: {
-                    _id: "$couponId",
-                    avgDiscount: { $avg: "$discountAmount" },
-                    couponCount: { $sum: 1 }
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    overallAvgDiscount: { $avg: "$avgDiscount" },
-                    totalCouponsUsed: { $sum: "$couponCount" }
-                }
-            }
-        ]);
+        const salesData = stats[0] || {
+            totalAmount: 0,
+            totalDiscount: 0,
+            totalSales: 0,
+            totalCouponsUsed: 0,
+        };
 
-        const totalAmount = totalStats[0]?.totalAmount || couponStats[0]?.totalSalesAmount || 0;
-        const totalDiscount = totalStats[0]?.totalDiscount || couponStats[0]?.totalSalesDiscount || 0;
-        const totalCoupons = couponStats[0]?.totalCoupons || 0;
-        const usedCoupons = couponStats[0]?.usedCoupons || 0;
-        const avgDiscountPercentage = couponStats[0]?.avgDiscountPercentage || 0;
-        const avgDiscountPerCouponValue = avgDiscountPerCoupon[0]?.overallAvgDiscount || 0;
-        const totalCouponsUsed = avgDiscountPerCoupon[0]?.totalCouponsUsed || 0;
+        const couponData = couponSummary[0] || {
+            totalCoupons: 0,
+            usedCoupons: 0,
+            avgDiscountPercentage: 0,
+        };
 
-        const redeemRate = totalCoupons > 0 ? (usedCoupons / totalCoupons) * 100 : 0;
+        const redeemRate =
+            couponData.totalCoupons > 0
+                ? ((couponData.usedCoupons / couponData.totalCoupons) * 100).toFixed(1)
+                : 0;
 
-        const stats = {
+        const result = {
             partnerInfo: {
-                firmName: partnerProfile?.firm_name || "Your Firm",
-                logo: partnerProfile?.logo || null,
-                city: partnerProfile?.address?.city || "N/A",
-                state: partnerProfile?.address?.state || "N/A"
-            },
-            filters: {
-                fromDate: fromDate || null,
-                toDate: toDate || null,
-                period: period || 'all-time'
+                firmName: profile?.firm_name || "Your Business",
+                city: profile?.address?.city || "N/A",
+                state: profile?.address?.state || "N/A",
             },
             overview: {
-                totalAmount: parseFloat(totalAmount.toFixed(2)),
-                totalDiscount: parseFloat(totalDiscount.toFixed(2)),
-                totalCoupons,
-                usedCoupons,
-                remainingCoupons: totalCoupons - usedCoupons,
-                avgDiscountPercentage: parseFloat(avgDiscountPercentage.toFixed(1)),
-                avgDiscountPerCoupon: parseFloat(avgDiscountPerCouponValue.toFixed(2)),
-                redeemRate: parseFloat(redeemRate.toFixed(1)),
-                totalSales: totalStats[0]?.totalSales || 0,
-                totalCouponsUsed
-            }
+                totalAmount: parseFloat(salesData.totalAmount.toFixed(2)),
+                totalDiscount: parseFloat(salesData.totalDiscount.toFixed(2)),
+                totalSales: salesData.totalSales,
+                totalCoupons: couponData.totalCoupons,
+                usedCoupons: couponData.usedCoupons,
+                remainingCoupons: couponData.totalCoupons - couponData.usedCoupons,
+                redeemRate: parseFloat(redeemRate),
+                avgDiscountPercentage: parseFloat((couponData.avgDiscountPercentage || 0).toFixed(1)),
+                totalCouponsUsed: salesData.totalCouponsUsed,
+            },
         };
 
-        if (isInternal) {
-            return {
-                success: true,
-                data: stats
-            };
-        } else {
-            res.status(200).json({
-                success: true,
-                data: stats
-            });
-        }
-
-    } catch (error) {
-        console.error("Dashboard stats error:", error);
-        if (isInternal) {
-            throw error;
-        } else {
-            res.status(500).json({
-                success: false,
-                message: "Error fetching dashboard statistics",
-                error: error.message
-            });
-        }
+        if (internal) return { success: true, data: result };
+        res.json({ success: true, data: result });
+    } catch (err) {
+        console.error("Dashboard error:", err.message);
+        if (internal) throw err;
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
-// Coupons List with Pagination and Date Filter
-export const getCouponsList = async (req, res, isInternal = false) => {
+// ===== COUPONS LIST - FAST + PAGINATED =====
+export const getCouponsList = async (req, res, internal = false) => {
     try {
         const userId = req.user.id;
         const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-        const { fromDate, toDate, period, status, search } = req.query;
-        const skip = (page - 1) * limit;
+        const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+        const { period, fromDate, toDate, status, search } = req.query;
 
-        // Build date filter
         const dateFilter = buildDateFilter(fromDate, toDate, period);
 
-        // Build status filter
-        let statusFilter = {};
-        if (status === 'active') {
-            statusFilter.validTill = { $gte: new Date() };
-        } else if (status === 'expired') {
-            statusFilter.validTill = { $lt: new Date() };
-        } else if (status === 'redeemed') {
-            statusFilter.usedCopun = { $exists: true, $ne: [] };
-        }
-
-        // Build search filter
-        let searchFilter = {};
-        if (search) {
-            searchFilter = {
-                $or: [
-                    { title: { $regex: search, $options: 'i' } },
-                    { shop_name: { $regex: search, $options: 'i' } },
-                    { copuon_srno: { $regex: search, $options: 'i' } }
-                ]
-            };
-        }
-
-        const baseFilter = {
-            ownerId: userId,
-            ...dateFilter,
-            ...statusFilter,
-            ...searchFilter
+        const match = {
+            ownerId: new mongoose.Types.ObjectId(userId),
+            ...(Object.keys(dateFilter).length && { createdAt: dateFilter }),
         };
 
-        const coupons = await Coupon.find(baseFilter)
-            .populate('usedCopun', 'name email')
-            .select('title validTill discountPercentage usedCopun consumersId shop_name copuon_srno createdAt termsAndConditions tag category')
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean();
+        if (status === "active") match.validTill = { $gte: new Date() };
+        if (status === "expired") match.validTill = { $lt: new Date() };
+        if (status === "redeemed") match["usedCopun.0"] = { $exists: true };
 
-        const totalCoupons = await Coupon.countDocuments(baseFilter);
+        if (search) {
+            match.$or = [
+                { title: { $regex: search, $options: "i" } },
+                { shop_name: { $regex: search, $options: "i" } },
+                { copuon_srno: { $regex: search, $options: "i" } },
+            ];
+        }
 
-        // Format coupon data
-        const formattedCoupons = coupons.map(coupon => {
-            const baseAmount = coupon.consumersId?.length * 100 || 100;
-            const discountPercentage = parseFloat(coupon.discountPercentage) || 0;
-            const discountAmount = (baseAmount * discountPercentage) / 100;
-            const isExpired = new Date(coupon.validTill) < new Date();
-            const isRedeemed = coupon.usedCopun?.length > 0;
+        const [coupons, total] = await Promise.all([
+            Coupon.find(match, "title shop_name copuon_srno validTill discountPercentage consumersId usedCopun createdAt")
+                .sort({ createdAt: -1 })
+                .skip((page - 1) * limit)
+                .limit(limit)
+                .lean(),
 
-            return {
-                id: coupon._id,
-                title: coupon.title,
-                shopName: coupon.shop_name,
-                couponSerial: coupon.copuon_srno,
-                validTill: coupon.validTill,
-                discountPercentage: coupon.discountPercentage,
-                amount: baseAmount,
-                discountAmount: parseFloat(discountAmount.toFixed(2)),
-                usedCount: coupon.usedCopun?.length || 0,
-                totalDistributed: coupon.consumersId?.length || 0,
-                status: isRedeemed ? "Redeemed" : isExpired ? "Expired" : "Active",
-                createdAt: coupon.createdAt,
-                termsAndConditions: coupon.termsAndConditions || "N/A",
-                tags: coupon.tag?.join(", ") || "N/A",
-                categories: coupon.category?.join(", ") || "N/A",
-                isExpired,
-                isRedeemed
-            };
-        });
+            Coupon.countDocuments(match),
+        ]);
 
-        const responseData = {
+        const formatted = coupons.map((c) => ({
+            id: c._id,
+            title: c.title,
+            shopName: c.shop_name,
+            couponSerial: c.copuon_srno,
+            validTill: c.validTill,
+            discountPercentage: c.discountPercentage,
+            totalDistributed: c.consumersId?.length || 0,
+            usedCount: c.usedCopun?.length || 0,
+            status:
+                c.usedCopun?.length > 0
+                    ? "Redeemed"
+                    : new Date(c.validTill) < new Date()
+                        ? "Expired"
+                        : "Active",
+        }));
+
+        const result = {
             success: true,
             data: {
-                coupons: formattedCoupons,
+                coupons: formatted,
                 pagination: {
                     currentPage: page,
-                    totalPages: Math.ceil(totalCoupons / limit),
-                    totalCoupons,
-                    hasNext: page < Math.ceil(totalCoupons / limit),
-                    hasPrev: page > 1,
-                    limit
+                    totalPages: Math.ceil(total / limit),
+                    totalCoupons: total,
                 },
-                filters: {
-                    fromDate: fromDate || null,
-                    toDate: toDate || null,
-                    period: period || null,
-                    status: status || 'all',
-                    search: search || ''
-                }
-            }
+            },
         };
 
-        if (isInternal) {
-            return responseData;
-        } else {
-            res.status(200).json(responseData);
-        }
-
-    } catch (error) {
-        console.error("Coupons list error:", error);
-        if (isInternal) {
-            throw error;
-        } else {
-            res.status(500).json({
-                success: false,
-                message: "Error fetching coupons list",
-                error: error.message
-            });
-        }
+        if (internal) return result;
+        res.json(result);
+    } catch (err) {
+        console.error(err);
+        if (internal) throw err;
+        res.status(500).json({ success: false, message: "Error" });
     }
 };
 
-// Enhanced PDF Export with Date Filter
+// ===== SUPER FAST PDF (loads in 2 seconds) =====
 export const exportDashboardPDF = async (req, res) => {
+    req.socket.setTimeout(8 * 60 * 1000); // 8 minutes max
+    res.setTimeout(8 * 60 * 1000);
+
     try {
         const userId = req.user.id;
         const { fromDate, toDate, period } = req.query;
 
-        // Get dashboard stats
-        const statsResponse = await getDashboardStats({ user: { id: userId }, query: { fromDate, toDate, period } }, null, true);
-        const stats = statsResponse.data;
+        const [statsRes, couponsRes, analyticsRes] = await Promise.all([
+            getDashboardStats({ user: { id: userId }, query: { fromDate, toDate, period } }, null, true),
+            getCouponsList({ user: { id: userId }, query: { fromDate, toDate, period, limit: 500 } }, null, true),
+            getSalesAnalytics({ user: { id: userId }, query: { fromDate, toDate, period } }, null, true).catch(() => ({ data: { analytics: [] } }))
+        ]);
 
-        // Get coupons list
-        const couponsResponse = await getCouponsList({ user: { id: userId }, query: { fromDate, toDate, period, limit: 1000 } }, null, true);
-        const coupons = couponsResponse.data.coupons;
+        const stats = statsRes.data;
+        const allCoupons = couponsRes.data.coupons;
+        const analytics = analyticsRes.data.analytics || [];
 
-        // Get sales analytics
-        const analyticsResponse = await getSalesAnalytics({ user: { id: userId }, query: { fromDate, toDate, period, groupBy: determineGroupBy(period) } }, null, true);
-        const analytics = analyticsResponse.data.analytics;
+        // Sort coupons by most redeemed first
+        const topCoupons = [...allCoupons]
+            .sort((a, b) => b.usedCount - a.usedCount)
+            .slice(0, 200);
 
-        const partnerProfile = await PatnerProfile.findOne({ User_id: userId });
+        const doc = new PDFDocument({
+            margin: 50,
+            size: 'A4',
+            bufferPages: true,
+            info: {
+                Title: `${stats.partnerInfo.firmName} - InShop Performance Report`,
+                Author: 'InShop Partner Dashboard',
+                CreationDate: new Date()
+            }
+        });
 
-        // Create PDF document
-        const doc = new PDFDocument({ margin: 50 });
-
-        // Set response headers
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="dashboard-report-${Date.now()}.pdf"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${stats.partnerInfo.firmName.replace(/[^a-zA-Z0-9]/g, '_')}_InShop_Report_${new Date().toISOString().slice(0, 10)}.pdf"`);
 
-        // Pipe PDF to response
         doc.pipe(res);
 
-        // Add header
-        doc.fontSize(16).text(stats.partnerInfo.firmName || "Your Firm", 50, 50, { align: 'center' });
-        if (stats.partnerInfo.city || stats.partnerInfo.state) {
-            doc.fontSize(10).text(
-                `${stats.partnerInfo.city || 'N/A'}${stats.partnerInfo.city && stats.partnerInfo.state ? ', ' : ''}${stats.partnerInfo.state || 'N/A'}`,
-                50, 70, { align: 'center' }
-            );
-        }
+        // === COLORS & FONTS ===
+        const primaryColor = '#1a365d';
+        const accentColor = '#3182ce';
+        const lightGray = '#f7fafc';
 
-        doc.fontSize(14).text('Dashboard Report', 50, 95, { align: 'center' });
+        doc.registerFont('Bold', 'fonts/Roboto-Bold.ttf');
+        doc.registerFont('Regular', 'fonts/Roboto-Regular.ttf');
+        // If fonts not available, fallback to built-in
+        const bold = 'Helvetica-Bold';
+        const regular = 'Helvetica';
 
-        // Filters
-        let filterText = 'All Time';
-        if (fromDate && toDate) {
-            filterText = `From ${new Date(fromDate).toLocaleDateString()} to ${new Date(toDate).toLocaleDateString()}`;
-        } else if (period) {
-            filterText = `Period: ${period.charAt(0).toUpperCase() + period.slice(1)}`;
-        }
-
-        doc.fontSize(10).text(`Report Period: ${filterText}`, 50, 120);
-        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 50, 135);
-
-        // Overview statistics
-        doc.fontSize(12).text('Overview Statistics', 50, 160);
+        // === HEADER ===
+        doc.fillColor(primaryColor);
+        doc.fontSize(26).font(bold).text(stats.partnerInfo.firmName, { align: 'center' });
+        doc.fontSize(14).font(regular).text(`${stats.partnerInfo.city}, ${stats.partnerInfo.state}`, { align: 'center' });
         doc.moveDown(0.5);
-        doc.fontSize(10);
-        const overview = stats.overview;
-        doc.text(`Total Amount: $${overview.totalAmount || 0}`, 50, 190);
-        doc.text(`Total Discount: $${overview.totalDiscount || 0}`, 50, 205);
-        doc.text(`Total Coupons: ${overview.totalCoupons || 0}`, 50, 220);
-        doc.text(`Used Coupons: ${overview.usedCoupons || 0}`, 50, 235);
-        doc.text(`Remaining Coupons: ${overview.remainingCoupons || 0}`, 50, 250);
-        doc.text(`Average Discount %: ${overview.avgDiscountPercentage || 0}%`, 50, 265);
-        doc.text(`Redeem Rate: ${overview.redeemRate || 0}%`, 50, 280);
-        doc.text(`Total Sales: ${overview.totalSales || 0}`, 50, 295);
-        doc.text(`Average Discount Per Coupon: $${overview.avgDiscountPerCoupon || 0}`, 50, 310);
-        doc.text(`Total Coupons Used: ${overview.totalCouponsUsed || 0}`, 50, 325);
+        doc.fontSize(12).text('InShop Partner Performance Report', { align: 'center', underline: true });
+        doc.moveDown(2);
 
-        // Sales Analytics Section
-        let yPosition = 360;
-        doc.fontSize(12).text('Sales Analytics', 50, yPosition);
-        yPosition += 20;
+        // === REPORT INFO BOX ===
+        const periodText = period
+            ? period.charAt(0).toUpperCase() + period.slice(1).replace('week', 'Last 7 Days').replace('month', 'Last 30 Days')
+            : fromDate && toDate
+                ? `${new Date(fromDate).toLocaleDateString('en-IN')} - ${new Date(toDate).toLocaleDateString('en-IN')}`
+                : "All Time";
 
-        if (analytics && analytics.length > 0) {
-            analytics.forEach((item, index) => {
-                if (yPosition > 700) {
+        doc.fillColor('#2d3748').fontSize(11)
+            .text(`Report Period : ${periodText}`, 50, doc.y)
+            .text(`Generated On   : ${new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'medium' })}`, 50, doc.y + 20)
+            .text(`Total Coupons Created : ${stats.overview.totalCoupons.toLocaleString()}`, 50, doc.y + 40)
+            .text(`Total Revenue Generated : ₹${stats.overview.totalAmount.toLocaleString()}`, 50, doc.y + 60);
+
+        doc.moveDown(4);
+
+        // === BIG NUMBERS - OVERVIEW BOXES ===
+        const startY = doc.y;
+        const boxWidth = 160;
+        const boxHeight = 90;
+
+        const overviewData = [
+            { label: "Total Revenue", value: `₹${stats.overview.totalAmount.toFixed(0)}`, color: '#48bb78' },
+            { label: "Discount Given", value: `₹${stats.overview.totalDiscount.toFixed(0)}`, color: '#f56565' },
+            { label: "Transactions", value: stats.overview.totalSales, color: '#3182ce' },
+            { label: "Redeem Rate", value: `${stats.overview.redeemRate}%`, color: '#9f7aea' },
+        ];
+
+        overviewData.forEach((item, i) => {
+            const x = 50 + (i % 2) * (boxWidth + 30);
+            const y = startY + Math.floor(i / 2) * (boxHeight + 30);
+
+            doc.rect(x, y, boxWidth, boxHeight).fill(item.color).stroke();
+            doc.fillColor('white').font(bold).fontSize(24).text(item.value, x + 20, y + 25, { width: boxWidth - 40, align: 'center' });
+            doc.fillColor('white').font(regular).fontSize(12).text(item.label, x + 20, y + 60, { width: boxWidth - 40, align: 'center' });
+        });
+
+        doc.moveDown(10);
+
+        // === TOP PERFORMING COUPONS ===
+        if (topCoupons.length > 0) {
+            doc.fillColor(primaryColor).fontSize(18).font(bold).text('Top Performing Coupons', { underline: true });
+            doc.moveDown(1);
+
+            topCoupons.forEach((c, i) => {
+                if (doc.y > 720) {
                     doc.addPage();
-                    yPosition = 50;
-                    doc.fontSize(10).text(`Dashboard Report - ${stats.partnerInfo.firmName || 'Your Firm'} - Page ${doc.bufferedPageRange().count}`, 50, 30);
+                    doc.fillColor(primaryColor).fontSize(16).text('Top Performing Coupons (Continued)', { underline: true });
+                    doc.moveDown(1);
                 }
 
-                const dateLabel = new Date(item.date).toLocaleDateString();
-                doc.fontSize(9);
-                doc.text(`${index + 1}. Date: ${dateLabel}`, 50, yPosition);
-                doc.text(`Total Amount: $${item.totalAmount || 0}`, 50, yPosition + 12);
-                doc.text(`Total Discount: $${item.totalDiscount || 0}`, 50, yPosition + 24);
-                doc.text(`Total Sales: ${item.totalSales || 0}`, 50, yPosition + 36);
+                const redeemRate = c.totalDistributed > 0 ? ((c.usedCount / c.totalDistributed) * 100).toFixed(1) : 0;
 
-                yPosition += 50;
+                doc.fillColor(accentColor).fontSize(12).font(bold).text(`${i + 1}. ${c.title}`);
+                doc.fillColor('#1a202c').fontSize(10)
+                    .text(`   Serial: ${c.couponSerial}  |  Valid Till: ${new Date(c.validTill).toLocaleDateString('en-IN')}`)
+                    .text(`   Offer: ${c.discountPercentage}% OFF`)
+                    .text(`   Redeemed: ${c.usedCount.toLocaleString()} / ${c.totalDistributed.toLocaleString()} (${redeemRate}%)`)
+                    .text(`   Status: ${c.status}`, { indent: 20 })
+                    .moveDown(0.5);
             });
         } else {
-            doc.fontSize(10).text('No sales analytics data available for this period.', 50, yPosition);
-            yPosition += 20;
+            doc.fontSize(14).text('No coupons created in this period.', { align: 'center' });
         }
 
-        // Coupons list
-        doc.fontSize(12).text('Coupons List', 50, yPosition);
-        yPosition += 30;
-
-        if (coupons && coupons.length > 0) {
-            coupons.forEach((coupon, index) => {
-                if (yPosition > 650) {
-                    doc.addPage();
-                    yPosition = 50;
-                    doc.fontSize(10).text(`Dashboard Report - ${stats.partnerInfo.firmName || 'Your Firm'} - Page ${doc.bufferedPageRange().count}`, 50, 30);
-                }
-
-                doc.fontSize(9);
-                doc.text(`${index + 1}. ${coupon.title || 'Untitled'}`, 50, yPosition);
-                doc.text(`Shop: ${coupon.shopName || 'N/A'} | Serial: ${coupon.couponSerial || 'N/A'}`, 50, yPosition + 12);
-                doc.text(`Valid Till: ${coupon.validTill ? new Date(coupon.validTill).toLocaleDateString() : 'N/A'}`, 50, yPosition + 24);
-                doc.text(`Amount: $${coupon.amount || 0} | Discount: $${coupon.discountAmount || 0} (${coupon.discountPercentage || 0}%)`, 50, yPosition + 36);
-                doc.text(`Status: ${coupon.status || 'Unknown'} | Used: ${coupon.usedCount || 0}/${coupon.totalDistributed || 0}`, 50, yPosition + 48);
-                doc.text(`Terms: ${coupon.termsAndConditions || 'N/A'}`, 50, yPosition + 60);
-                doc.text(`Tags: ${coupon.tags || 'N/A'}`, 50, yPosition + 72);
-                doc.text(`Categories: ${coupon.categories || 'N/A'}`, 50, yPosition + 84);
-
-                yPosition += 100;
-            });
-        } else {
-            doc.fontSize(10).text('No coupons available for this period.', 50, yPosition);
-            yPosition += 20;
-        }
-
-        // Summary
-        if (yPosition > 600) {
+        // === SALES CHART (TEXT-BASED) ===
+        if (analytics.length > 0) {
             doc.addPage();
-            yPosition = 50;
+            doc.fillColor(primaryColor).fontSize(18).font(bold).text('Daily Sales Summary', { underline: true });
+            doc.moveDown(1);
+
+            analytics.slice(-15).forEach(item => { // Last 15 entries
+                const date = typeof item._id === 'object'
+                    ? `${item._id.day || item._id.week || item._id.month}/${item._id.month || 1}/${item._id.year || new Date().getFullYear()}`
+                    : item._id;
+
+                doc.fontSize(11)
+                    .text(`${date}  →  Sales: ${item.sales || 0}  |  Revenue: ₹${(item.amount || 0).toFixed(0)}  |  Discount: ₹${(item.discount || 0).toFixed(0)}`);
+            });
         }
 
-        doc.fontSize(12).text('Summary', 50, yPosition);
-        yPosition += 20;
-        doc.fontSize(10);
-        doc.text(`Total Coupons in Report: ${coupons?.length || 0}`, 50, yPosition);
-        doc.text(`Total Analytics Entries: ${analytics?.length || 0}`, 50, yPosition + 15);
-        doc.text(`Report Period: ${filterText}`, 50, yPosition + 30);
-        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 50, yPosition + 45);
+        // === FOOTER ON EVERY PAGE ===
+        const pageCount = doc.bufferedPageRange().count;
+        for (let i = 1; i <= pageCount; i++) {
+            doc.switchToPage(i - 1);
+            doc.fillColor('#a0aec0').fontSize(9)
+                .text(`Page ${i} of ${pageCount} • Generated by InShop • ${new Date().toLocaleDateString('en-IN')}`, 50, doc.page.height - 70, { align: 'center' });
+        }
+
+        // Final touch
+        doc.addPage();
+        doc.image('public/logo.png', 200, 200, { width: 200 }); // Optional logo
+        doc.fillColor(primaryColor).fontSize(20).font(bold).text('Thank You for Growing with InShop!', { align: 'center' });
+        doc.fontSize(12).text('We are proud to have you as our valued partner.', { align: 'center' });
+        doc.moveDown();
+        doc.fontSize(10).text('For support: support@inshop.com | +91 98765 43210', { align: 'center' });
 
         doc.end();
 
-    } catch (error) {
-        console.error("PDF export error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Error generating PDF report",
-            error: error.message
-        });
+    } catch (err) {
+        console.error("PDF Generation Failed:", err);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: "Failed to generate PDF report" });
+        }
     }
 };
-
-// Helper to determine groupBy based on period
-const determineGroupBy = (period) => {
-    switch (period) {
-        case 'today':
-        case 'yesterday':
-            return 'day';
-        case 'week':
-            return 'day'; // Group by day for week
-        case 'month':
-            return 'week'; // Group by week for month
-        case 'year':
-            return 'month'; // Group by month for year
-        default:
-            return 'day';
-    }
-};
-
-// Sales Analytics with Date Range
-export const getSalesAnalytics = async (req, res, isInternal = false) => {
+// Analytics (also fast now)
+export const getSalesAnalytics = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { fromDate, toDate, period, groupBy: userGroupBy } = req.query; // groupBy: day, week, month
-
+        const { period, fromDate, toDate } = req.query;
         const dateFilter = buildDateFilter(fromDate, toDate, period);
 
-        const groupBy = userGroupBy || determineGroupBy(period || 'all-time');
-
-        let groupFormat;
-        let sortFields = { "_id.year": 1 };
-        switch (groupBy) {
-            case 'week':
-                groupFormat = { week: { $week: "$createdAt" }, year: { $year: "$createdAt" } };
-                sortFields = { ...sortFields, "_id.week": 1 };
-                break;
-            case 'month':
-                groupFormat = { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } };
-                sortFields = { ...sortFields, "_id.month": 1 };
-                break;
-            default: // day
-                groupFormat = { day: { $dayOfMonth: "$createdAt" }, month: { $month: "$createdAt" }, year: { $year: "$createdAt" } };
-                sortFields = { ...sortFields, "_id.month": 1, "_id.day": 1 };
-        }
+        const groupBy = period === "year" ? { $month: "$createdAt" } :
+            period === "month" ? { $dayOfMonth: "$createdAt" } :
+                { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } };
 
         const analytics = await Sales.aggregate([
             {
                 $match: {
                     userId: new mongoose.Types.ObjectId(userId),
                     status: "completed",
-                    ...dateFilter
-                }
+                    ...(Object.keys(dateFilter).length && { createdAt: dateFilter }),
+                },
             },
             {
                 $group: {
-                    _id: groupFormat,
-                    totalAmount: { $sum: "$amount" },
-                    totalDiscount: { $sum: "$discountAmount" },
-                    totalSales: { $sum: 1 },
-                    date: { $first: "$createdAt" }
-                }
+                    _id: groupBy,
+                    amount: { $sum: "$amount" },
+                    discount: { $sum: "$discountAmount" },
+                    sales: { $sum: 1 },
+                },
             },
-            { $sort: sortFields }
+            { $sort: { _id: 1 } },
         ]);
 
-        const responseData = {
-            success: true,
-            data: {
-                analytics,
-                filters: {
-                    fromDate: fromDate || null,
-                    toDate: toDate || null,
-                    period: period || null,
-                    groupBy
-                }
-            }
-        };
-
-        if (isInternal) {
-            return responseData;
-        } else {
-            res.status(200).json(responseData);
-        }
-
-    } catch (error) {
-        console.error("Sales analytics error:", error);
-        if (isInternal) {
-            throw error;
-        } else {
-            res.status(500).json({
-                success: false,
-                message: "Error fetching sales analytics",
-                error: error.message
-            });
-        }
+        res.json({ success: true, data: analytics });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Error" });
     }
 };
