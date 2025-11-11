@@ -1109,6 +1109,8 @@ export const getCouponsAnalytics = async (req, res) => {
 // PREMIUM PDF EXPORT CONTROLLER
 // ==============================
 
+
+
 export const exportDashboardPDF = async (req, res) => {
     req.socket.setTimeout(10 * 60 * 1000);
     res.setTimeout(10 * 60 * 1000);
@@ -1117,21 +1119,20 @@ export const exportDashboardPDF = async (req, res) => {
         const userId = req.user.id;
         const { fromDate, toDate, period = 'all-time' } = req.query;
 
-        // Create mock request objects for internal calls
+        // Prepare mock request for analytics functions
         const mockReq = {
             user: { id: userId },
             query: { fromDate, toDate, period }
         };
 
-        // Fetch all data in parallel using the fixed functions
+        // Parallel fetch of all report data
         const [partnerProfile, statsRes, salesRes, couponsRes] = await Promise.all([
             PatnerProfile.findOne({ User_id: userId }),
-            getDashboardStats(mockReq), // Call without res object
-            getSalesAnalytics(mockReq), // Call without res object
-            getCouponsAnalytics(mockReq) // Call without res object
+            getDashboardStats(mockReq),
+            getSalesAnalytics(mockReq),
+            getCouponsAnalytics(mockReq)
         ]);
 
-        // Check if any of the responses failed
         if (!statsRes.success || !salesRes.success || !couponsRes.success) {
             throw new Error('Failed to fetch data for PDF generation');
         }
@@ -1140,7 +1141,7 @@ export const exportDashboardPDF = async (req, res) => {
         const salesData = salesRes.data;
         const couponsData = couponsRes.data;
 
-        // Create PDF document with professional styling
+        // Initialize the PDF
         const doc = new PDFDocument({
             margin: 50,
             size: 'A4',
@@ -1154,257 +1155,219 @@ export const exportDashboardPDF = async (req, res) => {
         });
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition',
+        res.setHeader(
+            'Content-Disposition',
             `attachment; filename="${stats.partnerInfo.firmName.replace(/[^a-zA-Z0-9]/g, '_')}_Analytics_Report_${new Date().toISOString().slice(0, 10)}.pdf"`
         );
 
         doc.pipe(res);
 
-        // Colors for professional design
+        // 🎨 Brand Colors
         const colors = {
-            primary: '#2c3e50',
-            secondary: '#3498db',
-            success: '#27ae60',
-            warning: '#f39c12',
-            danger: '#e74c3c',
-            light: '#ecf0f1',
-            dark: '#34495e'
+            primary: '#1A237E',
+            secondary: '#3949AB',
+            accent: '#64B5F6',
+            text: '#2C3E50',
+            light: '#F4F6F8',
+            border: '#E0E0E0'
         };
 
-        // Helper functions for PDF generation
+        // 📘 Add Header
         const addHeader = () => {
-            // Company Header with background
-            doc.rect(0, 0, doc.page.width, 120)
+            doc.rect(0, 0, doc.page.width, 100)
                 .fill(colors.primary);
 
-            // Company Logo and Name
             doc.fillColor('#ffffff')
-                .fontSize(24)
                 .font('Helvetica-Bold')
-                .text(stats.partnerInfo.firmName, 50, 40, { align: 'left' });
+                .fontSize(22)
+                .text(stats.partnerInfo.firmName, 50, 35);
 
-            doc.fontSize(12)
-                .font('Helvetica')
-                .text('Performance Analytics Report', 50, 70);
+            doc.font('Helvetica')
+                .fontSize(12)
+                .text('Business Performance Analytics Report', 50, 65);
 
-            // Report Period
-            doc.fontSize(10)
-                .text(`Period: ${stats.filters.dateRangeLabel}`, 50, 90);
+            doc.fillColor('#E3F2FD')
+                .fontSize(10)
+                .text(`Generated: ${new Date().toLocaleString('en-IN', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                })}`, 400, 65, { align: 'right' });
 
-            // Report Date
-            doc.text(`Generated: ${new Date().toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            })}`, 50, 105);
-
-            doc.y = 140;
+            doc.moveDown(3);
         };
 
-        const addSectionHeader = (title, y) => {
-            doc.y = y || doc.y + 20;
+        // 📗 Section Header
+        const addSectionHeader = (title) => {
+            doc.moveDown(1);
             doc.fillColor(colors.primary)
-                .fontSize(16)
                 .font('Helvetica-Bold')
-                .text(title, 50, doc.y);
+                .fontSize(16)
+                .text(title);
 
-            // Underline
-            doc.moveTo(50, doc.y + 5)
-                .lineTo(doc.page.width - 50, doc.y + 5)
+            doc.moveTo(50, doc.y + 3)
+                .lineTo(doc.page.width - 50, doc.y + 3)
                 .strokeColor(colors.secondary)
                 .lineWidth(1)
                 .stroke();
-
-            doc.y += 15;
+            doc.moveDown(1.5);
         };
 
-        const addMetricCard = (label, value, subtext, x, y, width = 120, height = 60) => {
-            // Card background
+        // 🧭 Metric Card (Grid layout)
+        const addMetricCard = (x, y, title, value, subtext) => {
+            const width = 230, height = 70;
             doc.rect(x, y, width, height)
                 .fillColor(colors.light)
-                .fill();
+                .strokeColor(colors.border)
+                .lineWidth(1)
+                .fillAndStroke();
 
-            // Border
-            doc.rect(x, y, width, height)
-                .strokeColor(colors.dark)
-                .lineWidth(0.5)
-                .stroke();
-
-            // Value
             doc.fillColor(colors.primary)
-                .fontSize(14)
                 .font('Helvetica-Bold')
-                .text(value, x + 10, y + 10, { width: width - 20, align: 'center' });
+                .fontSize(14)
+                .text(value, x + 10, y + 15);
 
-            // Label
-            doc.fillColor(colors.dark)
-                .fontSize(10)
+            doc.fillColor(colors.text)
                 .font('Helvetica')
-                .text(label, x + 10, y + 30, { width: width - 20, align: 'center' });
+                .fontSize(10)
+                .text(title, x + 10, y + 35);
 
-            // Subtext
-            if (subtext) {
-                doc.fillColor(colors.secondary)
-                    .fontSize(8)
-                    .text(subtext, x + 10, y + 45, { width: width - 20, align: 'center' });
-            }
+            if (subtext)
+                doc.fillColor(colors.accent)
+                    .fontSize(9)
+                    .text(subtext, x + 10, y + 50);
         };
 
-        const addTable = (headers, rows, startY) => {
-            let y = startY;
+        // 📊 Table Generator
+        const addTable = (headers, rows) => {
+            const startX = 50;
+            let y = doc.y + 10;
             const columnWidth = (doc.page.width - 100) / headers.length;
 
-            // Table header
+            // Header row
             doc.fillColor(colors.primary)
-                .fontSize(10)
-                .font('Helvetica-Bold');
+                .font('Helvetica-Bold')
+                .fontSize(10);
+            headers.forEach((h, i) =>
+                doc.text(h, startX + i * columnWidth, y, { width: columnWidth, align: 'left' })
+            );
 
-            headers.forEach((header, i) => {
-                doc.text(header, 50 + (i * columnWidth), y, {
-                    width: columnWidth - 10,
-                    align: 'left'
+            y += 18;
+            doc.moveTo(startX, y - 5).lineTo(doc.page.width - 50, y - 5).strokeColor(colors.border).stroke();
+
+            // Rows
+            doc.fillColor(colors.text).font('Helvetica').fontSize(9);
+            rows.forEach((row, idx) => {
+                if (y > 700) { doc.addPage(); addHeader(); addSectionHeader('Continued...'); y = 150; }
+
+                headers.forEach((h, i) => {
+                    doc.text(row[h] || '', startX + i * columnWidth, y, { width: columnWidth, align: 'left' });
                 });
+                y += 15;
+
+                doc.moveTo(startX, y - 3)
+                    .lineTo(doc.page.width - 50, y - 3)
+                    .strokeColor(colors.border)
+                    .lineWidth(0.3)
+                    .stroke();
             });
-
-            y += 15;
-
-            // Table rows
-            doc.fillColor(colors.dark)
-                .fontSize(9)
-                .font('Helvetica');
-
-            rows.forEach((row, rowIndex) => {
-                headers.forEach((header, colIndex) => {
-                    const cellValue = row[header] || row[colIndex] || '';
-                    doc.text(cellValue.toString(), 50 + (colIndex * columnWidth), y, {
-                        width: columnWidth - 10,
-                        align: 'left'
-                    });
-                });
-                y += 12;
-
-                // Add row separator
-                if (rowIndex < rows.length - 1) {
-                    doc.moveTo(50, y - 3)
-                        .lineTo(doc.page.width - 50, y - 3)
-                        .strokeColor('#bdc3c7')
-                        .lineWidth(0.3)
-                        .stroke();
-                }
-            });
-
-            return y + 10;
+            doc.moveDown(2);
         };
 
-        // Generate PDF Content
+        // Add main header
         addHeader();
 
-        // Executive Summary Section
+        // 🧩 EXECUTIVE SUMMARY
         addSectionHeader('Executive Summary');
 
-        // Key Metrics in a grid
         const metrics = [
-            { label: 'Total Revenue', value: `₹${stats.overview.totalFinalAmount}`, subtext: `${stats.overview.totalSales} sales` },
-            { label: 'Total Discount', value: `₹${stats.overview.totalDiscount}`, subtext: `${calculateRedeemRate(stats.overview.totalDiscount, stats.overview.totalAmount)}% of revenue` },
-            { label: 'Active Coupons', value: stats.overview.activeCoupons, subtext: `${calculateRedeemRate(stats.overview.activeCoupons, stats.overview.totalCoupons)}% of total` },
-            { label: 'Redeem Rate', value: `${stats.overview.redeemRate}%`, subtext: `${stats.overview.totalCurrentDistributions}/${stats.overview.totalMaxDistributions} used` }
+            {
+                title: 'Total Revenue',
+                value: `₹${stats.overview.totalFinalAmount}`,
+                sub: `${stats.overview.totalSales} sales`
+            },
+            {
+                title: 'Total Discount',
+                value: `₹${stats.overview.totalDiscount}`,
+                sub: `${stats.overview.totalDiscountRate || 0}% of total`
+            },
+            {
+                title: 'Active Coupons',
+                value: stats.overview.activeCoupons,
+                sub: `${stats.overview.totalCoupons} total`
+            },
+            {
+                title: 'Redeem Rate',
+                value: `${stats.overview.redeemRate}%`,
+                sub: `${stats.overview.totalCurrentDistributions}/${stats.overview.totalMaxDistributions}`
+            }
         ];
 
-        metrics.forEach((metric, index) => {
-            const row = Math.floor(index / 2);
-            const col = index % 2;
-            const x = 50 + (col * 270);
-            const y = doc.y + (row * 80);
-            addMetricCard(metric.label, metric.value, metric.subtext, x, y);
+        // 2x2 Grid layout
+        let y = doc.y;
+        metrics.forEach((m, i) => {
+            const x = 50 + (i % 2) * 250;
+            const rowY = y + Math.floor(i / 2) * 85;
+            addMetricCard(x, rowY, m.title, m.value, m.sub);
         });
 
-        doc.y += 120;
+        doc.y = y + 190;
 
-        // Sales Performance Section
-        if (doc.y > 600) {
-            doc.addPage();
-            doc.y = 50;
-        }
-
+        // 📈 SALES PERFORMANCE
         addSectionHeader('Sales Performance');
+        addTable(
+            ['Date', 'Transactions', 'Revenue', 'Discount', 'Avg. Order'],
+            salesData.analytics.slice(0, 10).map(item => ({
+                'Date': item.label,
+                'Transactions': item.totalSales,
+                'Revenue': `₹${item.totalFinalAmount}`,
+                'Discount': `₹${item.totalDiscount}`,
+                'Avg. Order': `₹${item.averageOrderValue}`
+            }))
+        );
 
-        const salesHeaders = ['Date', 'Transactions', 'Revenue', 'Discount', 'Avg. Order'];
-        const salesRows = salesData.analytics.slice(0, 10).map(item => ({
-            'Date': item.label,
-            'Transactions': item.totalSales.toString(),
-            'Revenue': `₹${item.totalFinalAmount}`,
-            'Discount': `₹${item.totalDiscount}`,
-            'Avg. Order': `₹${item.averageOrderValue}`
-        }));
-
-        doc.y = addTable(salesHeaders, salesRows, doc.y);
-
-        // Coupon Performance Section
-        if (doc.y > 500) {
-            doc.addPage();
-            doc.y = 50;
-        }
-
+        // 🎟️ COUPON PERFORMANCE
         addSectionHeader('Coupon Performance');
+        addTable(
+            ['Coupon', 'Distributed', 'Used', 'Utilization', 'Status'],
+            stats.topCoupons.map(coupon => ({
+                'Coupon': coupon.title,
+                'Distributed': coupon.maxDistributions,
+                'Used': coupon.currentDistributions,
+                'Utilization': `${coupon.utilizationRate.toFixed(1)}%`,
+                'Status': coupon.utilizationRate > 80 ? 'High' : coupon.utilizationRate > 50 ? 'Medium' : 'Low'
+            }))
+        );
 
-        const couponHeaders = ['Coupon', 'Distributed', 'Used', 'Utilization', 'Status'];
-        const couponRows = stats.topCoupons.map(coupon => ({
-            'Coupon': coupon.title,
-            'Distributed': coupon.maxDistributions.toString(),
-            'Used': coupon.currentDistributions.toString(),
-            'Utilization': `${coupon.utilizationRate.toFixed(1)}%`,
-            'Status': coupon.utilizationRate > 80 ? 'High' : coupon.utilizationRate > 50 ? 'Medium' : 'Low'
-        }));
-
-        doc.y = addTable(couponHeaders, couponRows, doc.y);
-
-        // Performance Insights Section
-        if (doc.y > 400) {
-            doc.addPage();
-            doc.y = 50;
-        }
-
+        // 🧠 PERFORMANCE INSIGHTS
         addSectionHeader('Performance Insights');
-
         const insights = [
-            `• Revenue Generation: ₹${stats.overview.totalFinalAmount} with ${stats.overview.totalSales} completed transactions`,
-            `• Coupon Efficiency: ${stats.overview.redeemRate}% redemption rate across all campaigns`,
-            `• Discount Impact: ₹${stats.overview.totalDiscount} in customer savings`,
-            `• Campaign Performance: ${stats.overview.activeCoupons} active campaigns driving engagement`,
-            `• Customer Value: Average transaction value of ₹${stats.overview.avgTransactionValue || '0'}`
+            `• Total Revenue Generated: ₹${stats.overview.totalFinalAmount}`,
+            `• Completed Transactions: ${stats.overview.totalSales}`,
+            `• Discount Given: ₹${stats.overview.totalDiscount}`,
+            `• Active Campaigns: ${stats.overview.activeCoupons}`,
+            `• Coupon Redemption Rate: ${stats.overview.redeemRate}%`
         ];
 
-        insights.forEach(insight => {
-            doc.fillColor(colors.dark)
+        insights.forEach(i => {
+            doc.fillColor(colors.text)
                 .fontSize(10)
-                .font('Helvetica')
-                .text(insight, 50, doc.y, {
-                    width: doc.page.width - 100,
-                    lineGap: 3
-                });
-            doc.y += 15;
+                .text(i, { lineGap: 3 });
         });
 
-        // Footer
-        const pageCount = doc.bufferedPageRange().count;
-        for (let i = 0; i < pageCount; i++) {
+        // Footer for each page
+        const totalPages = doc.bufferedPageRange().count;
+        for (let i = 0; i < totalPages; i++) {
             doc.switchToPage(i);
-
-            // Page number
-            doc.fillColor(colors.dark)
+            doc.fillColor('#9E9E9E')
                 .fontSize(8)
                 .text(
-                    `Page ${i + 1} of ${pageCount}`,
+                    `Page ${i + 1} of ${totalPages}`,
                     50,
                     doc.page.height - 30,
                     { align: 'center' }
                 );
-
-            // Confidential footer
             doc.text(
-                `Confidential - ${stats.partnerInfo.firmName} Analytics Report`,
+                `Confidential - ${stats.partnerInfo.firmName}`,
                 50,
                 doc.page.height - 20,
                 { align: 'center' }
@@ -1424,6 +1387,7 @@ export const exportDashboardPDF = async (req, res) => {
         }
     }
 };
+
 
 // ==============================
 // ENHANCED USER COUPONS ANALYTICS
