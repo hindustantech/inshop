@@ -5,7 +5,7 @@ import PDFDocument from 'pdfkit';
 import mongoose from "mongoose";
 
 // Helper function to build date filter
-const buildDateFilter = (fromDate, toDate) => {
+const buildDateFilter = (fromDate, toDate, period) => {
     const filter = {};
 
     if (fromDate && toDate) {
@@ -27,13 +27,45 @@ const buildDateFilter = (fromDate, toDate) => {
         filter.createdAt = {
             $lte: endDate
         };
+    } else if (period) {
+        let startDate = new Date();
+        const endDate = new Date();
+
+        switch (period) {
+            case 'today':
+                startDate.setHours(0, 0, 0, 0);
+                break;
+            case 'yesterday':
+                startDate.setDate(startDate.getDate() - 1);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setDate(endDate.getDate() - 1);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+            case 'week':
+                startDate.setDate(startDate.getDate() - 7);
+                break;
+            case 'month':
+                startDate.setMonth(startDate.getMonth() - 1);
+                break;
+            case 'year':
+                startDate.setFullYear(startDate.getFullYear() - 1);
+                break;
+            default:
+                // All time - no date filter
+                return {};
+        }
+
+        filter.createdAt = {
+            $gte: startDate,
+            $lte: endDate
+        };
     }
 
     return filter;
 };
 
 // Dashboard Statistics Controller with Date Filter
-export const getDashboardStats = async (req, res) => {
+export const getDashboardStats = async (req, res, isInternal = false) => {
     try {
         const userId = req.user.id;
         const { fromDate, toDate, period } = req.query;
@@ -42,44 +74,7 @@ export const getDashboardStats = async (req, res) => {
         const partnerProfile = await PatnerProfile.findOne({ User_id: userId });
 
         // Build date filter
-        let dateFilter = buildDateFilter(fromDate, toDate);
-
-        // If period is provided, override date filter
-        if (period && !fromDate && !toDate) {
-            let startDate = new Date();
-            const endDate = new Date();
-
-            switch (period) {
-                case 'today':
-                    startDate.setHours(0, 0, 0, 0);
-                    break;
-                case 'yesterday':
-                    startDate.setDate(startDate.getDate() - 1);
-                    startDate.setHours(0, 0, 0, 0);
-                    endDate.setDate(endDate.getDate() - 1);
-                    endDate.setHours(23, 59, 59, 999);
-                    break;
-                case 'week':
-                    startDate.setDate(startDate.getDate() - 7);
-                    break;
-                case 'month':
-                    startDate.setMonth(startDate.getMonth() - 1);
-                    break;
-                case 'year':
-                    startDate.setFullYear(startDate.getFullYear() - 1);
-                    break;
-                default:
-                    // All time - no date filter
-                    startDate = null;
-            }
-
-            if (startDate) {
-                dateFilter.createdAt = {
-                    $gte: startDate,
-                    $lte: endDate
-                };
-            }
-        }
+        const dateFilter = buildDateFilter(fromDate, toDate, period);
 
         // Base match conditions
         const salesMatch = {
@@ -202,8 +197,8 @@ export const getDashboardStats = async (req, res) => {
             partnerInfo: {
                 firmName: partnerProfile?.firm_name || "Your Firm",
                 logo: partnerProfile?.logo || null,
-                city: partnerProfile?.address?.city || "",
-                state: partnerProfile?.address?.state || ""
+                city: partnerProfile?.address?.city || "N/A",
+                state: partnerProfile?.address?.state || "N/A"
             },
             filters: {
                 fromDate: fromDate || null,
@@ -224,32 +219,43 @@ export const getDashboardStats = async (req, res) => {
             }
         };
 
-        res.status(200).json({
-            success: true,
-            data: stats
-        });
+        if (isInternal) {
+            return {
+                success: true,
+                data: stats
+            };
+        } else {
+            res.status(200).json({
+                success: true,
+                data: stats
+            });
+        }
 
     } catch (error) {
         console.error("Dashboard stats error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Error fetching dashboard statistics",
-            error: error.message
-        });
+        if (isInternal) {
+            throw error;
+        } else {
+            res.status(500).json({
+                success: false,
+                message: "Error fetching dashboard statistics",
+                error: error.message
+            });
+        }
     }
 };
 
 // Coupons List with Pagination and Date Filter
-export const getCouponsList = async (req, res) => {
+export const getCouponsList = async (req, res, isInternal = false) => {
     try {
         const userId = req.user.id;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
-        const { fromDate, toDate, status, search } = req.query;
+        const { fromDate, toDate, period, status, search } = req.query;
         const skip = (page - 1) * limit;
 
         // Build date filter
-        const dateFilter = buildDateFilter(fromDate, toDate);
+        const dateFilter = buildDateFilter(fromDate, toDate, period);
 
         // Build status filter
         let statusFilter = {};
@@ -282,7 +288,7 @@ export const getCouponsList = async (req, res) => {
 
         const coupons = await Coupon.find(baseFilter)
             .populate('usedCopun', 'name email')
-            .select('title validTill discountPercentage usedCopun consumersId shop_name copuon_srno createdAt')
+            .select('title validTill discountPercentage usedCopun consumersId shop_name copuon_srno createdAt termsAndConditions tag category')
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
@@ -311,12 +317,15 @@ export const getCouponsList = async (req, res) => {
                 totalDistributed: coupon.consumersId?.length || 0,
                 status: isRedeemed ? "Redeemed" : isExpired ? "Expired" : "Active",
                 createdAt: coupon.createdAt,
+                termsAndConditions: coupon.termsAndConditions || "N/A",
+                tags: coupon.tag?.join(", ") || "N/A",
+                categories: coupon.category?.join(", ") || "N/A",
                 isExpired,
                 isRedeemed
             };
         });
 
-        res.status(200).json({
+        const responseData = {
             success: true,
             data: {
                 coupons: formattedCoupons,
@@ -331,19 +340,30 @@ export const getCouponsList = async (req, res) => {
                 filters: {
                     fromDate: fromDate || null,
                     toDate: toDate || null,
+                    period: period || null,
                     status: status || 'all',
                     search: search || ''
                 }
             }
-        });
+        };
+
+        if (isInternal) {
+            return responseData;
+        } else {
+            res.status(200).json(responseData);
+        }
 
     } catch (error) {
         console.error("Coupons list error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Error fetching coupons list",
-            error: error.message
-        });
+        if (isInternal) {
+            throw error;
+        } else {
+            res.status(500).json({
+                success: false,
+                message: "Error fetching coupons list",
+                error: error.message
+            });
+        }
     }
 };
 
@@ -354,14 +374,18 @@ export const exportDashboardPDF = async (req, res) => {
         const { fromDate, toDate, period } = req.query;
 
         // Get dashboard stats
-        const statsData = await getDashboardStats({ user: { id: userId }, query: { fromDate, toDate, period } });
+        const statsResponse = await getDashboardStats({ user: { id: userId }, query: { fromDate, toDate, period } }, null, true);
+        const stats = statsResponse.data;
 
         // Get coupons list
-        const couponsData = await getCouponsList({ user: { id: userId }, query: { fromDate, toDate, limit: 1000 } });
+        const couponsResponse = await getCouponsList({ user: { id: userId }, query: { fromDate, toDate, period, limit: 1000 } }, null, true);
+        const coupons = couponsResponse.data.coupons;
+
+        // Get sales analytics
+        const analyticsResponse = await getSalesAnalytics({ user: { id: userId }, query: { fromDate, toDate, period, groupBy: determineGroupBy(period) } }, null, true);
+        const analytics = analyticsResponse.data.analytics;
 
         const partnerProfile = await PatnerProfile.findOne({ User_id: userId });
-        const stats = statsData.data;
-        const coupons = couponsData.data.coupons;
 
         // Create PDF document
         const doc = new PDFDocument({ margin: 50 });
@@ -374,10 +398,10 @@ export const exportDashboardPDF = async (req, res) => {
         doc.pipe(res);
 
         // Add header
-        doc.fontSize(16).text(stats.partnerInfo.firmName, 50, 50, { align: 'center' });
+        doc.fontSize(16).text(stats.partnerInfo.firmName || "Your Firm", 50, 50, { align: 'center' });
         if (stats.partnerInfo.city || stats.partnerInfo.state) {
             doc.fontSize(10).text(
-                `${stats.partnerInfo.city}${stats.partnerInfo.city && stats.partnerInfo.state ? ', ' : ''}${stats.partnerInfo.state}`,
+                `${stats.partnerInfo.city || 'N/A'}${stats.partnerInfo.city && stats.partnerInfo.state ? ', ' : ''}${stats.partnerInfo.state || 'N/A'}`,
                 50, 70, { align: 'center' }
             );
         }
@@ -400,36 +424,72 @@ export const exportDashboardPDF = async (req, res) => {
         doc.moveDown(0.5);
         doc.fontSize(10);
         const overview = stats.overview;
-        doc.text(`Total Amount: $${overview.totalAmount}`, 50, 190);
-        doc.text(`Total Discount: $${overview.totalDiscount}`, 50, 205);
-        doc.text(`Total Coupons: ${overview.totalCoupons}`, 50, 220);
-        doc.text(`Used Coupons: ${overview.usedCoupons}`, 50, 235);
-        doc.text(`Remaining Coupons: ${overview.remainingCoupons}`, 50, 250);
-        doc.text(`Average Discount %: ${overview.avgDiscountPercentage}%`, 50, 265);
-        doc.text(`Redeem Rate: ${overview.redeemRate}%`, 50, 280);
-        doc.text(`Total Sales: ${overview.totalSales}`, 50, 295);
+        doc.text(`Total Amount: $${overview.totalAmount || 0}`, 50, 190);
+        doc.text(`Total Discount: $${overview.totalDiscount || 0}`, 50, 205);
+        doc.text(`Total Coupons: ${overview.totalCoupons || 0}`, 50, 220);
+        doc.text(`Used Coupons: ${overview.usedCoupons || 0}`, 50, 235);
+        doc.text(`Remaining Coupons: ${overview.remainingCoupons || 0}`, 50, 250);
+        doc.text(`Average Discount %: ${overview.avgDiscountPercentage || 0}%`, 50, 265);
+        doc.text(`Redeem Rate: ${overview.redeemRate || 0}%`, 50, 280);
+        doc.text(`Total Sales: ${overview.totalSales || 0}`, 50, 295);
+        doc.text(`Average Discount Per Coupon: $${overview.avgDiscountPerCoupon || 0}`, 50, 310);
+        doc.text(`Total Coupons Used: ${overview.totalCouponsUsed || 0}`, 50, 325);
+
+        // Sales Analytics Section
+        let yPosition = 360;
+        doc.fontSize(12).text('Sales Analytics', 50, yPosition);
+        yPosition += 20;
+
+        if (analytics && analytics.length > 0) {
+            analytics.forEach((item, index) => {
+                if (yPosition > 700) {
+                    doc.addPage();
+                    yPosition = 50;
+                    doc.fontSize(10).text(`Dashboard Report - ${stats.partnerInfo.firmName || 'Your Firm'} - Page ${doc.bufferedPageRange().count}`, 50, 30);
+                }
+
+                const dateLabel = new Date(item.date).toLocaleDateString();
+                doc.fontSize(9);
+                doc.text(`${index + 1}. Date: ${dateLabel}`, 50, yPosition);
+                doc.text(`Total Amount: $${item.totalAmount || 0}`, 50, yPosition + 12);
+                doc.text(`Total Discount: $${item.totalDiscount || 0}`, 50, yPosition + 24);
+                doc.text(`Total Sales: ${item.totalSales || 0}`, 50, yPosition + 36);
+
+                yPosition += 50;
+            });
+        } else {
+            doc.fontSize(10).text('No sales analytics data available for this period.', 50, yPosition);
+            yPosition += 20;
+        }
 
         // Coupons list
-        let yPosition = 330;
         doc.fontSize(12).text('Coupons List', 50, yPosition);
         yPosition += 30;
 
-        coupons.forEach((coupon, index) => {
-            if (yPosition > 700) {
-                doc.addPage();
-                yPosition = 50;
-                doc.fontSize(10).text(`Dashboard Report - ${stats.partnerInfo.firmName} - Page ${doc.bufferedPageRange().count}`, 50, 30);
-            }
+        if (coupons && coupons.length > 0) {
+            coupons.forEach((coupon, index) => {
+                if (yPosition > 650) {
+                    doc.addPage();
+                    yPosition = 50;
+                    doc.fontSize(10).text(`Dashboard Report - ${stats.partnerInfo.firmName || 'Your Firm'} - Page ${doc.bufferedPageRange().count}`, 50, 30);
+                }
 
-            doc.fontSize(9);
-            doc.text(`${index + 1}. ${coupon.title}`, 50, yPosition);
-            doc.text(`Shop: ${coupon.shopName} | Serial: ${coupon.couponSerial}`, 50, yPosition + 12);
-            doc.text(`Valid Till: ${new Date(coupon.validTill).toLocaleDateString()}`, 50, yPosition + 24);
-            doc.text(`Amount: $${coupon.amount} | Discount: $${coupon.discountAmount} (${coupon.discountPercentage}%)`, 50, yPosition + 36);
-            doc.text(`Status: ${coupon.status} | Used: ${coupon.usedCount}/${coupon.totalDistributed}`, 50, yPosition + 48);
+                doc.fontSize(9);
+                doc.text(`${index + 1}. ${coupon.title || 'Untitled'}`, 50, yPosition);
+                doc.text(`Shop: ${coupon.shopName || 'N/A'} | Serial: ${coupon.couponSerial || 'N/A'}`, 50, yPosition + 12);
+                doc.text(`Valid Till: ${coupon.validTill ? new Date(coupon.validTill).toLocaleDateString() : 'N/A'}`, 50, yPosition + 24);
+                doc.text(`Amount: $${coupon.amount || 0} | Discount: $${coupon.discountAmount || 0} (${coupon.discountPercentage || 0}%)`, 50, yPosition + 36);
+                doc.text(`Status: ${coupon.status || 'Unknown'} | Used: ${coupon.usedCount || 0}/${coupon.totalDistributed || 0}`, 50, yPosition + 48);
+                doc.text(`Terms: ${coupon.termsAndConditions || 'N/A'}`, 50, yPosition + 60);
+                doc.text(`Tags: ${coupon.tags || 'N/A'}`, 50, yPosition + 72);
+                doc.text(`Categories: ${coupon.categories || 'N/A'}`, 50, yPosition + 84);
 
-            yPosition += 70;
-        });
+                yPosition += 100;
+            });
+        } else {
+            doc.fontSize(10).text('No coupons available for this period.', 50, yPosition);
+            yPosition += 20;
+        }
 
         // Summary
         if (yPosition > 600) {
@@ -440,9 +500,10 @@ export const exportDashboardPDF = async (req, res) => {
         doc.fontSize(12).text('Summary', 50, yPosition);
         yPosition += 20;
         doc.fontSize(10);
-        doc.text(`Total Coupons in Report: ${coupons.length}`, 50, yPosition);
-        doc.text(`Report Period: ${filterText}`, 50, yPosition + 15);
-        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 50, yPosition + 30);
+        doc.text(`Total Coupons in Report: ${coupons?.length || 0}`, 50, yPosition);
+        doc.text(`Total Analytics Entries: ${analytics?.length || 0}`, 50, yPosition + 15);
+        doc.text(`Report Period: ${filterText}`, 50, yPosition + 30);
+        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 50, yPosition + 45);
 
         doc.end();
 
@@ -455,24 +516,48 @@ export const exportDashboardPDF = async (req, res) => {
         });
     }
 };
+
+// Helper to determine groupBy based on period
+const determineGroupBy = (period) => {
+    switch (period) {
+        case 'today':
+        case 'yesterday':
+            return 'day';
+        case 'week':
+            return 'day'; // Group by day for week
+        case 'month':
+            return 'week'; // Group by week for month
+        case 'year':
+            return 'month'; // Group by month for year
+        default:
+            return 'day';
+    }
+};
+
 // Sales Analytics with Date Range
-export const getSalesAnalytics = async (req, res) => {
+export const getSalesAnalytics = async (req, res, isInternal = false) => {
     try {
         const userId = req.user.id;
-        const { fromDate, toDate, groupBy = 'day' } = req.query; // groupBy: day, week, month
+        const { fromDate, toDate, period, groupBy: userGroupBy } = req.query; // groupBy: day, week, month
 
-        const dateFilter = buildDateFilter(fromDate, toDate);
+        const dateFilter = buildDateFilter(fromDate, toDate, period);
+
+        const groupBy = userGroupBy || determineGroupBy(period || 'all-time');
 
         let groupFormat;
+        let sortFields = { "_id.year": 1 };
         switch (groupBy) {
             case 'week':
                 groupFormat = { week: { $week: "$createdAt" }, year: { $year: "$createdAt" } };
+                sortFields = { ...sortFields, "_id.week": 1 };
                 break;
             case 'month':
                 groupFormat = { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } };
+                sortFields = { ...sortFields, "_id.month": 1 };
                 break;
-            default:
+            default: // day
                 groupFormat = { day: { $dayOfMonth: "$createdAt" }, month: { $month: "$createdAt" }, year: { $year: "$createdAt" } };
+                sortFields = { ...sortFields, "_id.month": 1, "_id.day": 1 };
         }
 
         const analytics = await Sales.aggregate([
@@ -492,27 +577,38 @@ export const getSalesAnalytics = async (req, res) => {
                     date: { $first: "$createdAt" }
                 }
             },
-            { $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1, "_id.week": 1 } }
+            { $sort: sortFields }
         ]);
 
-        res.status(200).json({
+        const responseData = {
             success: true,
             data: {
                 analytics,
                 filters: {
                     fromDate: fromDate || null,
                     toDate: toDate || null,
+                    period: period || null,
                     groupBy
                 }
             }
-        });
+        };
+
+        if (isInternal) {
+            return responseData;
+        } else {
+            res.status(200).json(responseData);
+        }
 
     } catch (error) {
         console.error("Sales analytics error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Error fetching sales analytics",
-            error: error.message
-        });
+        if (isInternal) {
+            throw error;
+        } else {
+            res.status(500).json({
+                success: false,
+                message: "Error fetching sales analytics",
+                error: error.message
+            });
+        }
     }
 };
