@@ -126,6 +126,333 @@ const getDateRangeLabel = (fromDate, toDate, period) => {
     return periodLabels[period] || 'All Time';
 };
 
+
+
+// ==============================
+// ENHANCED COUPONS LIST CONTROLLER
+// ==============================
+
+export const getCouponsList = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const {
+            page = 1,
+            limit = 10,
+            fromDate,
+            toDate,
+            status,
+            search,
+            sortBy = 'createdAt',
+            sortOrder = 'desc'
+        } = req.query;
+
+        const pageNum = parseInt(page);
+        const limitNum = Math.min(parseInt(limit), 100);
+        const skip = (pageNum - 1) * limitNum;
+
+        // Build filters
+        const dateFilter = buildDateFilter(fromDate, toDate);
+
+        let statusFilter = {};
+        const now = new Date();
+
+        // Enhanced status filtering
+        if (status) {
+            switch (status) {
+                case 'active':
+                    statusFilter = {
+                        validTill: { $gte: now },
+                        $expr: { $lt: ["$currentDistributions", "$maxDistributions"] }
+                    };
+                    break;
+                case 'expired':
+                    statusFilter.validTill = { $lt: now };
+                    break;
+                case 'fully-redeemed':
+                    statusFilter.$expr = { $eq: ["$currentDistributions", "$maxDistributions"] };
+                    break;
+                case 'partially-redeemed':
+                    statusFilter.$expr = {
+                        $and: [
+                            { $gt: ["$currentDistributions", 0] },
+                            { $lt: ["$currentDistributions", "$maxDistributions"] }
+                        ]
+                    };
+                    break;
+                case 'inactive':
+                    statusFilter.active = false;
+                    break;
+                default:
+                // No status filter
+            }
+        }
+
+        // Enhanced search filter
+        let searchFilter = {};
+        if (search) {
+            searchFilter = {
+                $or: [
+                    { title: { $regex: search, $options: 'i' } },
+                    { shop_name: { $regex: search, $options: 'i' } },
+                    { copuon_srno: { $regex: search, $options: 'i' } },
+                    { manul_address: { $regex: search, $options: 'i' } },
+                    { "tag": { $in: [new RegExp(search, 'i')] } }
+                ]
+            };
+        }
+
+        // Sort configuration
+        const sortConfig = {};
+        const validSortFields = ['createdAt', 'title', 'validTill', 'currentDistributions', 'discountPercentage', 'maxDistributions'];
+        const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
+        sortConfig[sortField] = sortOrder === 'asc' ? 1 : -1;
+
+        // Base filter
+        const baseFilter = {
+            ownerId: new mongoose.Types.ObjectId(userId),
+            ...dateFilter,
+            ...statusFilter,
+            ...searchFilter
+        };
+
+        console.log('Base Filter:', JSON.stringify(baseFilter, null, 2));
+
+        // Execute parallel queries for better performance
+        const [coupons, totalCoupons, salesData, statusCounts] = await Promise.all([
+            // Get coupons with pagination and sorting
+            Coupon.find(baseFilter)
+                .select('title validTill discountPercentage maxDistributions currentDistributions shop_name copuon_srno createdAt active manul_address tag is_spacial_copun coupon_color')
+                .populate('category', 'name')
+                .sort(sortConfig)
+                .skip(skip)
+                .limit(limitNum)
+                .lean(),
+
+            // Total count for pagination
+            Coupon.countDocuments(baseFilter),
+
+            // Get sales data for these coupons
+            Sales.aggregate([
+                {
+                    $lookup: {
+                        from: "coupons",
+                        localField: "couponId",
+                        foreignField: "_id",
+                        as: "couponInfo"
+                    }
+                },
+                {
+                    $unwind: "$couponInfo"
+                },
+                {
+                    $match: {
+                        "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                        status: "completed"
+                    }
+                },
+                {
+                    $group: {
+                        _id: "$couponId",
+                        totalSales: { $sum: 1 },
+                        totalRevenue: { $sum: "$amount" },
+                        totalDiscount: { $sum: "$discountAmount" },
+                        totalFinalAmount: { $sum: "$finalAmount" }
+                    }
+                }
+            ]),
+
+            // Get status counts for filters
+            Coupon.aggregate([
+                {
+                    $match: {
+                        ownerId: new mongoose.Types.ObjectId(userId),
+                        ...dateFilter,
+                        ...searchFilter
+                    }
+                },
+                {
+                    $facet: {
+                        active: [
+                            {
+                                $match: {
+                                    validTill: { $gte: now },
+                                    $expr: { $lt: ["$currentDistributions", "$maxDistributions"] },
+                                    active: true
+                                }
+                            },
+                            { $count: "count" }
+                        ],
+                        expired: [
+                            {
+                                $match: {
+                                    validTill: { $lt: now }
+                                }
+                            },
+                            { $count: "count" }
+                        ],
+                        fullyRedeemed: [
+                            {
+                                $match: {
+                                    $expr: { $eq: ["$currentDistributions", "$maxDistributions"] }
+                                }
+                            },
+                            { $count: "count" }
+                        ],
+                        partiallyRedeemed: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $and: [
+                                            { $gt: ["$currentDistributions", 0] },
+                                            { $lt: ["$currentDistributions", "$maxDistributions"] }
+                                        ]
+                                    }
+                                }
+                            },
+                            { $count: "count" }
+                        ],
+                        inactive: [
+                            {
+                                $match: {
+                                    active: false
+                                }
+                            },
+                            { $count: "count" }
+                        ],
+                        total: [
+                            { $count: "count" }
+                        ]
+                    }
+                }
+            ])
+        ]);
+
+        // Create sales map for quick lookup
+        const salesMap = {};
+        salesData.forEach(sale => {
+            salesMap[sale._id.toString()] = {
+                totalSales: sale.totalSales,
+                totalRevenue: sale.totalRevenue,
+                totalDiscount: sale.totalDiscount,
+                totalFinalAmount: sale.totalFinalAmount
+            };
+        });
+
+        // Format coupon data with enhanced information
+        const formattedCoupons = coupons.map(coupon => {
+            const baseAmount = coupon.maxDistributions * 100; // Assuming 100 per distribution
+            const discountPercentage = parseFloat(coupon.discountPercentage) || 0;
+            const discountAmount = (baseAmount * discountPercentage) / 100;
+
+            const couponSales = salesMap[coupon._id.toString()] || {
+                totalSales: 0,
+                totalRevenue: 0,
+                totalDiscount: 0,
+                totalFinalAmount: 0
+            };
+
+            const status = getCouponStatus(
+                coupon.validTill,
+                coupon.currentDistributions,
+                coupon.maxDistributions
+            );
+
+            const isExpired = new Date(coupon.validTill) < new Date();
+            const isFullyRedeemed = coupon.currentDistributions >= coupon.maxDistributions;
+            const utilizationRate = calculateRedeemRate(coupon.currentDistributions, coupon.maxDistributions);
+
+            return {
+                id: coupon._id,
+                title: coupon.title,
+                shopName: coupon.shop_name,
+                couponSerial: coupon.copuon_srno,
+                manualAddress: coupon.manul_address,
+                validTill: coupon.validTill,
+                discountPercentage: discountPercentage,
+                maxDistributions: coupon.maxDistributions,
+                currentDistributions: coupon.currentDistributions,
+                remainingDistributions: Math.max(0, coupon.maxDistributions - coupon.currentDistributions),
+                amount: baseAmount,
+                discountAmount: formatCurrency(discountAmount),
+                usedCount: coupon.currentDistributions,
+                totalDistributed: coupon.maxDistributions,
+                salesData: {
+                    totalSales: couponSales.totalSales,
+                    totalRevenue: formatCurrency(couponSales.totalRevenue),
+                    totalDiscount: formatCurrency(couponSales.totalDiscount),
+                    totalFinalAmount: formatCurrency(couponSales.totalFinalAmount),
+                    averageOrderValue: couponSales.totalSales > 0 ?
+                        formatCurrency(couponSales.totalFinalAmount / couponSales.totalSales) : 0
+                },
+                status,
+                isActive: coupon.active,
+                isExpired,
+                isFullyRedeemed,
+                isSpecialCoupon: coupon.is_spacial_copun,
+                couponColor: coupon.coupon_color,
+                tags: coupon.tag || [],
+                categories: coupon.category || [],
+                utilizationRate: formatCurrency(utilizationRate),
+                daysUntilExpiry: isExpired ? 0 : Math.ceil((new Date(coupon.validTill) - now) / (1000 * 60 * 60 * 24)),
+                createdAt: coupon.createdAt,
+                updatedAt: coupon.updatedAt
+            };
+        });
+
+        // Process status counts
+        const statusCountsResult = statusCounts[0] || {};
+        const statusSummary = {
+            all: statusCountsResult.total?.[0]?.count || 0,
+            active: statusCountsResult.active?.[0]?.count || 0,
+            expired: statusCountsResult.expired?.[0]?.count || 0,
+            fullyRedeemed: statusCountsResult.fullyRedeemed?.[0]?.count || 0,
+            partiallyRedeemed: statusCountsResult.partiallyRedeemed?.[0]?.count || 0,
+            inactive: statusCountsResult.inactive?.[0]?.count || 0
+        };
+
+        res.status(200).json({
+            success: true,
+            data: {
+                coupons: formattedCoupons,
+                summary: {
+                    totalCoupons: statusSummary.all,
+                    statusBreakdown: statusSummary,
+                    totalActive: statusSummary.active,
+                    totalExpired: statusSummary.expired,
+                    totalRedeemed: statusSummary.fullyRedeemed + statusSummary.partiallyRedeemed,
+                    overallUtilization: totalCoupons > 0 ?
+                        formatCurrency(coupons.reduce((sum, coupon) => sum + (coupon.currentDistributions / coupon.maxDistributions) * 100, 0) / coupons.length) : 0
+                },
+                pagination: {
+                    currentPage: pageNum,
+                    totalPages: Math.ceil(totalCoupons / limitNum),
+                    totalCoupons,
+                    hasNext: pageNum < Math.ceil(totalCoupons / limitNum),
+                    hasPrev: pageNum > 1,
+                    limit: limitNum
+                },
+                filters: {
+                    fromDate: fromDate || null,
+                    toDate: toDate || null,
+                    status: status || 'all',
+                    search: search || '',
+                    sortBy,
+                    sortOrder,
+                    dateRangeLabel: getDateRangeLabel(fromDate, toDate)
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error("Coupons list error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching coupons list",
+            error: error.message
+        });
+    }
+};
+
 // ==============================
 // ENHANCED DASHBOARD STATISTICS CONTROLLER
 // ==============================
