@@ -5,6 +5,7 @@ import PatnerProfile from "../models/PatnerProfile.js";
 import PDFDocument from 'pdfkit';
 import mongoose from "mongoose";
 
+
 // ==============================
 // HELPER FUNCTIONS
 // ==============================
@@ -19,13 +20,10 @@ const buildDateFilter = (fromDate, toDate) => {
         const startDate = new Date(fromDate);
         const endDate = new Date(toDate);
         endDate.setHours(23, 59, 59, 999);
-
-        filter.createdAt = {
-            $gte: startDate,
-            $lte: endDate
-        };
+        filter.createdAt = { $gte: startDate, $lte: endDate };
     } else if (fromDate) {
-        filter.createdAt = { $gte: new Date(fromDate) };
+        const startDate = new Date(fromDate);
+        filter.createdAt = { $gte: startDate };
     } else if (toDate) {
         const endDate = new Date(toDate);
         endDate.setHours(23, 59, 59, 999);
@@ -45,22 +43,22 @@ const buildPeriodFilter = (period) => {
     const endDate = new Date();
 
     switch (period) {
-        case 'today':
+        case "today":
             startDate.setHours(0, 0, 0, 0);
             break;
-        case 'yesterday':
+        case "yesterday":
             startDate.setDate(startDate.getDate() - 1);
             startDate.setHours(0, 0, 0, 0);
             endDate.setDate(endDate.getDate() - 1);
             endDate.setHours(23, 59, 59, 999);
             break;
-        case 'week':
+        case "week":
             startDate.setDate(startDate.getDate() - 7);
             break;
-        case 'month':
+        case "month":
             startDate.setMonth(startDate.getMonth() - 1);
             break;
-        case 'year':
+        case "year":
             startDate.setFullYear(startDate.getFullYear() - 1);
             break;
         default:
@@ -70,24 +68,15 @@ const buildPeriodFilter = (period) => {
     return {
         createdAt: {
             $gte: startDate,
-            $lte: endDate
-        }
+            $lte: endDate,
+        },
     };
 };
 
-/**
- * Format currency values
- */
 const formatCurrency = (amount) => parseFloat(amount?.toFixed(2) || 0);
+const calculateRedeemRate = (used, total) =>
+    total > 0 ? (used / total) * 100 : 0;
 
-/**
- * Calculate redeem rate
- */
-const calculateRedeemRate = (used, total) => total > 0 ? (used / total) * 100 : 0;
-
-/**
- * Calculate coupon status
- */
 const getCouponStatus = (validTill, currentDistributions, maxDistributions) => {
     const isExpired = new Date(validTill) < new Date();
     const isFullyRedeemed = currentDistributions >= maxDistributions;
@@ -99,7 +88,7 @@ const getCouponStatus = (validTill, currentDistributions, maxDistributions) => {
 };
 
 // ==============================
-// DASHBOARD STATISTICS CONTROLLER - FIXED WITH ACCURATE FLOW
+// DASHBOARD STATISTICS CONTROLLER (FIXED)
 // ==============================
 
 export const getDashboardStats = async (req, res) => {
@@ -107,55 +96,50 @@ export const getDashboardStats = async (req, res) => {
         const userId = req.user.id;
         const { fromDate, toDate, period } = req.query;
 
-        // Get partner profile
         const partnerProfile = await PatnerProfile.findOne({ User_id: userId });
 
-        // Build date filters
-        let dateFilter = buildDateFilter(fromDate, toDate);
-        if (period && !fromDate && !toDate) {
-            dateFilter = { ...dateFilter, ...buildPeriodFilter(period) };
-        }
+        // Build unified date filter
+        let dateFilter = {};
+        if (fromDate || toDate) dateFilter = buildDateFilter(fromDate, toDate);
+        else if (period) dateFilter = buildPeriodFilter(period);
 
-        // Execute parallel queries for better performance
         const [couponStats, salesStats, userCouponStats] = await Promise.all([
-            // Coupon statistics
             Coupon.aggregate([
                 {
                     $match: {
                         ownerId: new mongoose.Types.ObjectId(userId),
-                        ...(dateFilter.createdAt ? { createdAt: dateFilter.createdAt } : {})
-                    }
+                        ...dateFilter,
+                    },
                 },
                 {
                     $group: {
                         _id: null,
                         totalMaxDistributions: { $sum: "$maxDistributions" },
                         totalCurrentDistributions: { $sum: "$currentDistributions" },
-                        avgDiscountPercentage: { $avg: { $toDouble: "$discountPercentage" } },
-                        totalCoupons: { $sum: 1 }
-                    }
-                }
+                        avgDiscountPercentage: {
+                            $avg: { $toDouble: "$discountPercentage" },
+                        },
+                        totalCoupons: { $sum: 1 },
+                    },
+                },
             ]),
 
-            // Sales statistics - get sales for coupons owned by this partner
             Sales.aggregate([
                 {
                     $lookup: {
                         from: "coupons",
                         localField: "couponId",
                         foreignField: "_id",
-                        as: "couponInfo"
-                    }
+                        as: "couponInfo",
+                    },
                 },
-                {
-                    $unwind: "$couponInfo"
-                },
+                { $unwind: "$couponInfo" },
                 {
                     $match: {
                         "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
                         status: "completed",
-                        ...dateFilter
-                    }
+                        ...dateFilter,
+                    },
                 },
                 {
                     $group: {
@@ -163,68 +147,68 @@ export const getDashboardStats = async (req, res) => {
                         totalAmount: { $sum: "$amount" },
                         totalDiscount: { $sum: "$discountAmount" },
                         totalSales: { $sum: 1 },
-                        totalFinalAmount: { $sum: "$finalAmount" }
-                    }
-                }
+                        totalFinalAmount: { $sum: "$finalAmount" },
+                    },
+                },
             ]),
 
-            // User coupon statistics - get used coupons count
             UserCoupon.aggregate([
                 {
                     $lookup: {
                         from: "coupons",
                         localField: "couponId",
                         foreignField: "_id",
-                        as: "couponInfo"
-                    }
+                        as: "couponInfo",
+                    },
                 },
-                {
-                    $unwind: "$couponInfo"
-                },
+                { $unwind: "$couponInfo" },
                 {
                     $match: {
                         "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
                         status: "used",
-                        ...dateFilter
-                    }
+                        ...dateFilter,
+                    },
                 },
                 {
-                    $group: {
-                        _id: null,
-                        totalUsedCoupons: { $sum: 1 }
-                    }
-                }
-            ])
+                    $group: { _id: null, totalUsedCoupons: { $sum: 1 } },
+                },
+            ]),
         ]);
 
-        // Extract values with fallbacks
         const totalAmount = formatCurrency(salesStats[0]?.totalAmount || 0);
         const totalDiscount = formatCurrency(salesStats[0]?.totalDiscount || 0);
-        const totalFinalAmount = formatCurrency(salesStats[0]?.totalFinalAmount || 0);
+        const totalFinalAmount = formatCurrency(
+            salesStats[0]?.totalFinalAmount || 0
+        );
         const totalMaxDistributions = couponStats[0]?.totalMaxDistributions || 0;
-        const totalCurrentDistributions = couponStats[0]?.totalCurrentDistributions || 0;
-        const avgDiscountPercentage = formatCurrency(couponStats[0]?.avgDiscountPercentage || 0);
+        const totalCurrentDistributions =
+            couponStats[0]?.totalCurrentDistributions || 0;
+        const avgDiscountPercentage = formatCurrency(
+            couponStats[0]?.avgDiscountPercentage || 0
+        );
         const totalSales = salesStats[0]?.totalSales || 0;
         const totalCoupons = couponStats[0]?.totalCoupons || 0;
         const totalUsedCoupons = userCouponStats[0]?.totalUsedCoupons || 0;
 
-        const redeemRate = calculateRedeemRate(totalCurrentDistributions, totalMaxDistributions);
-        const salesConversionRate = calculateRedeemRate(totalUsedCoupons, totalCurrentDistributions);
+        const redeemRate = calculateRedeemRate(
+            totalCurrentDistributions,
+            totalMaxDistributions
+        );
+        const salesConversionRate = calculateRedeemRate(
+            totalUsedCoupons,
+            totalCurrentDistributions
+        );
 
-        const response = {
+        res.status(200).json({
             success: true,
             data: {
                 partnerInfo: {
                     firmName: partnerProfile?.firm_name || "Your Firm",
                     logo: partnerProfile?.logo || null,
                     city: partnerProfile?.address?.city || "",
-                    state: partnerProfile?.address?.state || ""
+                    state: partnerProfile?.address?.state || "",
                 },
-                filters: {
-                    fromDate: fromDate || null,
-                    toDate: toDate || null,
-                    period: period || 'all-time'
-                },
+                filters: { fromDate, toDate, period: period || "all-time" },
                 overview: {
                     totalAmount,
                     totalDiscount,
@@ -233,29 +217,27 @@ export const getDashboardStats = async (req, res) => {
                     totalMaxDistributions,
                     totalCurrentDistributions,
                     totalUsedCoupons,
-                    remainingDistributions: totalMaxDistributions - totalCurrentDistributions,
+                    remainingDistributions:
+                        totalMaxDistributions - totalCurrentDistributions,
                     avgDiscountPercentage,
                     redeemRate: formatCurrency(redeemRate),
                     salesConversionRate: formatCurrency(salesConversionRate),
-                    totalSales
-                }
-            }
-        };
-
-        res.status(200).json(response);
-
+                    totalSales,
+                },
+            },
+        });
     } catch (error) {
         console.error("Dashboard stats error:", error);
         res.status(500).json({
             success: false,
             message: "Error fetching dashboard statistics",
-            error: error.message
+            error: error.message,
         });
     }
 };
 
 // ==============================
-// COUPONS LIST CONTROLLER - FIXED
+// COUPONS LIST CONTROLLER (FIXED DATE FILTER)
 // ==============================
 
 export const getCouponsList = async (req, res) => {
@@ -266,27 +248,27 @@ export const getCouponsList = async (req, res) => {
         const { fromDate, toDate, status, search } = req.query;
         const skip = (page - 1) * limit;
 
-        // Build filters
         const dateFilter = buildDateFilter(fromDate, toDate);
-
-        let statusFilter = {};
         const now = new Date();
 
-        if (status === 'active') {
+        let statusFilter = {};
+        if (status === "active") {
             statusFilter = {
                 validTill: { $gte: now },
-                $expr: { $lt: ["$currentDistributions", "$maxDistributions"] }
+                $expr: { $lt: ["$currentDistributions", "$maxDistributions"] },
             };
-        } else if (status === 'expired') {
+        } else if (status === "expired") {
             statusFilter.validTill = { $lt: now };
-        } else if (status === 'fully-redeemed') {
-            statusFilter.$expr = { $eq: ["$currentDistributions", "$maxDistributions"] };
-        } else if (status === 'partially-redeemed') {
+        } else if (status === "fully-redeemed") {
+            statusFilter.$expr = {
+                $eq: ["$currentDistributions", "$maxDistributions"],
+            };
+        } else if (status === "partially-redeemed") {
             statusFilter.$expr = {
                 $and: [
                     { $gt: ["$currentDistributions", 0] },
-                    { $lt: ["$currentDistributions", "$maxDistributions"] }
-                ]
+                    { $lt: ["$currentDistributions", "$maxDistributions"] },
+                ],
             };
         }
 
@@ -294,80 +276,76 @@ export const getCouponsList = async (req, res) => {
         if (search) {
             searchFilter = {
                 $or: [
-                    { title: { $regex: search, $options: 'i' } },
-                    { shop_name: { $regex: search, $options: 'i' } },
-                    { copuon_srno: { $regex: search, $options: 'i' } }
-                ]
+                    { title: { $regex: search, $options: "i" } },
+                    { shop_name: { $regex: search, $options: "i" } },
+                    { copuon_srno: { $regex: search, $options: "i" } },
+                ],
             };
         }
 
         const baseFilter = {
-            ownerId: userId,
+            ownerId: new mongoose.Types.ObjectId(userId),
             ...dateFilter,
             ...statusFilter,
-            ...searchFilter
+            ...searchFilter,
         };
 
-        // Execute queries in parallel
         const [coupons, totalCoupons, salesData] = await Promise.all([
             Coupon.find(baseFilter)
-                .select('title validTill discountPercentage maxDistributions currentDistributions shop_name copuon_srno createdAt')
+                .select(
+                    "title validTill discountPercentage maxDistributions currentDistributions shop_name copuon_srno createdAt"
+                )
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .lean(),
             Coupon.countDocuments(baseFilter),
 
-            // Get sales data for these coupons
             Sales.aggregate([
                 {
                     $lookup: {
                         from: "coupons",
                         localField: "couponId",
                         foreignField: "_id",
-                        as: "couponInfo"
-                    }
+                        as: "couponInfo",
+                    },
                 },
-                {
-                    $unwind: "$couponInfo"
-                },
+                { $unwind: "$couponInfo" },
                 {
                     $match: {
                         "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
-                        status: "completed"
-                    }
+                        status: "completed",
+                    },
                 },
                 {
                     $group: {
                         _id: "$couponId",
                         totalSales: { $sum: 1 },
                         totalRevenue: { $sum: "$amount" },
-                        totalDiscount: { $sum: "$discountAmount" }
-                    }
-                }
-            ])
+                        totalDiscount: { $sum: "$discountAmount" },
+                    },
+                },
+            ]),
         ]);
 
-        // Create sales map for quick lookup
         const salesMap = {};
-        salesData.forEach(sale => {
+        salesData.forEach((sale) => {
             salesMap[sale._id.toString()] = {
                 totalSales: sale.totalSales,
                 totalRevenue: sale.totalRevenue,
-                totalDiscount: sale.totalDiscount
+                totalDiscount: sale.totalDiscount,
             };
         });
 
-        // Format coupon data
-        const formattedCoupons = coupons.map(coupon => {
-            const baseAmount = coupon.maxDistributions * 100; // Assuming 100 per distribution
+        const formattedCoupons = coupons.map((coupon) => {
+            const baseAmount = coupon.maxDistributions * 100;
             const discountPercentage = parseFloat(coupon.discountPercentage) || 0;
             const discountAmount = (baseAmount * discountPercentage) / 100;
 
             const couponSales = salesMap[coupon._id.toString()] || {
                 totalSales: 0,
                 totalRevenue: 0,
-                totalDiscount: 0
+                totalDiscount: 0,
             };
 
             const status = getCouponStatus(
@@ -385,7 +363,8 @@ export const getCouponsList = async (req, res) => {
                 discountPercentage: coupon.discountPercentage,
                 maxDistributions: coupon.maxDistributions,
                 currentDistributions: coupon.currentDistributions,
-                remainingDistributions: coupon.maxDistributions - coupon.currentDistributions,
+                remainingDistributions:
+                    coupon.maxDistributions - coupon.currentDistributions,
                 amount: baseAmount,
                 discountAmount: formatCurrency(discountAmount),
                 usedCount: coupon.currentDistributions,
@@ -393,12 +372,13 @@ export const getCouponsList = async (req, res) => {
                 salesData: {
                     totalSales: couponSales.totalSales,
                     totalRevenue: formatCurrency(couponSales.totalRevenue),
-                    totalDiscount: formatCurrency(couponSales.totalDiscount)
+                    totalDiscount: formatCurrency(couponSales.totalDiscount),
                 },
                 status,
                 isExpired: new Date(coupon.validTill) < new Date(),
-                isFullyRedeemed: coupon.currentDistributions >= coupon.maxDistributions,
-                createdAt: coupon.createdAt
+                isFullyRedeemed:
+                    coupon.currentDistributions >= coupon.maxDistributions,
+                createdAt: coupon.createdAt,
             };
         });
 
@@ -412,51 +392,45 @@ export const getCouponsList = async (req, res) => {
                     totalCoupons,
                     hasNext: page < Math.ceil(totalCoupons / limit),
                     hasPrev: page > 1,
-                    limit
+                    limit,
                 },
-                filters: {
-                    fromDate: fromDate || null,
-                    toDate: toDate || null,
-                    status: status || 'all',
-                    search: search || ''
-                }
-            }
+                filters: { fromDate, toDate, status, search },
+            },
         });
-
     } catch (error) {
         console.error("Coupons list error:", error);
         res.status(500).json({
             success: false,
             message: "Error fetching coupons list",
-            error: error.message
+            error: error.message,
         });
     }
 };
 
 // ==============================
-// SALES ANALYTICS CONTROLLER - FIXED
+// SALES ANALYTICS CONTROLLER (FIXED)
 // ==============================
 
 export const getSalesAnalytics = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { fromDate, toDate, groupBy = 'day' } = req.query;
+        const { fromDate, toDate, groupBy = "day" } = req.query;
 
         const dateFilter = buildDateFilter(fromDate, toDate);
 
         let groupFormat;
         switch (groupBy) {
-            case 'week':
+            case "week":
                 groupFormat = { week: { $week: "$createdAt" }, year: { $year: "$createdAt" } };
                 break;
-            case 'month':
+            case "month":
                 groupFormat = { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } };
                 break;
             default:
                 groupFormat = {
                     day: { $dayOfMonth: "$createdAt" },
                     month: { $month: "$createdAt" },
-                    year: { $year: "$createdAt" }
+                    year: { $year: "$createdAt" },
                 };
         }
 
@@ -466,18 +440,16 @@ export const getSalesAnalytics = async (req, res) => {
                     from: "coupons",
                     localField: "couponId",
                     foreignField: "_id",
-                    as: "couponInfo"
-                }
+                    as: "couponInfo",
+                },
             },
-            {
-                $unwind: "$couponInfo"
-            },
+            { $unwind: "$couponInfo" },
             {
                 $match: {
                     "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
                     status: "completed",
-                    ...dateFilter
-                }
+                    ...dateFilter,
+                },
             },
             {
                 $group: {
@@ -486,43 +458,35 @@ export const getSalesAnalytics = async (req, res) => {
                     totalDiscount: { $sum: "$discountAmount" },
                     totalFinalAmount: { $sum: "$finalAmount" },
                     totalSales: { $sum: 1 },
-                    date: { $first: "$createdAt" }
-                }
+                    date: { $first: "$createdAt" },
+                },
             },
             {
                 $sort: {
                     "_id.year": 1,
                     "_id.month": 1,
                     "_id.day": 1,
-                    "_id.week": 1
-                }
-            }
+                    "_id.week": 1,
+                },
+            },
         ]);
 
         res.status(200).json({
             success: true,
-            data: {
-                analytics,
-                filters: {
-                    fromDate: fromDate || null,
-                    toDate: toDate || null,
-                    groupBy
-                }
-            }
+            data: { analytics, filters: { fromDate, toDate, groupBy } },
         });
-
     } catch (error) {
         console.error("Sales analytics error:", error);
         res.status(500).json({
             success: false,
             message: "Error fetching sales analytics",
-            error: error.message
+            error: error.message,
         });
     }
 };
 
 // ==============================
-// USER COUPONS ANALYTICS - NEW ENDPOINT
+// USER COUPONS ANALYTICS (FIXED)
 // ==============================
 
 export const getUserCouponsAnalytics = async (req, res) => {
@@ -538,47 +502,39 @@ export const getUserCouponsAnalytics = async (req, res) => {
                     from: "coupons",
                     localField: "couponId",
                     foreignField: "_id",
-                    as: "couponInfo"
-                }
+                    as: "couponInfo",
+                },
             },
-            {
-                $unwind: "$couponInfo"
-            },
+            { $unwind: "$couponInfo" },
             {
                 $match: {
                     "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
-                    ...dateFilter
-                }
+                    ...dateFilter,
+                },
             },
             {
                 $group: {
                     _id: "$status",
                     count: { $sum: 1 },
-                    coupons: { $push: "$couponId" }
-                }
-            }
+                    coupons: { $push: "$couponId" },
+                },
+            },
         ]);
 
         res.status(200).json({
             success: true,
-            data: {
-                analytics,
-                filters: {
-                    fromDate: fromDate || null,
-                    toDate: toDate || null
-                }
-            }
+            data: { analytics, filters: { fromDate, toDate } },
         });
-
     } catch (error) {
         console.error("User coupons analytics error:", error);
         res.status(500).json({
             success: false,
             message: "Error fetching user coupons analytics",
-            error: error.message
+            error: error.message,
         });
     }
 };
+
 
 // ==============================
 // ENHANCED PDF EXPORT CONTROLLER - FIXED
@@ -858,437 +814,307 @@ export const exportDashboardPDF = async (req, res) => {
 
         // Create professional PDF document
         const doc = new PDFDocument({
-            margin: 40,
             size: 'A4',
+            margin: 50,
             bufferPages: true,
             info: {
-                Title: `${stats.partnerInfo.firmName} - Comprehensive Performance Report`,
-                Author: 'Partner Analytics Dashboard',
+                Title: `${stats.partnerInfo.firmName} - Performance Report`,
+                Author: 'Partner Dashboard',
                 CreationDate: new Date(),
-                Subject: 'Business Performance Analytics'
             }
         });
 
-        // Set headers before piping
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition',
-            `attachment; filename="${stats.partnerInfo.firmName.replace(/[^a-zA-Z0-9]/g, '_')}_Performance_Report_${new Date().toISOString().slice(0, 10)}.pdf"`
-        );
+        res.setHeader('Content-Disposition', `attachment; filename="${stats.partnerInfo.firmName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${new Date().toISOString().slice(0, 10)}.pdf"`);
 
-        // Pipe the document to response
         doc.pipe(res);
 
-        // ===== PROFESSIONAL PDF STYLING =====
-        const primaryColor = '#1e3a8a'; // Professional blue
-        const secondaryColor = '#0f766e'; // Teal
-        const accentColor = '#dc2626'; // Red
-        const successColor = '#059669'; // Green
-        const warningColor = '#d97706'; // Amber
-        const lightColor = '#f8fafc';
-        const darkColor = '#1e293b';
+        // ===== COLORS & FONTS =====
+        const colors = {
+            primary: '#1e40af',    // Deep blue
+            secondary: '#0d9488',  // Teal
+            success: '#16a34a',    // Green
+            warning: '#ca8a04',    // Yellow
+            danger: '#dc2626',     // Red
+            light: '#f8fafc',
+            gray: '#64748b',
+            dark: '#1e293b',
+            border: '#e2e8f0'
+        };
 
-        // Use only standard PDF fonts to avoid font loading issues
-        const bold = 'Helvetica-Bold';
-        const regular = 'Helvetica';
-        // Removed 'Helvetica-Light' as it's not a standard PDF font
+        const font = {
+            bold: 'Helvetica-Bold',
+            regular: 'Helvetica',
+            oblique: 'Helvetica-Oblique'
+        };
 
-        // Helper function for formatted currency
-        const formatCurrencyWithSymbol = (amount) => {
-            return `₹${formatCurrency(amount)}`;
+        const formatINR = (amount) => `₹${formatCurrency(amount)}`;
+
+        // ===== HELPER: Safe Text with Page Break Check =====
+        const addText = (text, x, y, options = {}) => {
+            if (doc.y > 750) doc.addPage();
+            doc.text(text, x, y || doc.y, options);
         };
 
         // ===== COVER PAGE =====
-        doc.fillColor(primaryColor)
-            .rect(0, 0, doc.page.width, 150)
+        // Background gradient effect (simulated)
+        doc.rect(0, 0, doc.page.width, 220).fill(colors.primary);
+        doc.rect(0, 220, doc.page.width, 80).fill('#172554');
+
+        // Logo (if exists)
+        if (partnerProfile?.logo) {
+            try {
+                doc.image(partnerProfile.logo, 50, 60, { width: 80 });
+            } catch (err) { /* ignore */ }
+        }
+
+        doc.fillColor('white')
+            .fontSize(32)
+            .font(font.bold)
+            .text('Performance Report', 0, 100, { align: 'center' });
+
+        doc.fontSize(18)
+            .font(font.regular)
+            .text(stats.partnerInfo.firmName, 0, 145, { align: 'center' });
+
+        doc.fontSize(12)
+            .text('Comprehensive Business Analytics', 0, 180, { align: 'center' });
+
+        // Period Badge
+        const periodText = period
+            ? period.replace('-', ' ').toUpperCase()
+            : fromDate && toDate
+                ? `${new Date(fromDate).toLocaleDateString('en-IN')} – ${new Date(toDate).toLocaleDateString('en-IN')}`
+                : 'ALL TIME';
+
+        doc.fillColor(colors.secondary)
+            .roundedRect(200, 260, 200, 50, 10)
             .fill();
 
         doc.fillColor('white')
-            .fontSize(24)
-            .font(bold)
-            .text('PERFORMANCE ANALYTICS REPORT', 0, 60, { align: 'center' });
-
-        doc.fontSize(16)
-            .font(regular) // Use regular instead of light
-            .text(stats.partnerInfo.firmName, 0, 100, { align: 'center' });
-
-        doc.fillColor(darkColor)
-            .fontSize(12)
-            .text('Comprehensive Business Performance Analysis', 0, 200, { align: 'center' });
-
-        // Report period box
-        const periodText = period
-            ? period.charAt(0).toUpperCase() + period.slice(1).replace('-', ' ')
-            : fromDate && toDate
-                ? `${new Date(fromDate).toLocaleDateString()} - ${new Date(toDate).toLocaleDateString()}`
-                : "All Time";
-
-        doc.fillColor(lightColor)
-            .rect(150, 250, 300, 40)
-            .fill();
-
-        doc.fillColor(primaryColor)
-            .fontSize(12)
-            .font(bold)
-            .text('REPORT PERIOD', 0, 260, { align: 'center' })
             .fontSize(14)
+            .font(font.bold)
             .text(periodText, 0, 280, { align: 'center' });
 
-        // Generated date
-        doc.fillColor(darkColor)
+        doc.fillColor(colors.gray)
             .fontSize(10)
-            .font(regular)
-            .text(`Generated on: ${new Date().toLocaleDateString('en-IN', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            })}`, 0, 350, { align: 'center' });
+            .text(`Generated on ${new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`, 0, 350, { align: 'center' });
 
         doc.addPage();
 
         // ===== EXECUTIVE SUMMARY =====
-        doc.fillColor(primaryColor)
-            .fontSize(18)
-            .font(bold)
-            .text('EXECUTIVE SUMMARY', 50, 50)
-            .moveDown(1.5);
+        doc.fillColor(colors.primary)
+            .fontSize(22)
+            .font(font.bold)
+            .text('Executive Summary', 50, 80);
 
-        // Partner Information
-        doc.fillColor(darkColor)
-            .fontSize(12)
-            .font(bold)
-            .text('Business Information:', 50, doc.y);
+        doc.fillColor(colors.dark)
+            .fontSize(11)
+            .font(font.regular)
+            .text(`Firm: ${stats.partnerInfo.firmName}`, 50, 130)
+            .text(`Location: ${stats.partnerInfo.city}${stats.partnerInfo.state ? ', ' + stats.partnerInfo.state : ''}`, 50, 150)
+            .text(`Contact: ${stats.partnerInfo.contact || 'N/A'} | ${stats.partnerInfo.email || 'N/A'}`, 50, 170);
 
-        doc.font(regular)
-            .fontSize(10)
-            .text(`Firm Name: ${stats.partnerInfo.firmName}`, 50, doc.y + 15)
-            .text(`Location: ${stats.partnerInfo.city}${stats.partnerInfo.state ? ', ' + stats.partnerInfo.state : ''}`, 50, doc.y + 30);
-
-        if (stats.partnerInfo.contact || stats.partnerInfo.email) {
-            doc.text(`Contact: ${stats.partnerInfo.contact || 'N/A'}`, 50, doc.y + 45);
-            if (stats.partnerInfo.email) {
-                doc.text(`Email: ${stats.partnerInfo.email}`, 50, doc.y + 60);
-            }
-        }
-
-        doc.moveDown(3);
-
-        // ===== KEY PERFORMANCE INDICATORS =====
-        doc.fillColor(primaryColor)
-            .fontSize(16)
-            .font(bold)
-            .text('KEY PERFORMANCE INDICATORS', 50, doc.y)
-            .moveDown(1);
-
+        // ===== KPI CARDS (3 per row) =====
         const kpis = [
-            {
-                label: "TOTAL REVENUE",
-                value: formatCurrencyWithSymbol(totalAmount),
-                sublabel: "Gross Revenue",
-                color: successColor
-            },
-            {
-                label: "NET REVENUE",
-                value: formatCurrencyWithSymbol(totalFinalAmount),
-                sublabel: "After Discounts",
-                color: secondaryColor
-            },
-            {
-                label: "TOTAL DISCOUNTS",
-                value: formatCurrencyWithSymbol(totalDiscount),
-                sublabel: "Discounts Provided",
-                color: warningColor
-            },
-            {
-                label: "TOTAL SALES",
-                value: totalSales.toLocaleString(),
-                sublabel: "Completed Transactions",
-                color: primaryColor
-            },
-            {
-                label: "AVG TRANSACTION",
-                value: formatCurrencyWithSymbol(avgTransactionValue),
-                sublabel: "Per Sale",
-                color: accentColor
-            },
-            {
-                label: "REDEMPTION RATE",
-                value: `${stats.overview.redeemRate}%`,
-                sublabel: "Coupon Utilization",
-                color: successColor
-            }
+            { label: 'Gross Revenue', value: formatINR(totalAmount), icon: '₹', color: colors.success },
+            { label: 'Net Revenue', value: formatINR(totalFinalAmount), icon: '₹', color: colors.secondary },
+            { label: 'Total Discounts', value: formatINR(totalDiscount), icon: '↓', color: colors.warning },
+            { label: 'Total Sales', value: totalSales.toLocaleString(), icon: '✓', color: colors.primary },
+            { label: 'Avg Transaction', value: formatINR(avgTransactionValue), icon: '⌀', color: colors.danger },
+            { label: 'Redemption Rate', value: `${stats.overview.redeemRate}%`, icon: '↗', color: colors.success },
         ];
 
-        const kpiWidth = 160;
-        const kpiHeight = 80;
-        const kpiStartY = doc.y;
+        let yPos = 220;
+        kpis.forEach((kpi, i) => {
+            const x = 50 + (i % 3) * 170;
+            if (i % 3 === 0 && i !== 0) yPos += 110;
 
-        kpis.forEach((kpi, index) => {
-            const row = Math.floor(index / 3);
-            const col = index % 3;
-            const x = 50 + col * (kpiWidth + 15);
-            const y = kpiStartY + row * (kpiHeight + 15);
-
-            // KPI Box
-            doc.rect(x, y, kpiWidth, kpiHeight)
-                .fillColor(lightColor)
-                .fill()
-                .strokeColor('#e2e8f0')
+            // Card background
+            doc.roundedRect(x, yPos, 160, 100, 12)
+                .fill(i % 2 === 0 ? '#f0f9ff' : '#fefce8')
+                .strokeColor(colors.border)
+                .lineWidth(1)
                 .stroke();
+
+            // Icon circle
+            doc.circle(x + 25, yPos + 25, 18)
+                .fill(kpi.color);
+
+            doc.fillColor('white')
+                .fontSize(20)
+                .font(font.bold)
+                .text(kpi.icon, x + 15, yPos + 15, { width: 20, align: 'center' });
 
             // Value
             doc.fillColor(kpi.color)
                 .fontSize(16)
-                .font(bold)
-                .text(kpi.value, x + 10, y + 15, { width: kpiWidth - 20, align: 'center' });
+                .font(font.bold)
+                .text(kpi.value, x + 10, yPos + 50, { width: 140, align: 'center' });
 
             // Label
-            doc.fillColor(darkColor)
+            doc.fillColor(colors.dark)
                 .fontSize(10)
-                .font(bold)
-                .text(kpi.label, x + 10, y + 40, { width: kpiWidth - 20, align: 'center' });
-
-            // Sublabel
-            doc.fillColor('#64748b')
-                .fontSize(8)
-                .font(regular)
-                .text(kpi.sublabel, x + 10, y + 55, { width: kpiWidth - 20, align: 'center' });
+                .font(font.regular)
+                .text(kpi.label, x + 10, yPos + 75, { width: 140, align: 'center' });
         });
 
-        doc.moveDown(8);
+        yPos += 140;
 
-        // ===== DETAILED COUPON PERFORMANCE =====
+        // ===== TOP COUPONS TABLE =====
         if (topCoupons.length > 0) {
-            doc.addPage();
+            if (yPos > 500) {
+                doc.addPage();
+                yPos = 80;
+            } else {
+                yPos += 40;
+            }
 
-            doc.fillColor(primaryColor)
+            doc.fillColor(colors.primary)
                 .fontSize(18)
-                .font(bold)
-                .text('TOP PERFORMING COUPONS', 50, 50)
-                .moveDown(1);
+                .font(font.bold)
+                .text('Top Performing Coupons', 50, yPos);
 
-            doc.fillColor(darkColor)
-                .fontSize(10)
-                .font(regular)
-                .text(`Showing top ${topCoupons.length} coupons by revenue performance`, 50, doc.y)
-                .moveDown(0.5);
+            yPos += 40;
 
             // Table Header
-            const tableTop = doc.y + 10;
-            doc.fillColor(primaryColor)
-                .rect(50, tableTop, 500, 20)
-                .fill();
+            const headers = ['#', 'Coupon', 'Serial', 'Disc%', 'Used/Max', 'Revenue', 'Eff%', 'Status'];
+            const colWidths = [30, 140, 80, 50, 80, 80, 50, 70];
+            const startX = 50;
 
-            doc.fillColor('white')
-                .fontSize(9)
-                .font(bold)
-                .text('Rank', 55, tableTop + 7)
-                .text('Coupon Title', 80, tableTop + 7)
-                .text('Serial', 200, tableTop + 7)
-                .text('Discount', 260, tableTop + 7)
-                .text('Distributed', 320, tableTop + 7)
-                .text('Revenue', 390, tableTop + 7)
-                .text('Efficiency', 460, tableTop + 7)
-                .text('Status', 520, tableTop + 7);
+            doc.fillColor(colors.primary).rect(startX, yPos, 510, 25).fill();
+            doc.fillColor('white').fontSize(9).font(font.bold);
 
-            let currentY = tableTop + 25;
-
-            topCoupons.forEach((coupon, index) => {
-                if (currentY > 700) {
-                    doc.addPage();
-                    currentY = 50;
-                }
-
-                // Alternate row colors
-                if (index % 2 === 0) {
-                    doc.fillColor(lightColor)
-                        .rect(50, currentY, 500, 20)
-                        .fill();
-                }
-
-                const utilizationRate = coupon.maxDistributions > 0
-                    ? ((coupon.currentDistributions / coupon.maxDistributions) * 100).toFixed(1)
-                    : 0;
-
-                doc.fillColor(darkColor)
-                    .fontSize(8)
-                    .font(regular)
-                    .text((index + 1).toString(), 55, currentY + 7)
-                    .text(coupon.title.length > 25 ? coupon.title.substring(0, 25) + '...' : coupon.title, 80, currentY + 7)
-                    .text(coupon.couponSerial, 200, currentY + 7)
-                    .text(`${coupon.discountPercentage}%`, 260, currentY + 7)
-                    .text(`${coupon.currentDistributions}/${coupon.maxDistributions}`, 320, currentY + 7)
-                    .text(formatCurrencyWithSymbol(coupon.actualRevenue), 390, currentY + 7)
-                    .text(`${coupon.revenueEfficiency}%`, 460, currentY + 7);
-
-                // Status with color coding
-                let statusColor = darkColor;
-                if (coupon.status === 'Active') statusColor = successColor;
-                if (coupon.status === 'Expired') statusColor = accentColor;
-                if (coupon.status === 'Fully Redeemed') statusColor = warningColor;
-
-                doc.fillColor(statusColor)
-                    .text(coupon.status, 520, currentY + 7);
-
-                currentY += 20;
+            headers.forEach((h, i) => {
+                doc.text(h, startX + 5 + colWidths.slice(0, i).reduce((a, b) => a + b, 0), yPos + 8);
             });
 
-            doc.moveDown(2);
+            yPos += 25;
+
+            topCoupons.forEach((c, idx) => {
+                if (yPos > 750) {
+                    doc.addPage();
+                    yPos = 80;
+                }
+
+                if (idx % 2 === 0) {
+                    doc.fillColor('#f8fafc').rect(startX, yPos, 510, 20).fill();
+                }
+
+                const row = [
+                    (idx + 1).toString(),
+                    c.title.length > 20 ? c.title.slice(0, 18) + '...' : c.title,
+                    c.couponSerial,
+                    c.discountPercentage + '%',
+                    `${c.currentDistributions}/${c.maxDistributions}`,
+                    formatINR(c.actualRevenue),
+                    c.revenueEfficiency + '%',
+                    c.status
+                ];
+
+                doc.fillColor(colors.dark).fontSize(8.5).font(font.regular);
+
+                row.forEach((cell, i) => {
+                    const x = startX + 5 + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
+                    if (i === 7) {
+                        const statusColor = c.status.includes('Active') ? colors.success : c.status.includes('Expired') ? colors.danger : colors.warning;
+                        doc.fillColor(statusColor);
+                    }
+                    doc.text(cell, x, yPos + 6);
+                });
+
+                yPos += 20;
+            });
         }
 
-        // ===== SALES ANALYTICS TIMELINE =====
+        // ===== SALES TIMELINE (Last 30 days) =====
         if (analytics.length > 0) {
             doc.addPage();
-
-            doc.fillColor(primaryColor)
+            doc.fillColor(colors.primary)
                 .fontSize(18)
-                .font(bold)
-                .text('SALES ANALYTICS TIMELINE', 50, 50)
-                .moveDown(1);
+                .font(font.bold)
+                .text('Sales Trend (Last 30 Days)', 50, 80);
 
-            // Enhanced table with more metrics
-            const analyticsTop = doc.y + 10;
+            let tableY = 130;
+            const data = analytics.slice(-30);
 
-            // Table Header
-            doc.fillColor(primaryColor)
-                .rect(50, analyticsTop, 500, 20)
-                .fill();
+            // Header
+            doc.fillColor(colors.primary).rect(50, tableY, 510, 25).fill();
+            doc.fillColor('white').fontSize(9).font(font.bold)
+                .text('Date', 55, tableY + 8)
+                .text('Sales', 140, tableY + 8)
+                .text('Gross', 200, tableY + 8)
+                .text('Discount', 280, tableY + 8)
+                .text('Net Revenue', 360, tableY + 8)
+                .text('Growth', 480, tableY + 8);
 
-            doc.fillColor('white')
-                .fontSize(9)
-                .font(bold)
-                .text('Date', 55, analyticsTop + 7)
-                .text('Sales', 120, analyticsTop + 7)
-                .text('Gross Revenue', 180, analyticsTop + 7)
-                .text('Discounts', 260, analyticsTop + 7)
-                .text('Net Revenue', 340, analyticsTop + 7)
-                .text('Avg. Sale', 420, analyticsTop + 7)
-                .text('Growth', 500, analyticsTop + 7);
+            tableY += 25;
 
-            let currentY = analyticsTop + 25;
-            let previousRevenue = 0;
-
-            analytics.slice(-30).forEach((item, index) => {
-                if (currentY > 700) {
+            let prev = 0;
+            data.forEach((d, i) => {
+                if (tableY > 750) {
                     doc.addPage();
-                    currentY = 50;
+                    tableY = 100;
                 }
 
-                if (index % 2 === 0) {
-                    doc.fillColor(lightColor)
-                        .rect(50, currentY, 500, 18)
-                        .fill();
-                }
+                if (i % 2 === 0) doc.fillColor('#fdfdfd').rect(50, tableY, 510, 18).fill();
 
-                const avgSale = item.totalSales > 0 ? item.totalFinalAmount / item.totalSales : 0;
-                const growth = previousRevenue > 0
-                    ? ((item.totalFinalAmount - previousRevenue) / previousRevenue * 100).toFixed(1)
-                    : 0;
+                const growth = prev === 0 ? 0 : ((d.totalFinalAmount - prev) / prev * 100).toFixed(1);
+                prev = d.totalFinalAmount;
 
-                doc.fillColor(darkColor)
-                    .fontSize(8)
-                    .font(regular)
-                    .text(item._id.date, 55, currentY + 6)
-                    .text(item.totalSales.toString(), 120, currentY + 6)
-                    .text(formatCurrencyWithSymbol(item.totalAmount), 180, currentY + 6)
-                    .text(formatCurrencyWithSymbol(item.totalDiscount), 260, currentY + 6)
-                    .text(formatCurrencyWithSymbol(item.totalFinalAmount), 340, currentY + 6)
-                    .text(formatCurrencyWithSymbol(avgSale), 420, currentY + 6);
+                doc.fillColor(colors.dark).fontSize(8.5)
+                    .text(d._id.date, 55, tableY + 5)
+                    .text(d.totalSales.toString(), 145, tableY + 5)
+                    .text(formatINR(d.totalAmount), 200, tableY + 5)
+                    .text(formatINR(d.totalDiscount), 285, tableY + 5)
+                    .text(formatINR(d.totalFinalAmount), 365, tableY + 5);
 
-                // Growth indicator with color
-                if (index > 0) {
-                    const growthColor = growth >= 0 ? successColor : accentColor;
-                    doc.fillColor(growthColor)
-                        .text(`${growth >= 0 ? '+' : ''}${growth}%`, 500, currentY + 6);
-                } else {
-                    doc.fillColor('#64748b')
-                        .text('-', 500, currentY + 6);
-                }
+                doc.fillColor(growth >= 0 ? colors.success : colors.danger)
+                    .text(growth >= 0 ? `+${growth}%` : `${growth}%`, 485, tableY + 5);
 
-                previousRevenue = item.totalFinalAmount;
-                currentY += 18;
+                tableY += 18;
             });
         }
 
-        // ===== PERFORMANCE INSIGHTS =====
+        // ===== INSIGHTS PAGE =====
         doc.addPage();
-
-        doc.fillColor(primaryColor)
-            .fontSize(18)
-            .font(bold)
-            .text('PERFORMANCE INSIGHTS', 50, 50)
-            .moveDown(1);
+        doc.fillColor(colors.primary)
+            .fontSize(22)
+            .font(font.bold)
+            .text('Key Insights & Recommendations', 50, 100);
 
         const insights = [
-            {
-                title: "Revenue Performance",
-                content: `Your business generated ${formatCurrencyWithSymbol(totalAmount)} in gross revenue with a net revenue of ${formatCurrencyWithSymbol(totalFinalAmount)} after ${formatCurrencyWithSymbol(totalDiscount)} in discounts.`
-            },
-            {
-                title: "Coupon Efficiency",
-                content: `Out of ${totalMaxDistributions.toLocaleString()} total distributions, ${totalCurrentDistributions.toLocaleString()} were utilized, achieving a ${stats.overview.redeemRate}% redemption rate.`
-            },
-            {
-                title: "Customer Engagement",
-                content: `You served ${uniqueCustomers} unique customers with an average transaction value of ${formatCurrencyWithSymbol(avgTransactionValue)}.`
-            },
-            {
-                title: "Sales Conversion",
-                content: `Your sales conversion rate stands at ${stats.overview.salesConversionRate}%, indicating strong coupon-to-sale conversion performance.`
-            }
+            `• Generated ${formatINR(totalAmount)} in gross revenue with ${stats.overview.redeemRate}% coupon redemption rate.`,
+            `• Provided ${formatINR(totalDiscount)} in discounts across ${totalSales} transactions.`,
+            `• Served ${uniqueCustomers} unique customers with average order value of ${formatINR(avgTransactionValue)}.`,
+            `• Top performing coupons contributed to ${topCoupons.length > 0 ? formatINR(topCoupons[0].actualRevenue) : 'N/A'} in revenue.`,
+            `• Opportunity: Increase redemption rate by promoting underutilized coupons.`
         ];
 
-        insights.forEach((insight, index) => {
-            if (doc.y > 600) {
-                doc.addPage();
-            }
+        doc.fillColor(colors.dark)
+            .fontSize(11)
+            .font(font.oblique);
 
-            doc.fillColor(secondaryColor)
-                .fontSize(11)
-                .font(bold)
-                .text(`${index + 1}. ${insight.title}`, 50, doc.y);
-
-            doc.fillColor(darkColor)
-                .fontSize(10)
-                .font(regular)
-                .text(insight.content, 70, doc.y + 15, { width: 470, align: 'justify' });
-
-            doc.moveDown(1.5);
+        insights.forEach((insight, i) => {
+            doc.text(insight, 70, 160 + i * 30, { width: 470, align: 'left' });
         });
 
-        // ===== PROFESSIONAL FOOTER =====
-        const totalPages = doc.bufferedPageRange().count;
-        for (let i = 0; i < totalPages; i++) {
+        // ===== FOOTER ON ALL PAGES =====
+        const pageCount = doc.bufferedPageRange().count;
+        for (let i = 0; i < pageCount; i++) {
             doc.switchToPage(i);
-
-            // Page number
-            doc.fillColor('#64748b')
+            doc.fillColor(colors.gray)
                 .fontSize(8)
-                .text(
-                    `Page ${i + 1} of ${totalPages}`,
-                    50,
-                    doc.page.height - 30
-                );
+                .text(`Page ${i + 1} of ${pageCount}`, 50, doc.page.height - 50)
+                .text('Confidential • Generated by Partner Dashboard', 0, doc.page.height - 50, { align: 'center' });
 
-            // Confidential footer
-            doc.text(
-                `Confidential - ${stats.partnerInfo.firmName} Performance Report`,
-                doc.page.width - 250,
-                doc.page.height - 30,
-                { width: 200, align: 'right' }
-            );
-
-            // Bottom border
-            doc.moveTo(50, doc.page.height - 40)
-                .lineTo(doc.page.width - 50, doc.page.height - 40)
-                .strokeColor('#e2e8f0')
+            doc.moveTo(50, doc.page.height - 60)
+                .lineTo(doc.page.width - 50, doc.page.height - 60)
+                .strokeColor(colors.border)
                 .lineWidth(0.5)
                 .stroke();
         }
 
-        // Properly end the document
         doc.end();
 
     } catch (error) {
