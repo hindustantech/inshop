@@ -10,6 +10,11 @@ const PatnerProfileSchema = new mongoose.Schema({
         ref: 'User',
         require: true,
     },
+    mallId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Mall", // Reference to Mall model
+        default: null, // null = independent shop
+    },
     email: {
         type: String,
         require: true,
@@ -21,6 +26,10 @@ const PatnerProfileSchema = new mongoose.Schema({
     firm_name: {
         type: String,
         require: true,
+    },
+    isIndependent: {
+        type: Boolean,
+        default: false, // true = shop not linked to any mall
     },
     address: {
         city: {

@@ -16,7 +16,7 @@ import banner from './routes/BannerRoute.js'
 import manuladdress from './routes/manullocationroute.js';
 import Categoryroute from './routes/Category.js'
 import usermanagement from './routes/userManagementRoutes.js'
-import patnerProfile  from './routes/PatnerProfile.js'
+import patnerProfile from './routes/PatnerProfile.js'
 import salesRoute from './routes/SalesRoute.js'
 import adroute from './routes/AdRoute.js'
 import analyticsRoutes from './routes/analyticsRoutes.js'
@@ -29,6 +29,7 @@ import agencyDashboardRoutes from './routes/agencyDashboardRoutes.js';
 import permissionRoutes from './routes/permissionRoutes.js';
 import paymentroute from './routes/paymentRoutes.js';
 import dashroute from './routes/Dashboard.js'
+import mall from './routes/MallRoute.js'
 
 dotenv.config();
 connectDB();
@@ -70,7 +71,7 @@ app.use('/api/agencypatner', agencypatner);
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/coupon', couponRoutes);
-app.use('/api/link', linkRoutes); 
+app.use('/api/link', linkRoutes);
 app.use('/api/info', generalRoutes);
 app.use('/api/landing', landingRoutes);
 app.use('/download', downloadRoutes);
@@ -85,6 +86,7 @@ app.use('/api/category', Categoryroute);
 app.use('/api/patnerProfile', patnerProfile);
 app.use('/api/salesRoute', salesRoute);
 app.use('/api/referal', Referal);
+app.use('/api/mall', mall);
 
 app.use('/api/dashroute', dashroute);
 
