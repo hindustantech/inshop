@@ -15,225 +15,36 @@ import mongoose from "mongoose";
 const buildDateFilter = (fromDate, toDate, timestampField = 'createdAt') => {
     const filter = {};
 
-    try {
-        // Validate inputs
-        if (!timestampField || typeof timestampField !== 'string') {
-            timestampField = 'createdAt';
-        }
+    if (fromDate && toDate) {
+        const startDate = new Date(fromDate);
+        startDate.setHours(0, 0, 0, 0);
 
-        console.log('Building date filter with:', { fromDate, toDate, timestampField });
+        const endDate = new Date(toDate);
+        endDate.setHours(23, 59, 59, 999);
 
-        if (fromDate && toDate) {
-            const startDate = new Date(fromDate);
-            const endDate = new Date(toDate);
-
-            // Validate dates
-            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-                console.error('Invalid dates provided:', { fromDate, toDate });
-                return filter;
-            }
-
-            // Ensure start date is before end date
-            if (startDate > endDate) {
-                console.error('Start date cannot be after end date:', { startDate, endDate });
-                return filter;
-            }
-
-            startDate.setHours(0, 0, 0, 0);
-            endDate.setHours(23, 59, 59, 999);
-
-            console.log('Final date range:', { startDate, endDate });
-
-            filter[timestampField] = {
-                $gte: startDate,
-                $lte: endDate
-            };
-        } else if (fromDate) {
-            const startDate = new Date(fromDate);
-            if (isNaN(startDate.getTime())) {
-                console.error('Invalid fromDate:', fromDate);
-                return filter;
-            }
-            startDate.setHours(0, 0, 0, 0);
-            filter[timestampField] = { $gte: startDate };
-            console.log('From date filter:', { startDate });
-        } else if (toDate) {
-            const endDate = new Date(toDate);
-            if (isNaN(endDate.getTime())) {
-                console.error('Invalid toDate:', toDate);
-                return filter;
-            }
-            endDate.setHours(23, 59, 59, 999);
-            filter[timestampField] = { $lte: endDate };
-            console.log('To date filter:', { endDate });
-        }
-
-        console.log('Final date filter:', filter);
-        return filter;
-
-    } catch (error) {
-        console.error('Error building date filter:', error);
-        return {};
+        filter[timestampField] = {
+            $gte: startDate,
+            $lte: endDate
+        };
+    } else if (fromDate) {
+        const startDate = new Date(fromDate);
+        startDate.setHours(0, 0, 0, 0);
+        filter[timestampField] = { $gte: startDate };
+    } else if (toDate) {
+        const endDate = new Date(toDate);
+        endDate.setHours(23, 59, 59, 999);
+        filter[timestampField] = { $lte: endDate };
     }
+
+    return filter;
 };
 
 /**
- * Build period filter with proper date ranges and validation
+ * Build period filter with proper date ranges
  */
 const buildPeriodFilter = (period, timestampField = 'createdAt') => {
-    if (!period || typeof period !== 'string') {
-        return {};
-    }
+    if (!period) return {};
 
-    try {
-        // Validate timestamp field
-        if (!timestampField || typeof timestampField !== 'string') {
-            timestampField = 'createdAt';
-        }
-
-        const startDate = new Date();
-        const endDate = new Date();
-
-        console.log('Building period filter:', { period, timestampField });
-
-        switch (period.toLowerCase()) {
-            case 'today':
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-
-            case 'yesterday':
-                startDate.setDate(startDate.getDate() - 1);
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setDate(endDate.getDate() - 1);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-
-            case 'week':
-                startDate.setDate(startDate.getDate() - 7);
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-
-            case 'month':
-                startDate.setMonth(startDate.getMonth() - 1);
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-
-            case 'last-two-months':
-                startDate.setMonth(startDate.getMonth() - 2);
-                startDate.setDate(1); // Start from 1st of that month
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-
-            case 'year':
-                startDate.setFullYear(startDate.getFullYear() - 1);
-                startDate.setHours(0, 0, 0, 0);
-                endDate.setHours(23, 59, 59, 999);
-                break;
-
-            case 'all-time':
-                // No date filter for all-time
-                return {};
-
-            default:
-                console.warn('Unknown period provided:', period);
-                return {};
-        }
-
-        // Validate the calculated dates
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-            console.error('Invalid dates calculated for period:', period);
-            return {};
-        }
-
-        const periodFilter = {
-            [timestampField]: {
-                $gte: startDate,
-                $lte: endDate
-            }
-        };
-
-        console.log('Period filter result:', { period, startDate, endDate, filter: periodFilter });
-        return periodFilter;
-
-    } catch (error) {
-        console.error('Error building period filter:', error);
-        return {};
-    }
-};
-
-/**
- * Enhanced helper to get date range label with validation
- */
-const getDateRangeLabel = (fromDate, toDate, period) => {
-    try {
-        if (fromDate && toDate) {
-            const from = new Date(fromDate);
-            const to = new Date(toDate);
-
-            if (isNaN(from.getTime()) || isNaN(to.getTime())) {
-                return 'Invalid Date Range';
-            }
-
-            const fromStr = from.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
-            const toStr = to.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
-            return `${fromStr} - ${toStr}`;
-        }
-
-        if (fromDate) {
-            const from = new Date(fromDate);
-            if (isNaN(from.getTime())) return 'Invalid Start Date';
-            return `From ${from.toLocaleDateString('en-US')}`;
-        }
-
-        if (toDate) {
-            const to = new Date(toDate);
-            if (isNaN(to.getTime())) return 'Invalid End Date';
-            return `Until ${to.toLocaleDateString('en-US')}`;
-        }
-
-        const periodLabels = {
-            'today': 'Today',
-            'yesterday': 'Yesterday',
-            'week': 'Last 7 Days',
-            'month': 'Last 30 Days',
-            'last-two-months': 'Last Two Months',
-            'year': 'Last Year',
-            'all-time': 'All Time'
-        };
-
-        return periodLabels[period] || 'All Time';
-
-    } catch (error) {
-        console.error('Error generating date range label:', error);
-        return 'Date Range';
-    }
-};
-
-/**
- * Utility function to validate date string
- */
-const isValidDate = (dateString) => {
-    if (!dateString || typeof dateString !== 'string') return false;
-    const date = new Date(dateString);
-    return !isNaN(date.getTime());
-};
-
-/**
- * Utility to get date range for a period (useful for UI)
- */
-const getDateRangeForPeriod = (period) => {
     const startDate = new Date();
     const endDate = new Date();
 
@@ -251,66 +62,27 @@ const getDateRangeForPeriod = (period) => {
         case 'week':
             startDate.setDate(startDate.getDate() - 7);
             startDate.setHours(0, 0, 0, 0);
-            endDate.setHours(23, 59, 59, 999);
             break;
         case 'month':
             startDate.setMonth(startDate.getMonth() - 1);
             startDate.setHours(0, 0, 0, 0);
-            endDate.setHours(23, 59, 59, 999);
-            break;
-        case 'last-two-months':
-            startDate.setMonth(startDate.getMonth() - 2);
-            startDate.setDate(1);
-            startDate.setHours(0, 0, 0, 0);
-            endDate.setHours(23, 59, 59, 999);
             break;
         case 'year':
             startDate.setFullYear(startDate.getFullYear() - 1);
             startDate.setHours(0, 0, 0, 0);
-            endDate.setHours(23, 59, 59, 999);
             break;
         default:
-            return null;
+            return {};
     }
 
     return {
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
-        startDateObj: startDate,
-        endDateObj: endDate
+        [timestampField]: {
+            $gte: startDate,
+            $lte: endDate
+        }
     };
 };
 
-/**
- * Enhanced build filter that combines both date and period filters
- */
-const buildEnhancedDateFilter = (fromDate, toDate, period = 'all-time', timestampField = 'createdAt') => {
-    try {
-        let finalFilter = {};
-
-        // Priority: Custom date range over period
-        if (fromDate || toDate) {
-            finalFilter = buildDateFilter(fromDate, toDate, timestampField);
-        } else if (period && period !== 'all-time') {
-            finalFilter = buildPeriodFilter(period, timestampField);
-        }
-
-        // Log for debugging
-        console.log('Enhanced date filter result:', {
-            fromDate,
-            toDate,
-            period,
-            timestampField,
-            finalFilter
-        });
-
-        return finalFilter;
-
-    } catch (error) {
-        console.error('Error in enhanced date filter:', error);
-        return {};
-    }
-};
 /**
  * Format currency values
  */
@@ -334,6 +106,25 @@ const getCouponStatus = (validTill, currentDistributions, maxDistributions) => {
     return "Active";
 };
 
+/**
+ * Generate date range label
+ */
+const getDateRangeLabel = (fromDate, toDate, period) => {
+    if (fromDate && toDate) {
+        return `${new Date(fromDate).toLocaleDateString()} - ${new Date(toDate).toLocaleDateString()}`;
+    }
+
+    const periodLabels = {
+        'today': 'Today',
+        'yesterday': 'Yesterday',
+        'week': 'Last 7 Days',
+        'month': 'Last 30 Days',
+        'year': 'Last Year',
+        'all-time': 'All Time'
+    };
+
+    return periodLabels[period] || 'All Time';
+};
 
 
 
@@ -343,14 +134,7 @@ const getCouponStatus = (validTill, currentDistributions, maxDistributions) => {
 
 export const getCouponsList = async (req, res) => {
     try {
-        const userId = req?.user?.id;
-        if (!userId) {
-            return res.status(401).json({
-                success: false,
-                message: "User not authenticated"
-            });
-        }
-
+        const userId = req.user.id;
         const {
             page = 1,
             limit = 10,
@@ -360,7 +144,7 @@ export const getCouponsList = async (req, res) => {
             search,
             sortBy = 'createdAt',
             sortOrder = 'desc'
-        } = req.query || {};
+        } = req.query;
 
         const pageNum = parseInt(page);
         const limitNum = Math.min(parseInt(limit), 100);
@@ -372,40 +156,31 @@ export const getCouponsList = async (req, res) => {
         let statusFilter = {};
         const now = new Date();
 
-        // Enhanced status filtering with safe defaults
+        // Enhanced status filtering
         if (status) {
             switch (status) {
                 case 'active':
                     statusFilter = {
                         validTill: { $gte: now },
-                        $expr: { $lt: ["$currentDistributions", "$maxDistributions"] },
-                        active: true
+                        $expr: { $lt: ["$currentDistributions", "$maxDistributions"] }
                     };
                     break;
                 case 'expired':
-                    statusFilter = {
-                        validTill: { $lt: now }
-                    };
+                    statusFilter.validTill = { $lt: now };
                     break;
                 case 'fully-redeemed':
-                    statusFilter = {
-                        $expr: { $eq: ["$currentDistributions", "$maxDistributions"] }
-                    };
+                    statusFilter.$expr = { $eq: ["$currentDistributions", "$maxDistributions"] };
                     break;
                 case 'partially-redeemed':
-                    statusFilter = {
-                        $expr: {
-                            $and: [
-                                { $gt: ["$currentDistributions", 0] },
-                                { $lt: ["$currentDistributions", "$maxDistributions"] }
-                            ]
-                        }
+                    statusFilter.$expr = {
+                        $and: [
+                            { $gt: ["$currentDistributions", 0] },
+                            { $lt: ["$currentDistributions", "$maxDistributions"] }
+                        ]
                     };
                     break;
                 case 'inactive':
-                    statusFilter = {
-                        active: false
-                    };
+                    statusFilter.active = false;
                     break;
                 default:
                 // No status filter
@@ -414,14 +189,14 @@ export const getCouponsList = async (req, res) => {
 
         // Enhanced search filter
         let searchFilter = {};
-        if (search && search.trim() !== '') {
+        if (search) {
             searchFilter = {
                 $or: [
-                    { title: { $regex: search.trim(), $options: 'i' } },
-                    { shop_name: { $regex: search.trim(), $options: 'i' } },
-                    { copuon_srno: { $regex: search.trim(), $options: 'i' } },
-                    { manul_address: { $regex: search.trim(), $options: 'i' } },
-                    { "tag": { $in: [new RegExp(search.trim(), 'i')] } }
+                    { title: { $regex: search, $options: 'i' } },
+                    { shop_name: { $regex: search, $options: 'i' } },
+                    { copuon_srno: { $regex: search, $options: 'i' } },
+                    { manul_address: { $regex: search, $options: 'i' } },
+                    { "tag": { $in: [new RegExp(search, 'i')] } }
                 ]
             };
         }
@@ -442,102 +217,6 @@ export const getCouponsList = async (req, res) => {
 
         console.log('Base Filter:', JSON.stringify(baseFilter, null, 2));
 
-        // First, check if user has any coupons at all
-        const totalUserCoupons = await Coupon.countDocuments({ ownerId: userId });
-
-        if (totalUserCoupons === 0) {
-            // No coupons found - return empty state response
-            const emptyResponse = {
-                success: true,
-                data: {
-                    coupons: [],
-                    summary: {
-                        totalCoupons: 0,
-                        statusBreakdown: {
-                            all: 0,
-                            active: 0,
-                            expired: 0,
-                            fullyRedeemed: 0,
-                            partiallyRedeemed: 0,
-                            inactive: 0
-                        },
-                        totalActive: 0,
-                        totalExpired: 0,
-                        totalRedeemed: 0,
-                        overallUtilization: 0
-                    },
-                    pagination: {
-                        currentPage: pageNum,
-                        totalPages: 0,
-                        totalCoupons: 0,
-                        hasNext: false,
-                        hasPrev: false,
-                        limit: limitNum
-                    },
-                    filters: {
-                        fromDate: fromDate || null,
-                        toDate: toDate || null,
-                        status: status || 'all',
-                        search: search || '',
-                        sortBy,
-                        sortOrder,
-                        dateRangeLabel: getDateRangeLabel(fromDate, toDate)
-                    },
-                    isEmpty: true,
-                    message: "No coupons found. Create your first coupon to get started."
-                }
-            };
-            return res.status(200).json(emptyResponse);
-        }
-
-        // Check if we have coupons for the selected filters
-        const couponsWithFilters = await Coupon.countDocuments(baseFilter);
-
-        if (couponsWithFilters === 0) {
-            // No coupons match the current filters
-            const noMatchResponse = {
-                success: true,
-                data: {
-                    coupons: [],
-                    summary: {
-                        totalCoupons: 0,
-                        statusBreakdown: {
-                            all: 0,
-                            active: 0,
-                            expired: 0,
-                            fullyRedeemed: 0,
-                            partiallyRedeemed: 0,
-                            inactive: 0
-                        },
-                        totalActive: 0,
-                        totalExpired: 0,
-                        totalRedeemed: 0,
-                        overallUtilization: 0
-                    },
-                    pagination: {
-                        currentPage: pageNum,
-                        totalPages: 0,
-                        totalCoupons: 0,
-                        hasNext: false,
-                        hasPrev: false,
-                        limit: limitNum
-                    },
-                    filters: {
-                        fromDate: fromDate || null,
-                        toDate: toDate || null,
-                        status: status || 'all',
-                        search: search || '',
-                        sortBy,
-                        sortOrder,
-                        dateRangeLabel: getDateRangeLabel(fromDate, toDate)
-                    },
-                    isEmpty: true,
-                    message: `No coupons found matching your filters. ${getFilterSuggestion(status, search, fromDate, toDate)}`
-                }
-            };
-            return res.status(200).json(noMatchResponse);
-        }
-
         // Execute parallel queries for better performance
         const [coupons, totalCoupons, salesData, statusCounts] = await Promise.all([
             // Get coupons with pagination and sorting
@@ -552,7 +231,7 @@ export const getCouponsList = async (req, res) => {
             // Total count for pagination
             Coupon.countDocuments(baseFilter),
 
-            // Get sales data for these coupons - FIXED: Added proper error handling
+            // Get sales data for these coupons
             Sales.aggregate([
                 {
                     $lookup: {
@@ -563,10 +242,7 @@ export const getCouponsList = async (req, res) => {
                     }
                 },
                 {
-                    $unwind: {
-                        path: "$couponInfo",
-                        preserveNullAndEmptyArrays: false
-                    }
+                    $unwind: "$couponInfo"
                 },
                 {
                     $match: {
@@ -578,17 +254,14 @@ export const getCouponsList = async (req, res) => {
                     $group: {
                         _id: "$couponId",
                         totalSales: { $sum: 1 },
-                        totalRevenue: { $sum: { $ifNull: ["$amount", 0] } },
-                        totalDiscount: { $sum: { $ifNull: ["$discountAmount", 0] } },
-                        totalFinalAmount: { $sum: { $ifNull: ["$finalAmount", 0] } }
+                        totalRevenue: { $sum: "$amount" },
+                        totalDiscount: { $sum: "$discountAmount" },
+                        totalFinalAmount: { $sum: "$finalAmount" }
                     }
                 }
-            ]).catch(error => {
-                console.error("Sales aggregation error:", error);
-                return []; // Return empty array on error
-            }),
+            ]),
 
-            // Get status counts for filters - FIXED: Added proper error handling
+            // Get status counts for filters
             Coupon.aggregate([
                 {
                     $match: {
@@ -651,34 +324,27 @@ export const getCouponsList = async (req, res) => {
                         ]
                     }
                 }
-            ]).catch(error => {
-                console.error("Status counts aggregation error:", error);
-                return [{}]; // Return empty object on error
-            })
+            ])
         ]);
 
-        // Create sales map for quick lookup with safe defaults
+        // Create sales map for quick lookup
         const salesMap = {};
-        (salesData || []).forEach(sale => {
-            if (sale && sale._id) {
-                salesMap[sale._id.toString()] = {
-                    totalSales: sale.totalSales || 0,
-                    totalRevenue: sale.totalRevenue || 0,
-                    totalDiscount: sale.totalDiscount || 0,
-                    totalFinalAmount: sale.totalFinalAmount || 0
-                };
-            }
+        salesData.forEach(sale => {
+            salesMap[sale._id.toString()] = {
+                totalSales: sale.totalSales,
+                totalRevenue: sale.totalRevenue,
+                totalDiscount: sale.totalDiscount,
+                totalFinalAmount: sale.totalFinalAmount
+            };
         });
 
-        // Format coupon data with enhanced information and safe defaults
-        const formattedCoupons = (coupons || []).map(coupon => {
-            if (!coupon) return null;
-
-            const baseAmount = (coupon.maxDistributions || 0) * 100; // Assuming 100 per distribution
+        // Format coupon data with enhanced information
+        const formattedCoupons = coupons.map(coupon => {
+            const baseAmount = coupon.maxDistributions * 100; // Assuming 100 per distribution
             const discountPercentage = parseFloat(coupon.discountPercentage) || 0;
             const discountAmount = (baseAmount * discountPercentage) / 100;
 
-            const couponSales = salesMap[coupon._id?.toString()] || {
+            const couponSales = salesMap[coupon._id.toString()] || {
                 totalSales: 0,
                 totalRevenue: 0,
                 totalDiscount: 0,
@@ -687,29 +353,29 @@ export const getCouponsList = async (req, res) => {
 
             const status = getCouponStatus(
                 coupon.validTill,
-                coupon.currentDistributions || 0,
-                coupon.maxDistributions || 0
+                coupon.currentDistributions,
+                coupon.maxDistributions
             );
 
             const isExpired = new Date(coupon.validTill) < new Date();
-            const isFullyRedeemed = (coupon.currentDistributions || 0) >= (coupon.maxDistributions || 0);
-            const utilizationRate = calculateRedeemRate(coupon.currentDistributions || 0, coupon.maxDistributions || 0);
+            const isFullyRedeemed = coupon.currentDistributions >= coupon.maxDistributions;
+            const utilizationRate = calculateRedeemRate(coupon.currentDistributions, coupon.maxDistributions);
 
             return {
                 id: coupon._id,
-                title: coupon.title || 'Untitled Coupon',
-                shopName: coupon.shop_name || 'No Shop Name',
-                couponSerial: coupon.copuon_srno || 'N/A',
-                manualAddress: coupon.manul_address || 'No Address',
+                title: coupon.title,
+                shopName: coupon.shop_name,
+                couponSerial: coupon.copuon_srno,
+                manualAddress: coupon.manul_address,
                 validTill: coupon.validTill,
                 discountPercentage: discountPercentage,
-                maxDistributions: coupon.maxDistributions || 0,
-                currentDistributions: coupon.currentDistributions || 0,
-                remainingDistributions: Math.max(0, (coupon.maxDistributions || 0) - (coupon.currentDistributions || 0)),
+                maxDistributions: coupon.maxDistributions,
+                currentDistributions: coupon.currentDistributions,
+                remainingDistributions: Math.max(0, coupon.maxDistributions - coupon.currentDistributions),
                 amount: baseAmount,
                 discountAmount: formatCurrency(discountAmount),
-                usedCount: coupon.currentDistributions || 0,
-                totalDistributed: coupon.maxDistributions || 0,
+                usedCount: coupon.currentDistributions,
+                totalDistributed: coupon.maxDistributions,
                 salesData: {
                     totalSales: couponSales.totalSales,
                     totalRevenue: formatCurrency(couponSales.totalRevenue),
@@ -719,21 +385,21 @@ export const getCouponsList = async (req, res) => {
                         formatCurrency(couponSales.totalFinalAmount / couponSales.totalSales) : 0
                 },
                 status,
-                isActive: coupon.active !== false, // Default to true if not specified
+                isActive: coupon.active,
                 isExpired,
                 isFullyRedeemed,
-                isSpecialCoupon: coupon.is_spacial_copun || false,
-                couponColor: coupon.coupon_color || '#FFFFFF',
+                isSpecialCoupon: coupon.is_spacial_copun,
+                couponColor: coupon.coupon_color,
                 tags: coupon.tag || [],
                 categories: coupon.category || [],
                 utilizationRate: formatCurrency(utilizationRate),
                 daysUntilExpiry: isExpired ? 0 : Math.ceil((new Date(coupon.validTill) - now) / (1000 * 60 * 60 * 24)),
                 createdAt: coupon.createdAt,
-                updatedAt: coupon.updatedAt || coupon.createdAt
+                updatedAt: coupon.updatedAt
             };
-        }).filter(coupon => coupon !== null); // Remove any null entries
+        });
 
-        // Process status counts with safe defaults
+        // Process status counts
         const statusCountsResult = statusCounts[0] || {};
         const statusSummary = {
             all: statusCountsResult.total?.[0]?.count || 0,
@@ -744,18 +410,7 @@ export const getCouponsList = async (req, res) => {
             inactive: statusCountsResult.inactive?.[0]?.count || 0
         };
 
-        // Calculate overall utilization safely
-        let overallUtilization = 0;
-        if (formattedCoupons.length > 0) {
-            const totalUtilization = formattedCoupons.reduce((sum, coupon) => {
-                const maxDist = coupon.maxDistributions || 1; // Avoid division by zero
-                const currentDist = coupon.currentDistributions || 0;
-                return sum + (currentDist / maxDist) * 100;
-            }, 0);
-            overallUtilization = formatCurrency(totalUtilization / formattedCoupons.length);
-        }
-
-        const response = {
+        res.status(200).json({
             success: true,
             data: {
                 coupons: formattedCoupons,
@@ -765,7 +420,8 @@ export const getCouponsList = async (req, res) => {
                     totalActive: statusSummary.active,
                     totalExpired: statusSummary.expired,
                     totalRedeemed: statusSummary.fullyRedeemed + statusSummary.partiallyRedeemed,
-                    overallUtilization: overallUtilization
+                    overallUtilization: totalCoupons > 0 ?
+                        formatCurrency(coupons.reduce((sum, coupon) => sum + (coupon.currentDistributions / coupon.maxDistributions) * 100, 0) / coupons.length) : 0
                 },
                 pagination: {
                     currentPage: pageNum,
@@ -783,91 +439,35 @@ export const getCouponsList = async (req, res) => {
                     sortBy,
                     sortOrder,
                     dateRangeLabel: getDateRangeLabel(fromDate, toDate)
-                },
-                isEmpty: formattedCoupons.length === 0,
-                message: formattedCoupons.length === 0 ?
-                    "No coupons found matching your current filters." :
-                    undefined
+                }
             }
-        };
-
-        res.status(200).json(response);
+        });
 
     } catch (error) {
         console.error("Coupons list error:", error);
         res.status(500).json({
             success: false,
             message: "Error fetching coupons list",
-            error: error.message,
-            data: {
-                coupons: [],
-                summary: {
-                    totalCoupons: 0,
-                    statusBreakdown: {
-                        all: 0,
-                        active: 0,
-                        expired: 0,
-                        fullyRedeemed: 0,
-                        partiallyRedeemed: 0,
-                        inactive: 0
-                    },
-                    totalActive: 0,
-                    totalExpired: 0,
-                    totalRedeemed: 0,
-                    overallUtilization: 0
-                },
-                pagination: {
-                    currentPage: 1,
-                    totalPages: 0,
-                    totalCoupons: 0,
-                    hasNext: false,
-                    hasPrev: false,
-                    limit: 10
-                },
-                filters: {
-                    fromDate: null,
-                    toDate: null,
-                    status: 'all',
-                    search: '',
-                    sortBy: 'createdAt',
-                    sortOrder: 'desc',
-                    dateRangeLabel: 'All Time'
-                },
-                isEmpty: true
-            }
+            error: error.message
         });
     }
-};
-
-// Helper function for filter suggestions
-const getFilterSuggestion = (status, search, fromDate, toDate) => {
-    const suggestions = [];
-
-    if (status && status !== 'all') {
-        suggestions.push(`try changing the status filter from "${status}" to "all"`);
-    }
-
-    if (search) {
-        suggestions.push(`try removing the search term "${search}"`);
-    }
-
-    if (fromDate || toDate) {
-        suggestions.push('try adjusting the date range');
-    }
-
-    if (suggestions.length === 0) {
-        return 'Try creating some coupons first.';
-    }
-
-    return `Suggestions: ${suggestions.join(' or ')}.`;
 };
 
 // ==============================
 // FIXED DASHBOARD STATISTICS CONTROLLER
 // ==============================
+
 export const getDashboardStats = async (req, res) => {
     try {
+        // Extract user ID safely
         const userId = req?.user?.id;
+        if (!userId) {
+            return res?.status ? res.status(401).json({
+                success: false,
+                message: "User not authenticated"
+            }) : { success: false, message: "User not authenticated" };
+        }
+
         const { fromDate, toDate, period = 'all-time' } = req?.query || {};
 
         // Get partner profile
@@ -879,68 +479,7 @@ export const getDashboardStats = async (req, res) => {
             dateFilter = { ...dateFilter, ...buildPeriodFilter(period) };
         }
 
-        // First, check if user has any coupons at all
-        const totalUserCoupons = await Coupon.countDocuments({ ownerId: userId });
-
-        if (totalUserCoupons === 0) {
-            // No coupons found - return empty state response
-            const emptyResponse = {
-                success: true,
-                data: {
-                    partnerInfo: {
-                        firmName: partnerProfile?.firm_name || "Your Firm",
-                        logo: partnerProfile?.logo || null,
-                        city: partnerProfile?.address?.city || "",
-                        state: partnerProfile?.address?.state || "",
-                        email: partnerProfile?.email || ""
-                    },
-                    filters: {
-                        fromDate: fromDate || null,
-                        toDate: toDate || null,
-                        period: period,
-                        dateRangeLabel: getDateRangeLabel(fromDate, toDate, period)
-                    },
-                    overview: {
-                        // Zero values for all metrics
-                        totalAmount: 0,
-                        totalDiscount: 0,
-                        totalFinalAmount: 0,
-                        avgTransactionValue: 0,
-                        totalCoupons: 0,
-                        activeCoupons: 0,
-                        expiredCoupons: 0,
-                        totalMaxDistributions: 0,
-                        totalCurrentDistributions: 0,
-                        totalUsedCoupons: 0,
-                        remainingDistributions: 0,
-                        avgDiscountPercentage: 0,
-                        redeemRate: 0,
-                        salesConversionRate: 0,
-                        totalSales: 0,
-                        availableCoupons: 0,
-                        usedCoupons: 0,
-                        transferredCoupons: 0
-                    },
-                    topCoupons: [],
-                    isEmpty: true,
-                    message: "No coupons found. Create your first coupon to see analytics here."
-                }
-            };
-
-            if (res?.status) {
-                return res.status(200).json(emptyResponse);
-            } else {
-                return emptyResponse;
-            }
-        }
-
-        // Check if we have data for the selected date range
-        const couponsInRange = await Coupon.countDocuments({
-            ownerId: userId,
-            ...dateFilter
-        });
-
-        // Execute parallel queries only if we have data
+        // Execute parallel queries for better performance
         const [couponStats, salesStats, userCouponStats, topCoupons] = await Promise.all([
             // Coupon statistics
             Coupon.aggregate([
@@ -975,7 +514,7 @@ export const getDashboardStats = async (req, res) => {
                 }
             ]),
 
-            // Sales statistics
+            // Sales statistics - FIXED: Added proper error handling for lookup
             Sales.aggregate([
                 {
                     $lookup: {
@@ -988,7 +527,7 @@ export const getDashboardStats = async (req, res) => {
                 {
                     $unwind: {
                         path: "$couponInfo",
-                        preserveNullAndEmptyArrays: false
+                        preserveNullAndEmptyArrays: false // Only include records with valid coupon info
                     }
                 },
                 {
@@ -1010,7 +549,7 @@ export const getDashboardStats = async (req, res) => {
                 }
             ]),
 
-            // User coupon statistics
+            // User coupon statistics - FIXED: Added proper error handling
             UserCoupon.aggregate([
                 {
                     $lookup: {
@@ -1060,17 +599,13 @@ export const getDashboardStats = async (req, res) => {
                         currentDistributions: 1,
                         maxDistributions: 1,
                         discountPercentage: 1,
-                        shop_name: 1,
-                        createdAt: 1
+                        shop_name: 1
                     }
                 }
             ])
         ]);
 
-        // Check if we have any data in the selected range
-        const hasDataInRange = couponsInRange > 0;
-
-        // Extract values with fallbacks
+        // Extract values with fallbacks - FIXED: Added proper default values
         const couponData = couponStats[0] || {};
         const salesData = salesStats[0] || {};
         const userCouponData = userCouponStats || [];
@@ -1109,10 +644,13 @@ export const getDashboardStats = async (req, res) => {
                     dateRangeLabel: getDateRangeLabel(fromDate, toDate, period)
                 },
                 overview: {
+                    // Financial Metrics
                     totalAmount,
                     totalDiscount,
                     totalFinalAmount,
                     avgTransactionValue: formatCurrency(salesData.avgTransactionValue || 0),
+
+                    // Coupon Metrics
                     totalCoupons,
                     activeCoupons,
                     expiredCoupons: totalCoupons - activeCoupons,
@@ -1120,10 +658,14 @@ export const getDashboardStats = async (req, res) => {
                     totalCurrentDistributions,
                     totalUsedCoupons: usedCoupons,
                     remainingDistributions: Math.max(0, totalMaxDistributions - totalCurrentDistributions),
+
+                    // Performance Metrics
                     avgDiscountPercentage,
                     redeemRate: formatCurrency(redeemRate),
                     salesConversionRate: formatCurrency(salesConversionRate),
                     totalSales,
+
+                    // User Coupon Status
                     availableCoupons,
                     usedCoupons,
                     transferredCoupons: userCouponData.find(item => item?._id === 'transferred')?.count || 0
@@ -1134,16 +676,12 @@ export const getDashboardStats = async (req, res) => {
                     currentDistributions: coupon.currentDistributions,
                     maxDistributions: coupon.maxDistributions,
                     discountPercentage: coupon.discountPercentage,
-                    utilizationRate: calculateRedeemRate(coupon.currentDistributions, coupon.maxDistributions),
-                    createdAt: coupon.createdAt
-                })),
-                isEmpty: !hasDataInRange,
-                message: !hasDataInRange ?
-                    "No data found for the selected date range. Try changing your filters or create new coupons." :
-                    undefined
+                    utilizationRate: calculateRedeemRate(coupon.currentDistributions, coupon.maxDistributions)
+                }))
             }
         };
 
+        // Return based on context (API call or internal call)
         if (res?.status) {
             return res.status(200).json(response);
         } else {
@@ -1166,6 +704,7 @@ export const getDashboardStats = async (req, res) => {
         }
     }
 };
+
 // ==============================
 // ENHANCED SALES ANALYTICS CONTROLLER
 // ==============================
@@ -1403,172 +942,118 @@ export const getCouponsAnalytics = async (req, res) => {
             dateFilter = { ...dateFilter, ...buildPeriodFilter(period) };
         }
 
-        // First, check if user has any coupons
-        const totalUserCoupons = await Coupon.countDocuments({ ownerId: userId });
-
-        if (totalUserCoupons === 0) {
-            const emptyResponse = {
-                success: true,
-                data: {
-                    overview: {
-                        totalCoupons: 0,
-                        activeCoupons: 0,
-                        expiredCoupons: 0,
-                        fullyRedeemed: 0,
-                        totalDistributions: 0,
-                        usedDistributions: 0,
-                        remainingDistributions: 0,
-                        avgDiscount: 0,
-                        utilizationRate: 0,
-                        totalPotentialRevenue: 0,
-                        totalActualRevenue: 0,
-                        revenueEfficiency: 0
-                    },
-                    statusDistribution: {},
-                    filters: {
-                        fromDate: fromDate || null,
-                        toDate: toDate || null,
-                        period,
-                        dateRangeLabel: getDateRangeLabel(fromDate, toDate, period)
-                    },
-                    isEmpty: true,
-                    message: "No coupons found. Create your first coupon to see analytics."
+        const analytics = await Coupon.aggregate([
+            {
+                $match: {
+                    ownerId: new mongoose.Types.ObjectId(userId),
+                    ...dateFilter
                 }
-            };
-
-            if (res?.status) {
-                return res.status(200).json(emptyResponse);
-            } else {
-                return emptyResponse;
-            }
-        }
-
-        // Execute analytics queries with error handling
-        const [analytics, couponStatus] = await Promise.all([
-            // Main analytics aggregation
-            Coupon.aggregate([
-                {
-                    $match: {
-                        ownerId: new mongoose.Types.ObjectId(userId),
-                        ...dateFilter
-                    }
-                },
-                {
-                    $group: {
-                        _id: null,
-                        totalCoupons: { $sum: 1 },
-                        activeCoupons: {
-                            $sum: {
-                                $cond: [
-                                    {
-                                        $and: [
-                                            { $gte: ["$validTill", new Date()] },
-                                            { $lt: ["$currentDistributions", "$maxDistributions"] }
-                                        ]
-                                    },
-                                    1,
-                                    0
-                                ]
-                            }
-                        },
-                        expiredCoupons: {
-                            $sum: {
-                                $cond: [
-                                    { $lt: ["$validTill", new Date()] },
-                                    1,
-                                    0
-                                ]
-                            }
-                        },
-                        fullyRedeemed: {
-                            $sum: {
-                                $cond: [
-                                    { $gte: ["$currentDistributions", "$maxDistributions"] },
-                                    1,
-                                    0
-                                ]
-                            }
-                        },
-                        totalDistributions: { $sum: "$maxDistributions" },
-                        usedDistributions: { $sum: "$currentDistributions" },
-                        avgDiscount: { $avg: { $toDouble: "$discountPercentage" } },
-                        totalPotentialRevenue: {
-                            $sum: {
-                                $multiply: [
-                                    "$maxDistributions",
-                                    100 // Assuming ₹100 base value per coupon
-                                ]
-                            }
-                        },
-                        totalActualRevenue: {
-                            $sum: {
-                                $multiply: [
-                                    "$currentDistributions",
-                                    100,
-                                    { $divide: [{ $toDouble: "$discountPercentage" }, 100] }
-                                ]
-                            }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalCoupons: { $sum: 1 },
+                    activeCoupons: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $gte: ["$validTill", new Date()] },
+                                        { $lt: ["$currentDistributions", "$maxDistributions"] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
                         }
-                    }
-                }
-            ]).catch(error => {
-                console.error("Analytics aggregation error:", error);
-                return [{}];
-            }),
-
-            // Status distribution aggregation
-            Coupon.aggregate([
-                {
-                    $match: {
-                        ownerId: new mongoose.Types.ObjectId(userId),
-                        ...dateFilter
-                    }
-                },
-                {
-                    $project: {
-                        status: {
+                    },
+                    expiredCoupons: {
+                        $sum: {
                             $cond: [
                                 { $lt: ["$validTill", new Date()] },
-                                "Expired",
-                                {
-                                    $cond: [
-                                        { $gte: ["$currentDistributions", "$maxDistributions"] },
-                                        "Fully Redeemed",
-                                        {
-                                            $cond: [
-                                                { $gt: ["$currentDistributions", 0] },
-                                                "Partially Redeemed",
-                                                "Active"
-                                            ]
-                                        }
-                                    ]
-                                }
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    fullyRedeemed: {
+                        $sum: {
+                            $cond: [
+                                { $gte: ["$currentDistributions", "$maxDistributions"] },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    totalDistributions: { $sum: "$maxDistributions" },
+                    usedDistributions: { $sum: "$currentDistributions" },
+                    avgDiscount: { $avg: { $toDouble: "$discountPercentage" } },
+                    totalPotentialRevenue: {
+                        $sum: {
+                            $multiply: [
+                                "$maxDistributions",
+                                100 // Assuming ₹100 base value per coupon
+                            ]
+                        }
+                    },
+                    totalActualRevenue: {
+                        $sum: {
+                            $multiply: [
+                                "$currentDistributions",
+                                100,
+                                { $divide: [{ $toDouble: "$discountPercentage" }, 100] }
                             ]
                         }
                     }
-                },
-                {
-                    $group: {
-                        _id: "$status",
-                        count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const couponStatus = await Coupon.aggregate([
+            {
+                $match: {
+                    ownerId: new mongoose.Types.ObjectId(userId),
+                    ...dateFilter
+                }
+            },
+            {
+                $project: {
+                    status: {
+                        $cond: [
+                            { $lt: ["$validTill", new Date()] },
+                            "Expired",
+                            {
+                                $cond: [
+                                    { $gte: ["$currentDistributions", "$maxDistributions"] },
+                                    "Fully Redeemed",
+                                    {
+                                        $cond: [
+                                            { $gt: ["$currentDistributions", 0] },
+                                            "Partially Redeemed",
+                                            "Active"
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
                     }
                 }
-            ]).catch(error => {
-                console.error("Status distribution aggregation error:", error);
-                return [];
-            })
+            },
+            {
+                $group: {
+                    _id: "$status",
+                    count: { $sum: 1 }
+                }
+            }
         ]);
 
         const data = analytics[0] || {};
-        const statusDistribution = (couponStatus || []).reduce((acc, curr) => {
+        const statusDistribution = couponStatus.reduce((acc, curr) => {
             if (curr?._id && curr?.count) {
                 acc[curr._id] = curr.count;
             }
             return acc;
         }, {});
-
-        // Check if we have data for the selected filters
-        const hasDataInRange = data.totalCoupons > 0;
 
         const response = {
             success: true,
@@ -1593,11 +1078,7 @@ export const getCouponsAnalytics = async (req, res) => {
                     toDate: toDate || null,
                     period,
                     dateRangeLabel: getDateRangeLabel(fromDate, toDate, period)
-                },
-                isEmpty: !hasDataInRange,
-                message: !hasDataInRange ?
-                    "No coupon data found for the selected date range. Try adjusting your filters." :
-                    undefined
+                }
             }
         };
 
@@ -1614,31 +1095,7 @@ export const getCouponsAnalytics = async (req, res) => {
         const errorResponse = {
             success: false,
             message: "Error fetching coupons analytics",
-            error: error.message,
-            data: {
-                overview: {
-                    totalCoupons: 0,
-                    activeCoupons: 0,
-                    expiredCoupons: 0,
-                    fullyRedeemed: 0,
-                    totalDistributions: 0,
-                    usedDistributions: 0,
-                    remainingDistributions: 0,
-                    avgDiscount: 0,
-                    utilizationRate: 0,
-                    totalPotentialRevenue: 0,
-                    totalActualRevenue: 0,
-                    revenueEfficiency: 0
-                },
-                statusDistribution: {},
-                filters: {
-                    fromDate: null,
-                    toDate: null,
-                    period: 'all-time',
-                    dateRangeLabel: 'All Time'
-                },
-                isEmpty: true
-            }
+            error: error.message
         };
 
         if (res?.status) {
@@ -1648,9 +1105,8 @@ export const getCouponsAnalytics = async (req, res) => {
         }
     }
 };
-
 // ==============================
-// ENHANCED PDF EXPORT CONTROLLER
+// PREMIUM PDF EXPORT CONTROLLER
 // ==============================
 
 export const exportDashboardPDF = async (req, res) => {
@@ -1658,72 +1114,39 @@ export const exportDashboardPDF = async (req, res) => {
     res.setTimeout(10 * 60 * 1000);
 
     try {
-        const userId = req.user?.id;
-        if (!userId) {
-            return res.status(401).json({
-                success: false,
-                message: "User not authenticated"
-            });
-        }
+        const userId = req.user.id;
+        const { fromDate, toDate, period = 'all-time' } = req.query;
 
-        const { fromDate, toDate, period = 'all-time' } = req.query || {};
-
-        // Prepare mock request for analytics functions
+        // Create mock request objects for internal calls
         const mockReq = {
             user: { id: userId },
             query: { fromDate, toDate, period }
         };
 
-        // Parallel fetch of all report data with error handling
+        // Fetch all data in parallel using the fixed functions
         const [partnerProfile, statsRes, salesRes, couponsRes] = await Promise.all([
-            PatnerProfile.findOne({ User_id: userId }).catch(() => null),
-            getDashboardStats(mockReq).catch(error => ({
-                success: false,
-                message: "Failed to fetch dashboard stats",
-                error: error.message
-            })),
-            getSalesAnalytics(mockReq).catch(error => ({
-                success: false,
-                message: "Failed to fetch sales analytics",
-                error: error.message
-            })),
-            getCouponsAnalytics(mockReq).catch(error => ({
-                success: false,
-                message: "Failed to fetch coupons analytics",
-                error: error.message
-            }))
+            PatnerProfile.findOne({ User_id: userId }),
+            getDashboardStats(mockReq), // Call without res object
+            getSalesAnalytics(mockReq), // Call without res object
+            getCouponsAnalytics(mockReq) // Call without res object
         ]);
 
         // Check if any of the responses failed
         if (!statsRes.success || !salesRes.success || !couponsRes.success) {
-            const errorMessages = [
-                !statsRes.success && statsRes.message,
-                !salesRes.success && salesRes.message,
-                !couponsRes.success && couponsRes.message
-            ].filter(Boolean).join(', ');
-
-            throw new Error(`Failed to fetch data for PDF generation: ${errorMessages}`);
+            throw new Error('Failed to fetch data for PDF generation');
         }
 
-        const stats = statsRes.data || {};
-        const salesData = salesRes.data || {};
-        const couponsData = couponsRes.data || {};
+        const stats = statsRes.data;
+        const salesData = salesRes.data;
+        const couponsData = couponsRes.data;
 
-        // Check if we have any data to export
-        if (stats.isEmpty && salesData.analytics?.length === 0 && couponsData.overview?.totalCoupons === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "No data available to generate PDF report"
-            });
-        }
-
-        // Initialize the PDF
+        // Create PDF document with professional styling
         const doc = new PDFDocument({
             margin: 50,
             size: 'A4',
             bufferPages: true,
             info: {
-                Title: `${stats.partnerInfo?.firmName || 'Business'} - Performance Analytics Report`,
+                Title: `${stats.partnerInfo.firmName} - Performance Analytics Report`,
                 Author: 'Partner Analytics Dashboard',
                 CreationDate: new Date(),
                 Subject: 'Comprehensive Business Performance Analysis'
@@ -1731,269 +1154,264 @@ export const exportDashboardPDF = async (req, res) => {
         });
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader(
-            'Content-Disposition',
-            `attachment; filename="${(stats.partnerInfo?.firmName || 'Report').replace(/[^a-zA-Z0-9]/g, '_')}_Analytics_Report_${new Date().toISOString().slice(0, 10)}.pdf"`
+        res.setHeader('Content-Disposition', 
+            `attachment; filename="${stats.partnerInfo.firmName.replace(/[^a-zA-Z0-9]/g, '_')}_Analytics_Report_${new Date().toISOString().slice(0, 10)}.pdf"`
         );
 
         doc.pipe(res);
 
-        // 🎨 Brand Colors
+        // Colors for professional design
         const colors = {
-            primary: '#1A237E',
-            secondary: '#3949AB',
-            accent: '#64B5F6',
-            text: '#2C3E50',
-            light: '#F4F6F8',
-            border: '#E0E0E0',
-            warning: '#FF9800',
-            empty: '#9E9E9E'
+            primary: '#2c3e50',
+            secondary: '#3498db',
+            success: '#27ae60',
+            warning: '#f39c12',
+            danger: '#e74c3c',
+            light: '#ecf0f1',
+            dark: '#34495e'
         };
 
-        // 📘 Add Header
+        // Helper functions for PDF generation
         const addHeader = () => {
-            doc.rect(0, 0, doc.page.width, 100)
+            // Company Header with background
+            doc.rect(0, 0, doc.page.width, 120)
                 .fill(colors.primary);
 
+            // Company Logo and Name
             doc.fillColor('#ffffff')
+                .fontSize(24)
                 .font('Helvetica-Bold')
-                .fontSize(22)
-                .text(stats.partnerInfo?.firmName || 'Your Business', 50, 35);
+                .text(stats.partnerInfo.firmName, 50, 40, { align: 'left' });
 
-            doc.font('Helvetica')
-                .fontSize(12)
-                .text('Business Performance Analytics Report', 50, 65);
+            doc.fontSize(12)
+                .font('Helvetica')
+                .text('Performance Analytics Report', 50, 70);
 
-            doc.fillColor('#E3F2FD')
-                .fontSize(10)
-                .text(`Generated: ${new Date().toLocaleString('en-IN', {
-                    dateStyle: 'medium',
-                    timeStyle: 'short'
-                })}`, 400, 65, { align: 'right' });
+            // Report Period
+            doc.fontSize(10)
+                .text(`Period: ${stats.filters.dateRangeLabel}`, 50, 90);
 
-            doc.moveDown(3);
+            // Report Date
+            doc.text(`Generated: ${new Date().toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            })}`, 50, 105);
+
+            doc.y = 140;
         };
 
-        // 📗 Section Header
-        const addSectionHeader = (title) => {
-            doc.moveDown(1);
+        const addSectionHeader = (title, y) => {
+            doc.y = y || doc.y + 20;
             doc.fillColor(colors.primary)
-                .font('Helvetica-Bold')
                 .fontSize(16)
-                .text(title);
+                .font('Helvetica-Bold')
+                .text(title, 50, doc.y);
 
-            doc.moveTo(50, doc.y + 3)
-                .lineTo(doc.page.width - 50, doc.y + 3)
+            // Underline
+            doc.moveTo(50, doc.y + 5)
+                .lineTo(doc.page.width - 50, doc.y + 5)
                 .strokeColor(colors.secondary)
                 .lineWidth(1)
                 .stroke();
-            doc.moveDown(1.5);
+
+            doc.y += 15;
         };
 
-        // 🧭 Metric Card (Grid layout)
-        const addMetricCard = (x, y, title, value, subtext, isEmpty = false) => {
-            const width = 230, height = 70;
-
+        const addMetricCard = (label, value, subtext, x, y, width = 120, height = 60) => {
+            // Card background
             doc.rect(x, y, width, height)
-                .fillColor(isEmpty ? colors.empty : colors.light)
-                .strokeColor(colors.border)
-                .lineWidth(1)
-                .fillAndStroke();
+                .fillColor(colors.light)
+                .fill();
 
-            doc.fillColor(isEmpty ? colors.empty : colors.primary)
+            // Border
+            doc.rect(x, y, width, height)
+                .strokeColor(colors.dark)
+                .lineWidth(0.5)
+                .stroke();
+
+            // Value
+            doc.fillColor(colors.primary)
+                .fontSize(14)
                 .font('Helvetica-Bold')
-                .fontSize(isEmpty ? 12 : 14)
-                .text(isEmpty ? 'No Data' : value, x + 10, y + 15);
+                .text(value, x + 10, y + 10, { width: width - 20, align: 'center' });
 
-            doc.fillColor(isEmpty ? colors.empty : colors.text)
-                .font('Helvetica')
+            // Label
+            doc.fillColor(colors.dark)
                 .fontSize(10)
-                .text(title, x + 10, y + 35);
+                .font('Helvetica')
+                .text(label, x + 10, y + 30, { width: width - 20, align: 'center' });
 
-            if (subtext && !isEmpty)
-                doc.fillColor(colors.accent)
-                    .fontSize(9)
-                    .text(subtext, x + 10, y + 50);
+            // Subtext
+            if (subtext) {
+                doc.fillColor(colors.secondary)
+                    .fontSize(8)
+                    .text(subtext, x + 10, y + 45, { width: width - 20, align: 'center' });
+            }
         };
 
-        // 📊 Table Generator
-        const addTable = (headers, rows, emptyMessage = "No data available") => {
-            const startX = 50;
-            let y = doc.y + 10;
+        const addTable = (headers, rows, startY) => {
+            let y = startY;
             const columnWidth = (doc.page.width - 100) / headers.length;
 
-            if (!rows || rows.length === 0) {
-                doc.fillColor(colors.empty)
-                    .font('Helvetica-Italic')
-                    .fontSize(11)
-                    .text(emptyMessage, startX, y);
-                doc.moveDown(2);
-                return;
-            }
-
-            // Header row
+            // Table header
             doc.fillColor(colors.primary)
-                .font('Helvetica-Bold')
-                .fontSize(10);
-            headers.forEach((h, i) =>
-                doc.text(h, startX + i * columnWidth, y, { width: columnWidth, align: 'left' })
-            );
+                .fontSize(10)
+                .font('Helvetica-Bold');
 
-            y += 18;
-            doc.moveTo(startX, y - 5).lineTo(doc.page.width - 50, y - 5).strokeColor(colors.border).stroke();
-
-            // Rows
-            doc.fillColor(colors.text).font('Helvetica').fontSize(9);
-            rows.forEach((row, idx) => {
-                if (y > 700) {
-                    doc.addPage();
-                    addHeader();
-                    addSectionHeader('Continued...');
-                    y = 150;
-                }
-
-                headers.forEach((h, i) => {
-                    doc.text(row[h] || '', startX + i * columnWidth, y, { width: columnWidth, align: 'left' });
+            headers.forEach((header, i) => {
+                doc.text(header, 50 + (i * columnWidth), y, {
+                    width: columnWidth - 10,
+                    align: 'left'
                 });
-                y += 15;
+            });
 
-                if (idx < rows.length - 1) {
-                    doc.moveTo(startX, y - 3)
+            y += 15;
+
+            // Table rows
+            doc.fillColor(colors.dark)
+                .fontSize(9)
+                .font('Helvetica');
+
+            rows.forEach((row, rowIndex) => {
+                headers.forEach((header, colIndex) => {
+                    const cellValue = row[header] || row[colIndex] || '';
+                    doc.text(cellValue.toString(), 50 + (colIndex * columnWidth), y, {
+                        width: columnWidth - 10,
+                        align: 'left'
+                    });
+                });
+                y += 12;
+
+                // Add row separator
+                if (rowIndex < rows.length - 1) {
+                    doc.moveTo(50, y - 3)
                         .lineTo(doc.page.width - 50, y - 3)
-                        .strokeColor(colors.border)
+                        .strokeColor('#bdc3c7')
                         .lineWidth(0.3)
                         .stroke();
                 }
             });
-            doc.moveDown(2);
+
+            return y + 10;
         };
 
-        // Add Empty State Message
-        const addEmptyState = (message) => {
-            doc.fillColor(colors.empty)
-                .font('Helvetica-Italic')
-                .fontSize(12)
-                .text(message, { align: 'center' });
-            doc.moveDown(2);
-        };
-
-        // Add main header
+        // Generate PDF Content
         addHeader();
 
-        // 🧩 EXECUTIVE SUMMARY
+        // Executive Summary Section
         addSectionHeader('Executive Summary');
 
-        if (stats.isEmpty) {
-            addEmptyState("No analytics data available. Create coupons and generate sales to see insights here.");
-        } else {
-            const metrics = [
-                {
-                    title: 'Total Revenue',
-                    value: `₹${stats.overview?.totalFinalAmount || 0}`,
-                    sub: `${stats.overview?.totalSales || 0} sales`,
-                    isEmpty: !stats.overview?.totalFinalAmount
-                },
-                {
-                    title: 'Total Discount',
-                    value: `₹${stats.overview?.totalDiscount || 0}`,
-                    sub: `${calculateRedeemRate(stats.overview?.totalDiscount || 0, stats.overview?.totalAmount || 1).toFixed(1)}% of total`,
-                    isEmpty: !stats.overview?.totalDiscount
-                },
-                {
-                    title: 'Active Coupons',
-                    value: stats.overview?.activeCoupons || 0,
-                    sub: `${stats.overview?.totalCoupons || 0} total`,
-                    isEmpty: !stats.overview?.activeCoupons
-                },
-                {
-                    title: 'Redeem Rate',
-                    value: `${stats.overview?.redeemRate || 0}%`,
-                    sub: `${stats.overview?.totalCurrentDistributions || 0}/${stats.overview?.totalMaxDistributions || 0}`,
-                    isEmpty: !stats.overview?.redeemRate
-                }
-            ];
+        // Key Metrics in a grid
+        const metrics = [
+            { label: 'Total Revenue', value: `₹${stats.overview.totalFinalAmount}`, subtext: `${stats.overview.totalSales} sales` },
+            { label: 'Total Discount', value: `₹${stats.overview.totalDiscount}`, subtext: `${calculateRedeemRate(stats.overview.totalDiscount, stats.overview.totalAmount)}% of revenue` },
+            { label: 'Active Coupons', value: stats.overview.activeCoupons, subtext: `${calculateRedeemRate(stats.overview.activeCoupons, stats.overview.totalCoupons)}% of total` },
+            { label: 'Redeem Rate', value: `${stats.overview.redeemRate}%`, subtext: `${stats.overview.totalCurrentDistributions}/${stats.overview.totalMaxDistributions} used` }
+        ];
 
-            // 2x2 Grid layout
-            let y = doc.y;
-            metrics.forEach((m, i) => {
-                const x = 50 + (i % 2) * 250;
-                const rowY = y + Math.floor(i / 2) * 85;
-                addMetricCard(x, rowY, m.title, m.value, m.sub, m.isEmpty);
-            });
+        metrics.forEach((metric, index) => {
+            const row = Math.floor(index / 2);
+            const col = index % 2;
+            const x = 50 + (col * 270);
+            const y = doc.y + (row * 80);
+            addMetricCard(metric.label, metric.value, metric.subtext, x, y);
+        });
 
-            doc.y = y + 190;
+        doc.y += 120;
+
+        // Sales Performance Section
+        if (doc.y > 600) {
+            doc.addPage();
+            doc.y = 50;
         }
 
-        // 📈 SALES PERFORMANCE
         addSectionHeader('Sales Performance');
-        addTable(
-            ['Date', 'Transactions', 'Revenue', 'Discount', 'Avg. Order'],
-            (salesData.analytics || []).slice(0, 10).map(item => ({
-                'Date': item.label || 'N/A',
-                'Transactions': item.totalSales || 0,
-                'Revenue': `₹${item.totalFinalAmount || 0}`,
-                'Discount': `₹${item.totalDiscount || 0}`,
-                'Avg. Order': `₹${item.averageOrderValue || 0}`
-            })),
-            "No sales data available for the selected period"
-        );
 
-        // 🎟️ COUPON PERFORMANCE
+        const salesHeaders = ['Date', 'Transactions', 'Revenue', 'Discount', 'Avg. Order'];
+        const salesRows = salesData.analytics.slice(0, 10).map(item => ({
+            'Date': item.label,
+            'Transactions': item.totalSales.toString(),
+            'Revenue': `₹${item.totalFinalAmount}`,
+            'Discount': `₹${item.totalDiscount}`,
+            'Avg. Order': `₹${item.averageOrderValue}`
+        }));
+
+        doc.y = addTable(salesHeaders, salesRows, doc.y);
+
+        // Coupon Performance Section
+        if (doc.y > 500) {
+            doc.addPage();
+            doc.y = 50;
+        }
+
         addSectionHeader('Coupon Performance');
-        addTable(
-            ['Coupon', 'Distributed', 'Used', 'Utilization', 'Status'],
-            (stats.topCoupons || []).map(coupon => ({
-                'Coupon': coupon.title || 'Untitled',
-                'Distributed': coupon.maxDistributions || 0,
-                'Used': coupon.currentDistributions || 0,
-                'Utilization': `${(coupon.utilizationRate || 0).toFixed(1)}%`,
-                'Status': (coupon.utilizationRate || 0) > 80 ? 'High' : (coupon.utilizationRate || 0) > 50 ? 'Medium' : 'Low'
-            })),
-            "No coupon performance data available"
-        );
 
-        // 🧠 PERFORMANCE INSIGHTS
+        const couponHeaders = ['Coupon', 'Distributed', 'Used', 'Utilization', 'Status'];
+        const couponRows = stats.topCoupons.map(coupon => ({
+            'Coupon': coupon.title,
+            'Distributed': coupon.maxDistributions.toString(),
+            'Used': coupon.currentDistributions.toString(),
+            'Utilization': `${coupon.utilizationRate.toFixed(1)}%`,
+            'Status': coupon.utilizationRate > 80 ? 'High' : coupon.utilizationRate > 50 ? 'Medium' : 'Low'
+        }));
+
+        doc.y = addTable(couponHeaders, couponRows, doc.y);
+
+        // Performance Insights Section
+        if (doc.y > 400) {
+            doc.addPage();
+            doc.y = 50;
+        }
+
         addSectionHeader('Performance Insights');
 
-        if (stats.isEmpty) {
-            addEmptyState("Create coupons and generate sales activity to see performance insights here.");
-        } else {
-            const insights = [
-                `• Total Revenue Generated: ₹${stats.overview?.totalFinalAmount || 0}`,
-                `• Completed Transactions: ${stats.overview?.totalSales || 0}`,
-                `• Discount Given: ₹${stats.overview?.totalDiscount || 0}`,
-                `• Active Campaigns: ${stats.overview?.activeCoupons || 0}`,
-                `• Coupon Redemption Rate: ${stats.overview?.redeemRate || 0}%`
-            ];
+        const insights = [
+            `• Revenue Generation: ₹${stats.overview.totalFinalAmount} with ${stats.overview.totalSales} completed transactions`,
+            `• Coupon Efficiency: ${stats.overview.redeemRate}% redemption rate across all campaigns`,
+            `• Discount Impact: ₹${stats.overview.totalDiscount} in customer savings`,
+            `• Campaign Performance: ${stats.overview.activeCoupons} active campaigns driving engagement`,
+            `• Customer Value: Average transaction value of ₹${stats.overview.avgTransactionValue || '0'}`
+        ];
 
-            insights.forEach(i => {
-                doc.fillColor(colors.text)
-                    .fontSize(10)
-                    .text(i, { lineGap: 3 });
-            });
-        }
+        insights.forEach(insight => {
+            doc.fillColor(colors.dark)
+                .fontSize(10)
+                .font('Helvetica')
+                .text(insight, 50, doc.y, {
+                    width: doc.page.width - 100,
+                    lineGap: 3
+                });
+            doc.y += 15;
+        });
 
-        // Footer for each page
-        const totalPages = doc.bufferedPageRange().count;
-        for (let i = 0; i < totalPages; i++) {
+        // Footer
+        const pageCount = doc.bufferedPageRange().count;
+        for (let i = 0; i < pageCount; i++) {
             doc.switchToPage(i);
-            doc.fillColor('#9E9E9E')
+
+            // Page number
+            doc.fillColor(colors.dark)
                 .fontSize(8)
                 .text(
-                    `Page ${i + 1} of ${totalPages}`,
+                    `Page ${i + 1} of ${pageCount}`,
                     50,
                     doc.page.height - 30,
                     { align: 'center' }
                 );
+
+            // Confidential footer
             doc.text(
-                `Confidential - ${stats.partnerInfo?.firmName || 'Business Report'}`,
+                `Confidential - ${stats.partnerInfo.firmName} Analytics Report`,
                 50,
                 doc.page.height - 20,
                 { align: 'center' }
             );
         }
 
-        doc.end();
+         doc.end();
 
     } catch (error) {
         console.error("PDF export error:", error);
@@ -2013,15 +1431,8 @@ export const exportDashboardPDF = async (req, res) => {
 
 export const getUserCouponsAnalytics = async (req, res) => {
     try {
-        const userId = req?.user?.id;
-        if (!userId) {
-            return res.status(401).json({
-                success: false,
-                message: "User not authenticated"
-            });
-        }
-
-        const { fromDate, toDate, period = 'all-time' } = req.query || {};
+        const userId = req.user.id;
+        const { fromDate, toDate, period = 'all-time' } = req.query;
 
         // Build date filters
         let dateFilter = buildDateFilter(fromDate, toDate);
@@ -2029,151 +1440,105 @@ export const getUserCouponsAnalytics = async (req, res) => {
             dateFilter = { ...dateFilter, ...buildPeriodFilter(period) };
         }
 
-        // First, check if user has any user coupons
-        const totalUserCoupons = await UserCoupon.countDocuments();
-
-        if (totalUserCoupons === 0) {
-            return res.status(200).json({
-                success: true,
-                data: {
-                    statusBreakdown: [],
-                    timeline: [],
-                    summary: {
-                        totalUserCoupons: 0,
-                        uniqueUsers: 0,
-                        totalValue: 0,
-                        usageRate: 0
-                    },
-                    filters: {
-                        fromDate: fromDate || null,
-                        toDate: toDate || null,
-                        period,
-                        dateRangeLabel: getDateRangeLabel(fromDate, toDate, period)
-                    },
-                    isEmpty: true,
-                    message: "No user coupon data found. Users need to claim your coupons first."
+        const analytics = await UserCoupon.aggregate([
+            {
+                $lookup: {
+                    from: "coupons",
+                    localField: "couponId",
+                    foreignField: "_id",
+                    as: "couponInfo"
                 }
-            });
-        }
-
-        // Execute analytics queries with error handling
-        const [analytics, timelineData] = await Promise.all([
-            // Status breakdown analytics
-            UserCoupon.aggregate([
-                {
-                    $lookup: {
-                        from: "coupons",
-                        localField: "couponId",
-                        foreignField: "_id",
-                        as: "couponInfo"
-                    }
-                },
-                {
-                    $unwind: {
-                        path: "$couponInfo",
-                        preserveNullAndEmptyArrays: false
-                    }
-                },
-                {
-                    $match: {
-                        "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
-                        ...dateFilter
-                    }
-                },
-                {
-                    $group: {
-                        _id: "$status",
-                        count: { $sum: 1 },
-                        uniqueUsers: { $addToSet: "$userId" },
-                        totalValue: {
-                            $sum: {
-                                $multiply: [
-                                    "$count",
-                                    100, // Base value
-                                    { $divide: [{ $toDouble: "$couponInfo.discountPercentage" }, 100] }
-                                ]
-                            }
+            },
+            {
+                $unwind: "$couponInfo"
+            },
+            {
+                $match: {
+                    "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                    ...dateFilter
+                }
+            },
+            {
+                $group: {
+                    _id: "$status",
+                    count: { $sum: 1 },
+                    uniqueUsers: { $addToSet: "$userId" },
+                    totalValue: {
+                        $sum: {
+                            $multiply: [
+                                "$count",
+                                100, // Base value
+                                { $divide: [{ $toDouble: "$couponInfo.discountPercentage" }, 100] }
+                            ]
                         }
                     }
-                },
-                {
-                    $project: {
-                        status: "$_id",
-                        count: 1,
-                        uniqueUsers: { $size: "$uniqueUsers" },
-                        totalValue: 1,
-                        averageValue: { $divide: ["$totalValue", "$count"] }
-                    }
                 }
-            ]).catch(error => {
-                console.error("User coupons analytics aggregation error:", error);
-                return [];
-            }),
-
-            // Timeline data
-            UserCoupon.aggregate([
-                {
-                    $lookup: {
-                        from: "coupons",
-                        localField: "couponId",
-                        foreignField: "_id",
-                        as: "couponInfo"
-                    }
-                },
-                {
-                    $unwind: {
-                        path: "$couponInfo",
-                        preserveNullAndEmptyArrays: false
-                    }
-                },
-                {
-                    $match: {
-                        "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
-                        ...dateFilter
-                    }
-                },
-                {
-                    $group: {
-                        _id: {
-                            year: { $year: "$createdAt" },
-                            month: { $month: "$createdAt" },
-                            day: { $dayOfMonth: "$createdAt" }
-                        },
-                        used: {
-                            $sum: { $cond: [{ $eq: ["$status", "used"] }, 1, 0] }
-                        },
-                        available: {
-                            $sum: { $cond: [{ $eq: ["$status", "available"] }, 1, 0] }
-                        },
-                        transferred: {
-                            $sum: { $cond: [{ $eq: ["$status", "transferred"] }, 1, 0] }
-                        }
-                    }
-                },
-                {
-                    $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 }
+            },
+            {
+                $project: {
+                    status: "$_id",
+                    count: 1,
+                    uniqueUsers: { $size: "$uniqueUsers" },
+                    totalValue: 1,
+                    averageValue: { $divide: ["$totalValue", "$count"] }
                 }
-            ]).catch(error => {
-                console.error("User coupons timeline aggregation error:", error);
-                return [];
-            })
+            }
         ]);
 
-        // Check if we have data for the selected filters
-        const hasDataInRange = analytics.length > 0 || timelineData.length > 0;
+        // Get timeline data for user coupon usage
+        const timelineData = await UserCoupon.aggregate([
+            {
+                $lookup: {
+                    from: "coupons",
+                    localField: "couponId",
+                    foreignField: "_id",
+                    as: "couponInfo"
+                }
+            },
+            {
+                $unwind: "$couponInfo"
+            },
+            {
+                $match: {
+                    "couponInfo.ownerId": new mongoose.Types.ObjectId(userId),
+                    ...dateFilter
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        year: { $year: "$createdAt" },
+                        month: { $month: "$createdAt" },
+                        day: { $dayOfMonth: "$createdAt" }
+                    },
+                    used: {
+                        $sum: { $cond: [{ $eq: ["$status", "used"] }, 1, 0] }
+                    },
+                    available: {
+                        $sum: { $cond: [{ $eq: ["$status", "available"] }, 1, 0] }
+                    },
+                    transferred: {
+                        $sum: { $cond: [{ $eq: ["$status", "transferred"] }, 1, 0] }
+                    }
+                }
+            },
+            {
+                $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 }
+            }
+        ]);
 
-        const response = {
+        res.status(200).json({
             success: true,
             data: {
-                statusBreakdown: analytics || [],
-                timeline: timelineData || [],
+                statusBreakdown: analytics,
+                timeline: timelineData,
                 summary: {
-                    totalUserCoupons: (analytics || []).reduce((sum, item) => sum + (item.count || 0), 0),
-                    uniqueUsers: (analytics || []).reduce((sum, item) => sum + (item.uniqueUsers || 0), 0),
-                    totalValue: formatCurrency((analytics || []).reduce((sum, item) => sum + (item.totalValue || 0), 0)),
+                    totalUserCoupons: analytics.reduce((sum, item) => sum + item.count, 0),
+                    uniqueUsers: analytics.reduce((sum, item) => sum + item.uniqueUsers, 0),
+                    totalValue: formatCurrency(analytics.reduce((sum, item) => sum + item.totalValue, 0)),
                     usageRate: calculateRedeemRate(
-                        (analytics || []).find(item => item.status === 'used')?.count || 0,
-                        (analytics || []).reduce((sum, item) => sum + (item.count || 0), 0)
+                        analytics.find(item => item.status === 'used')?.count || 0,
+                        analytics.reduce((sum, item) => sum + item.count, 0)
                     )
                 },
                 filters: {
@@ -2181,39 +1546,16 @@ export const getUserCouponsAnalytics = async (req, res) => {
                     toDate: toDate || null,
                     period,
                     dateRangeLabel: getDateRangeLabel(fromDate, toDate, period)
-                },
-                isEmpty: !hasDataInRange,
-                message: !hasDataInRange ?
-                    "No user coupon data found for the selected date range." :
-                    undefined
+                }
             }
-        };
-
-        res.status(200).json(response);
+        });
 
     } catch (error) {
         console.error("User coupons analytics error:", error);
         res.status(500).json({
             success: false,
             message: "Error fetching user coupons analytics",
-            error: error.message,
-            data: {
-                statusBreakdown: [],
-                timeline: [],
-                summary: {
-                    totalUserCoupons: 0,
-                    uniqueUsers: 0,
-                    totalValue: 0,
-                    usageRate: 0
-                },
-                filters: {
-                    fromDate: null,
-                    toDate: null,
-                    period: 'all-time',
-                    dateRangeLabel: 'All Time'
-                },
-                isEmpty: true
-            }
+            error: error.message
         });
     }
 };
