@@ -602,9 +602,9 @@ export const exportDashboardPDF = async (req, res) => {
             dateFilter = { ...dateFilter, ...periodFilter };
         }
 
-        // Fetch all data in parallel using direct database queries instead of controller functions
+        // Enhanced data fetching with better error handling
         const [couponStats, salesStats, userCouponStats, coupons, salesAnalytics] = await Promise.all([
-            // Coupon statistics
+            // Enhanced coupon statistics with better grouping
             Coupon.aggregate([
                 {
                     $match: {
@@ -618,12 +618,28 @@ export const exportDashboardPDF = async (req, res) => {
                         totalMaxDistributions: { $sum: "$maxDistributions" },
                         totalCurrentDistributions: { $sum: "$currentDistributions" },
                         avgDiscountPercentage: { $avg: { $toDouble: "$discountPercentage" } },
-                        totalCoupons: { $sum: 1 }
+                        totalCoupons: { $sum: 1 },
+                        totalPotentialRevenue: {
+                            $sum: {
+                                $multiply: [
+                                    "$maxDistributions",
+                                    100 // Base amount per coupon
+                                ]
+                            }
+                        },
+                        totalActualRevenue: {
+                            $sum: {
+                                $multiply: [
+                                    "$currentDistributions",
+                                    100
+                                ]
+                            }
+                        }
                     }
                 }
             ]),
 
-            // Sales statistics
+            // Enhanced sales statistics
             Sales.aggregate([
                 {
                     $lookup: {
@@ -649,12 +665,15 @@ export const exportDashboardPDF = async (req, res) => {
                         totalAmount: { $sum: "$amount" },
                         totalDiscount: { $sum: "$discountAmount" },
                         totalSales: { $sum: 1 },
-                        totalFinalAmount: { $sum: "$finalAmount" }
+                        totalFinalAmount: { $sum: "$finalAmount" },
+                        avgTransactionValue: { $avg: "$finalAmount" },
+                        maxTransactionValue: { $max: "$finalAmount" },
+                        minTransactionValue: { $min: "$finalAmount" }
                     }
                 }
             ]),
 
-            // User coupon statistics
+            // Enhanced user coupon statistics
             UserCoupon.aggregate([
                 {
                     $lookup: {
@@ -677,22 +696,23 @@ export const exportDashboardPDF = async (req, res) => {
                 {
                     $group: {
                         _id: null,
-                        totalUsedCoupons: { $sum: 1 }
+                        totalUsedCoupons: { $sum: 1 },
+                        uniqueCustomers: { $addToSet: "$userId" }
                     }
                 }
             ]),
 
-            // Coupons list
+            // Enhanced coupons list with better sorting
             Coupon.find({
                 ownerId: userId,
                 ...(dateFilter.createdAt ? { createdAt: dateFilter.createdAt } : {})
             })
                 .select('title validTill discountPercentage maxDistributions currentDistributions shop_name copuon_srno createdAt')
-                .sort({ createdAt: -1 })
-                .limit(50)
+                .sort({ currentDistributions: -1, createdAt: -1 })
+                .limit(100)
                 .lean(),
 
-            // Sales analytics
+            // Enhanced sales analytics with daily/monthly breakdown
             Sales.aggregate([
                 {
                     $lookup: {
@@ -715,9 +735,12 @@ export const exportDashboardPDF = async (req, res) => {
                 {
                     $group: {
                         _id: {
-                            day: { $dayOfMonth: "$createdAt" },
-                            month: { $month: "$createdAt" },
-                            year: { $year: "$createdAt" }
+                            date: {
+                                $dateToString: {
+                                    format: "%Y-%m-%d",
+                                    date: "$createdAt"
+                                }
+                            }
                         },
                         totalAmount: { $sum: "$amount" },
                         totalDiscount: { $sum: "$discountAmount" },
@@ -727,35 +750,38 @@ export const exportDashboardPDF = async (req, res) => {
                     }
                 },
                 {
-                    $sort: {
-                        "_id.year": 1,
-                        "_id.month": 1,
-                        "_id.day": 1
-                    }
+                    $sort: { "_id.date": 1 }
                 }
             ])
         ]);
 
-        // Calculate stats (same logic as getDashboardStats)
-        const totalAmount = formatCurrency(salesStats[0]?.totalAmount || 0);
-        const totalDiscount = formatCurrency(salesStats[0]?.totalDiscount || 0);
-        const totalFinalAmount = formatCurrency(salesStats[0]?.totalFinalAmount || 0);
+        // Enhanced stats calculation with accurate pricing
+        const totalAmount = salesStats[0]?.totalAmount || 0;
+        const totalDiscount = salesStats[0]?.totalDiscount || 0;
+        const totalFinalAmount = salesStats[0]?.totalFinalAmount || 0;
         const totalMaxDistributions = couponStats[0]?.totalMaxDistributions || 0;
         const totalCurrentDistributions = couponStats[0]?.totalCurrentDistributions || 0;
-        const avgDiscountPercentage = formatCurrency(couponStats[0]?.avgDiscountPercentage || 0);
+        const avgDiscountPercentage = couponStats[0]?.avgDiscountPercentage || 0;
         const totalSales = salesStats[0]?.totalSales || 0;
         const totalCoupons = couponStats[0]?.totalCoupons || 0;
         const totalUsedCoupons = userCouponStats[0]?.totalUsedCoupons || 0;
+        const uniqueCustomers = userCouponStats[0]?.uniqueCustomers?.length || 0;
+        const avgTransactionValue = salesStats[0]?.avgTransactionValue || 0;
+        const maxTransactionValue = salesStats[0]?.maxTransactionValue || 0;
+        const minTransactionValue = salesStats[0]?.minTransactionValue || 0;
 
         const redeemRate = calculateRedeemRate(totalCurrentDistributions, totalMaxDistributions);
         const salesConversionRate = calculateRedeemRate(totalUsedCoupons, totalCurrentDistributions);
+        const customerRetentionRate = uniqueCustomers > 0 ? ((totalUsedCoupons / uniqueCustomers) * 100).toFixed(2) : 0;
 
         const stats = {
             partnerInfo: {
                 firmName: partnerProfile?.firm_name || "Your Firm",
                 logo: partnerProfile?.logo || null,
                 city: partnerProfile?.address?.city || "",
-                state: partnerProfile?.address?.state || ""
+                state: partnerProfile?.address?.state || "",
+                contact: partnerProfile?.contact_number || "",
+                email: partnerProfile?.email || ""
             },
             filters: {
                 fromDate: fromDate || null,
@@ -763,26 +789,34 @@ export const exportDashboardPDF = async (req, res) => {
                 period: period || 'all-time'
             },
             overview: {
-                totalAmount,
-                totalDiscount,
-                totalFinalAmount,
+                totalAmount: formatCurrency(totalAmount),
+                totalDiscount: formatCurrency(totalDiscount),
+                totalFinalAmount: formatCurrency(totalFinalAmount),
                 totalCoupons,
                 totalMaxDistributions,
                 totalCurrentDistributions,
                 totalUsedCoupons,
                 remainingDistributions: totalMaxDistributions - totalCurrentDistributions,
-                avgDiscountPercentage,
+                avgDiscountPercentage: formatCurrency(avgDiscountPercentage),
                 redeemRate: formatCurrency(redeemRate),
                 salesConversionRate: formatCurrency(salesConversionRate),
-                totalSales
+                totalSales,
+                uniqueCustomers,
+                avgTransactionValue: formatCurrency(avgTransactionValue),
+                maxTransactionValue: formatCurrency(maxTransactionValue),
+                minTransactionValue: formatCurrency(minTransactionValue),
+                customerRetentionRate
             }
         };
 
-        // Format coupons (same logic as getCouponsList)
+        // Enhanced coupon formatting with accurate revenue calculations
         const formattedCoupons = coupons.map(coupon => {
             const baseAmount = coupon.maxDistributions * 100;
             const discountPercentage = parseFloat(coupon.discountPercentage) || 0;
             const discountAmount = (baseAmount * discountPercentage) / 100;
+            const potentialRevenue = baseAmount;
+            const actualRevenue = coupon.currentDistributions * 100;
+            const revenueEfficiency = potentialRevenue > 0 ? (actualRevenue / potentialRevenue) * 100 : 0;
 
             const status = getCouponStatus(
                 coupon.validTill,
@@ -802,6 +836,9 @@ export const exportDashboardPDF = async (req, res) => {
                 remainingDistributions: coupon.maxDistributions - coupon.currentDistributions,
                 amount: baseAmount,
                 discountAmount: formatCurrency(discountAmount),
+                potentialRevenue: formatCurrency(potentialRevenue),
+                actualRevenue: formatCurrency(actualRevenue),
+                revenueEfficiency: revenueEfficiency.toFixed(2),
                 usedCount: coupon.currentDistributions,
                 totalDistributed: coupon.maxDistributions,
                 status,
@@ -814,205 +851,438 @@ export const exportDashboardPDF = async (req, res) => {
         const allCoupons = formattedCoupons;
         const analytics = salesAnalytics;
 
-        // Sort coupons by performance
+        // Enhanced sorting with revenue-based ranking
         const topCoupons = [...allCoupons]
-            .sort((a, b) => b.currentDistributions - a.currentDistributions)
-            .slice(0, 20);
+            .sort((a, b) => b.actualRevenue - a.actualRevenue)
+            .slice(0, 25);
 
-        // Create PDF document
+        // Create professional PDF document
         const doc = new PDFDocument({
-            margin: 50,
+            margin: 40,
             size: 'A4',
             bufferPages: true,
             info: {
-                Title: `${stats.partnerInfo.firmName} - Performance Report`,
-                Author: 'Partner Dashboard',
-                CreationDate: new Date()
+                Title: `${stats.partnerInfo.firmName} - Comprehensive Performance Report`,
+                Author: 'Partner Analytics Dashboard',
+                CreationDate: new Date(),
+                Subject: 'Business Performance Analytics'
             }
         });
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition',
-            `attachment; filename="${stats.partnerInfo.firmName.replace(/[^a-zA-Z0-9]/g, '_')}_Report_${new Date().toISOString().slice(0, 10)}.pdf"`
+            `attachment; filename="${stats.partnerInfo.firmName.replace(/[^a-zA-Z0-9]/g, '_')}_Performance_Report_${new Date().toISOString().slice(0, 10)}.pdf"`
         );
 
         doc.pipe(res);
 
-        // ===== PDF CONTENT =====
-        const primaryColor = '#1a365d';
-        const accentColor = '#3182ce';
-        const successColor = '#48bb78';
-        const warningColor = '#ed8936';
-        const dangerColor = '#f56565';
+        // ===== PROFESSIONAL PDF STYLING =====
+        const primaryColor = '#1e3a8a'; // Professional blue
+        const secondaryColor = '#0f766e'; // Teal
+        const accentColor = '#dc2626'; // Red
+        const successColor = '#059669'; // Green
+        const warningColor = '#d97706'; // Amber
+        const lightColor = '#f8fafc';
+        const darkColor = '#1e293b';
 
         const bold = 'Helvetica-Bold';
         const regular = 'Helvetica';
+        const light = 'Helvetica-Light';
 
-        // Header Section
+        // Helper function for formatted currency
+        const formatCurrencyWithSymbol = (amount) => {
+            return `₹${formatCurrency(amount)}`;
+        };
+
+        // ===== COVER PAGE =====
         doc.fillColor(primaryColor)
-            .fontSize(20)
-            .font(bold)
-            .text(stats.partnerInfo.firmName, { align: 'center' });
+            .rect(0, 0, doc.page.width, 150)
+            .fill();
 
-        if (stats.partnerInfo.city || stats.partnerInfo.state) {
-            doc.fontSize(12)
-                .font(regular)
-                .text(`${stats.partnerInfo.city}${stats.partnerInfo.city && stats.partnerInfo.state ? ', ' : ''}${stats.partnerInfo.state}`,
-                    { align: 'center' });
-        }
+        doc.fillColor('white')
+            .fontSize(24)
+            .font(bold)
+            .text('PERFORMANCE ANALYTICS REPORT', 0, 60, { align: 'center' });
 
         doc.fontSize(16)
-            .text('Performance Analytics Report', { align: 'center', underline: true })
-            .moveDown(1.5);
+            .font(light)
+            .text(stats.partnerInfo.firmName, 0, 100, { align: 'center' });
 
-        // Report Period Info
+        doc.fillColor(darkColor)
+            .fontSize(12)
+            .text('Comprehensive Business Performance Analysis', 0, 200, { align: 'center' });
+
+        // Report period box
         const periodText = period
-            ? period.charAt(0).toUpperCase() + period.slice(1)
+            ? period.charAt(0).toUpperCase() + period.slice(1).replace('-', ' ')
             : fromDate && toDate
                 ? `${new Date(fromDate).toLocaleDateString()} - ${new Date(toDate).toLocaleDateString()}`
                 : "All Time";
 
-        doc.fontSize(10)
-            .fillColor('#4a5568')
-            .text(`Report Period: ${periodText}`, 50, doc.y)
-            .text(`Generated: ${new Date().toLocaleString()}`, 50, doc.y + 15)
-            .text(`Total Coupons: ${stats.overview.totalCoupons.toLocaleString()}`, 50, doc.y + 30)
-            .text(`Total Distributions: ${stats.overview.totalMaxDistributions.toLocaleString()}`, 50, doc.y + 45);
+        doc.fillColor(lightColor)
+            .rect(150, 250, 300, 40)
+            .fill();
+
+        doc.fillColor(primaryColor)
+            .fontSize(12)
+            .font(bold)
+            .text('REPORT PERIOD', 0, 260, { align: 'center' })
+            .fontSize(14)
+            .text(periodText, 0, 280, { align: 'center' });
+
+        // Generated date
+        doc.fillColor(darkColor)
+            .fontSize(10)
+            .font(regular)
+            .text(`Generated on: ${new Date().toLocaleDateString('en-IN', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            })}`, 0, 350, { align: 'center' });
+
+        doc.addPage();
+
+        // ===== EXECUTIVE SUMMARY =====
+        doc.fillColor(primaryColor)
+            .fontSize(18)
+            .font(bold)
+            .text('EXECUTIVE SUMMARY', 50, 50)
+            .moveDown(1.5);
+
+        // Partner Information
+        doc.fillColor(darkColor)
+            .fontSize(12)
+            .font(bold)
+            .text('Business Information:', 50, doc.y);
+
+        doc.font(regular)
+            .fontSize(10)
+            .text(`Firm Name: ${stats.partnerInfo.firmName}`, 50, doc.y + 15)
+            .text(`Location: ${stats.partnerInfo.city}${stats.partnerInfo.state ? ', ' + stats.partnerInfo.state : ''}`, 50, doc.y + 30);
+
+        if (stats.partnerInfo.contact || stats.partnerInfo.email) {
+            doc.text(`Contact: ${stats.partnerInfo.contact || 'N/A'}`, 50, doc.y + 45);
+            if (stats.partnerInfo.email) {
+                doc.text(`Email: ${stats.partnerInfo.email}`, 50, doc.y + 60);
+            }
+        }
 
         doc.moveDown(3);
 
-        // Key Metrics Section
-        const metrics = [
-            { label: "Total Revenue", value: `₹${stats.overview.totalAmount.toLocaleString()}`, color: successColor },
-            { label: "Total Discount", value: `₹${stats.overview.totalDiscount.toLocaleString()}`, color: warningColor },
-            { label: "Total Sales", value: stats.overview.totalSales.toLocaleString(), color: accentColor },
-            { label: "Redeem Rate", value: `${stats.overview.redeemRate}%`, color: primaryColor },
+        // ===== KEY PERFORMANCE INDICATORS =====
+        doc.fillColor(primaryColor)
+            .fontSize(16)
+            .font(bold)
+            .text('KEY PERFORMANCE INDICATORS', 50, doc.y)
+            .moveDown(1);
+
+        const kpis = [
+            {
+                label: "TOTAL REVENUE",
+                value: formatCurrencyWithSymbol(totalAmount),
+                sublabel: "Gross Revenue",
+                color: successColor
+            },
+            {
+                label: "NET REVENUE",
+                value: formatCurrencyWithSymbol(totalFinalAmount),
+                sublabel: "After Discounts",
+                color: secondaryColor
+            },
+            {
+                label: "TOTAL DISCOUNTS",
+                value: formatCurrencyWithSymbol(totalDiscount),
+                sublabel: "Discounts Provided",
+                color: warningColor
+            },
+            {
+                label: "TOTAL SALES",
+                value: totalSales.toLocaleString(),
+                sublabel: "Completed Transactions",
+                color: primaryColor
+            },
+            {
+                label: "AVG TRANSACTION",
+                value: formatCurrencyWithSymbol(avgTransactionValue),
+                sublabel: "Per Sale",
+                color: accentColor
+            },
+            {
+                label: "REDEMPTION RATE",
+                value: `${stats.overview.redeemRate}%`,
+                sublabel: "Coupon Utilization",
+                color: successColor
+            }
         ];
 
-        const boxWidth = 120;
-        const boxHeight = 60;
-        const startY = doc.y;
+        const kpiWidth = 160;
+        const kpiHeight = 80;
+        const kpiStartY = doc.y;
 
-        metrics.forEach((metric, index) => {
-            const row = Math.floor(index / 2);
-            const col = index % 2;
-            const x = 50 + col * (boxWidth + 30);
-            const y = startY + row * (boxHeight + 20);
+        kpis.forEach((kpi, index) => {
+            const row = Math.floor(index / 3);
+            const col = index % 3;
+            const x = 50 + col * (kpiWidth + 15);
+            const y = kpiStartY + row * (kpiHeight + 15);
 
-            doc.rect(x, y, boxWidth, boxHeight)
-                .fill(metric.color)
+            // KPI Box
+            doc.rect(x, y, kpiWidth, kpiHeight)
+                .fillColor(lightColor)
+                .fill()
+                .strokeColor('#e2e8f0')
                 .stroke();
 
-            doc.fillColor('white')
-                .font(bold)
-                .fontSize(14)
-                .text(metric.value, x + 10, y + 15, { width: boxWidth - 20, align: 'center' });
-
-            doc.font(regular)
-                .fontSize(10)
-                .text(metric.label, x + 10, y + 35, { width: boxWidth - 20, align: 'center' });
-        });
-
-        doc.moveDown(6);
-
-        // Top Performing Coupons Section
-        if (topCoupons.length > 0) {
-            doc.addPage();
-            doc.fillColor(primaryColor)
+            // Value
+            doc.fillColor(kpi.color)
                 .fontSize(16)
                 .font(bold)
-                .text('Top Performing Coupons', { underline: true })
+                .text(kpi.value, x + 10, y + 15, { width: kpiWidth - 20, align: 'center' });
+
+            // Label
+            doc.fillColor(darkColor)
+                .fontSize(10)
+                .font(bold)
+                .text(kpi.label, x + 10, y + 40, { width: kpiWidth - 20, align: 'center' });
+
+            // Sublabel
+            doc.fillColor('#64748b')
+                .fontSize(8)
+                .font(regular)
+                .text(kpi.sublabel, x + 10, y + 55, { width: kpiWidth - 20, align: 'center' });
+        });
+
+        doc.moveDown(8);
+
+        // ===== DETAILED COUPON PERFORMANCE =====
+        if (topCoupons.length > 0) {
+            doc.addPage();
+
+            doc.fillColor(primaryColor)
+                .fontSize(18)
+                .font(bold)
+                .text('TOP PERFORMING COUPONS', 50, 50)
                 .moveDown(1);
 
+            doc.fillColor(darkColor)
+                .fontSize(10)
+                .font(regular)
+                .text(`Showing top ${topCoupons.length} coupons by revenue performance`, 50, doc.y)
+                .moveDown(0.5);
+
+            // Table Header
+            const tableTop = doc.y + 10;
+            doc.fillColor(primaryColor)
+                .rect(50, tableTop, 500, 20)
+                .fill();
+
+            doc.fillColor('white')
+                .fontSize(9)
+                .font(bold)
+                .text('Rank', 55, tableTop + 7)
+                .text('Coupon Title', 80, tableTop + 7)
+                .text('Serial', 200, tableTop + 7)
+                .text('Discount', 260, tableTop + 7)
+                .text('Distributed', 320, tableTop + 7)
+                .text('Revenue', 390, tableTop + 7)
+                .text('Efficiency', 460, tableTop + 7)
+                .text('Status', 520, tableTop + 7);
+
+            let currentY = tableTop + 25;
+
             topCoupons.forEach((coupon, index) => {
-                if (doc.y > 650) {
+                if (currentY > 700) {
                     doc.addPage();
-                    doc.fillColor(primaryColor)
-                        .fontSize(16)
-                        .font(bold)
-                        .text('Top Performing Coupons (Continued)', { underline: true })
-                        .moveDown(1);
+                    currentY = 50;
+                }
+
+                // Alternate row colors
+                if (index % 2 === 0) {
+                    doc.fillColor(lightColor)
+                        .rect(50, currentY, 500, 20)
+                        .fill();
                 }
 
                 const utilizationRate = coupon.maxDistributions > 0
                     ? ((coupon.currentDistributions / coupon.maxDistributions) * 100).toFixed(1)
                     : 0;
 
-                doc.fillColor(accentColor)
-                    .fontSize(12)
-                    .font(bold)
-                    .text(`${index + 1}. ${coupon.title}`);
-
-                doc.fillColor('#2d3748')
-                    .fontSize(10)
+                doc.fillColor(darkColor)
+                    .fontSize(8)
                     .font(regular)
-                    .text(`   Serial: ${coupon.couponSerial} | Shop: ${coupon.shopName}`)
-                    .text(`   Valid Until: ${new Date(coupon.validTill).toLocaleDateString()}`)
-                    .text(`   Discount: ${coupon.discountPercentage}%`)
-                    .text(`   Distributions: ${coupon.currentDistributions}/${coupon.maxDistributions} (${utilizationRate}%)`)
-                    .text(`   Status: ${coupon.status}`, { indent: 20 })
-                    .moveDown(0.8);
+                    .text((index + 1).toString(), 55, currentY + 7)
+                    .text(coupon.title.length > 25 ? coupon.title.substring(0, 25) + '...' : coupon.title, 80, currentY + 7)
+                    .text(coupon.couponSerial, 200, currentY + 7)
+                    .text(`${coupon.discountPercentage}%`, 260, currentY + 7)
+                    .text(`${coupon.currentDistributions}/${coupon.maxDistributions}`, 320, currentY + 7)
+                    .text(formatCurrencyWithSymbol(coupon.actualRevenue), 390, currentY + 7)
+                    .text(`${coupon.revenueEfficiency}%`, 460, currentY + 7);
+
+                // Status with color coding
+                let statusColor = darkColor;
+                if (coupon.status === 'Active') statusColor = successColor;
+                if (coupon.status === 'Expired') statusColor = accentColor;
+                if (coupon.status === 'Fully Redeemed') statusColor = warningColor;
+
+                doc.fillColor(statusColor)
+                    .text(coupon.status, 520, currentY + 7);
+
+                currentY += 20;
             });
+
+            doc.moveDown(2);
         }
 
-        // Sales Analytics Section
+        // ===== SALES ANALYTICS TIMELINE =====
         if (analytics.length > 0) {
             doc.addPage();
+
             doc.fillColor(primaryColor)
-                .fontSize(16)
+                .fontSize(18)
                 .font(bold)
-                .text('Sales Analytics', { underline: true })
+                .text('SALES ANALYTICS TIMELINE', 50, 50)
                 .moveDown(1);
 
-            // Table header
-            doc.fillColor('#4a5568')
-                .fontSize(10)
+            // Enhanced table with more metrics
+            const analyticsTop = doc.y + 10;
+
+            // Table Header
+            doc.fillColor(primaryColor)
+                .rect(50, analyticsTop, 500, 20)
+                .fill();
+
+            doc.fillColor('white')
+                .fontSize(9)
                 .font(bold)
-                .text('Date', 50, doc.y)
-                .text('Sales', 200, doc.y)
-                .text('Revenue', 280, doc.y)
-                .text('Discount', 360, doc.y);
+                .text('Date', 55, analyticsTop + 7)
+                .text('Sales', 120, analyticsTop + 7)
+                .text('Gross Revenue', 180, analyticsTop + 7)
+                .text('Discounts', 260, analyticsTop + 7)
+                .text('Net Revenue', 340, analyticsTop + 7)
+                .text('Avg. Sale', 420, analyticsTop + 7)
+                .text('Growth', 500, analyticsTop + 7);
 
-            doc.moveTo(50, doc.y + 5)
-                .lineTo(500, doc.y + 5)
-                .strokeColor('#e2e8f0')
-                .stroke();
+            let currentY = analyticsTop + 25;
+            let previousRevenue = 0;
 
-            doc.moveDown(0.5);
-
-            // Table rows
-            analytics.slice(-20).forEach(item => {
-                if (doc.y > 700) {
+            analytics.slice(-30).forEach((item, index) => {
+                if (currentY > 700) {
                     doc.addPage();
+                    currentY = 50;
                 }
 
-                const date = item._id.day
-                    ? `${item._id.day}/${item._id.month}/${item._id.year}`
-                    : `${item._id.month}/${item._id.year}`;
+                if (index % 2 === 0) {
+                    doc.fillColor(lightColor)
+                        .rect(50, currentY, 500, 18)
+                        .fill();
+                }
 
-                doc.fillColor('#2d3748')
-                    .fontSize(9)
+                const avgSale = item.totalSales > 0 ? item.totalFinalAmount / item.totalSales : 0;
+                const growth = previousRevenue > 0
+                    ? ((item.totalFinalAmount - previousRevenue) / previousRevenue * 100).toFixed(1)
+                    : 0;
+
+                doc.fillColor(darkColor)
+                    .fontSize(8)
                     .font(regular)
-                    .text(date, 50, doc.y)
-                    .text(item.totalSales.toString(), 200, doc.y)
-                    .text(`₹${formatCurrency(item.totalAmount)}`, 280, doc.y)
-                    .text(`₹${formatCurrency(item.totalDiscount)}`, 360, doc.y)
-                    .moveDown(0.8);
+                    .text(item._id.date, 55, currentY + 6)
+                    .text(item.totalSales.toString(), 120, currentY + 6)
+                    .text(formatCurrencyWithSymbol(item.totalAmount), 180, currentY + 6)
+                    .text(formatCurrencyWithSymbol(item.totalDiscount), 260, currentY + 6)
+                    .text(formatCurrencyWithSymbol(item.totalFinalAmount), 340, currentY + 6)
+                    .text(formatCurrencyWithSymbol(avgSale), 420, currentY + 6);
+
+                // Growth indicator with color
+                if (index > 0) {
+                    const growthColor = growth >= 0 ? successColor : accentColor;
+                    doc.fillColor(growthColor)
+                        .text(`${growth >= 0 ? '+' : ''}${growth}%`, 500, currentY + 6);
+                } else {
+                    doc.fillColor('#64748b')
+                        .text('-', 500, currentY + 6);
+                }
+
+                previousRevenue = item.totalFinalAmount;
+                currentY += 18;
             });
         }
 
-        // Footer on every page
+        // ===== PERFORMANCE INSIGHTS =====
+        doc.addPage();
+
+        doc.fillColor(primaryColor)
+            .fontSize(18)
+            .font(bold)
+            .text('PERFORMANCE INSIGHTS', 50, 50)
+            .moveDown(1);
+
+        const insights = [
+            {
+                title: "Revenue Performance",
+                content: `Your business generated ${formatCurrencyWithSymbol(totalAmount)} in gross revenue with a net revenue of ${formatCurrencyWithSymbol(totalFinalAmount)} after ${formatCurrencyWithSymbol(totalDiscount)} in discounts.`
+            },
+            {
+                title: "Coupon Efficiency",
+                content: `Out of ${totalMaxDistributions.toLocaleString()} total distributions, ${totalCurrentDistributions.toLocaleString()} were utilized, achieving a ${stats.overview.redeemRate}% redemption rate.`
+            },
+            {
+                title: "Customer Engagement",
+                content: `You served ${uniqueCustomers} unique customers with an average transaction value of ${formatCurrencyWithSymbol(avgTransactionValue)}.`
+            },
+            {
+                title: "Sales Conversion",
+                content: `Your sales conversion rate stands at ${stats.overview.salesConversionRate}%, indicating strong coupon-to-sale conversion performance.`
+            }
+        ];
+
+        insights.forEach((insight, index) => {
+            if (doc.y > 600) {
+                doc.addPage();
+            }
+
+            doc.fillColor(secondaryColor)
+                .fontSize(11)
+                .font(bold)
+                .text(`${index + 1}. ${insight.title}`, 50, doc.y);
+
+            doc.fillColor(darkColor)
+                .fontSize(10)
+                .font(regular)
+                .text(insight.content, 70, doc.y + 15, { width: 470, align: 'justify' });
+
+            doc.moveDown(1.5);
+        });
+
+        // ===== PROFESSIONAL FOOTER =====
         const totalPages = doc.bufferedPageRange().count;
         for (let i = 0; i < totalPages; i++) {
             doc.switchToPage(i);
-            doc.fillColor('#a0aec0')
+
+            // Page number
+            doc.fillColor('#64748b')
                 .fontSize(8)
                 .text(
-                    `Page ${i + 1} of ${totalPages} • Generated by Partner Dashboard • ${new Date().toLocaleDateString()}`,
+                    `Page ${i + 1} of ${totalPages}`,
                     50,
-                    doc.page.height - 30,
-                    { align: 'center' }
+                    doc.page.height - 30
                 );
+
+            // Confidential footer
+            doc.text(
+                `Confidential - ${stats.partnerInfo.firmName} Performance Report`,
+                doc.page.width - 250,
+                doc.page.height - 30,
+                { width: 200, align: 'right' }
+            );
+
+            // Bottom border
+            doc.moveTo(50, doc.page.height - 40)
+                .lineTo(doc.page.width - 50, doc.page.height - 40)
+                .strokeColor('#e2e8f0')
+                .lineWidth(0.5)
+                .stroke();
         }
 
         doc.end();
