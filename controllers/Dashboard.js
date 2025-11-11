@@ -15,36 +15,225 @@ import mongoose from "mongoose";
 const buildDateFilter = (fromDate, toDate, timestampField = 'createdAt') => {
     const filter = {};
 
-    if (fromDate && toDate) {
-        const startDate = new Date(fromDate);
-        startDate.setHours(0, 0, 0, 0);
+    try {
+        // Validate inputs
+        if (!timestampField || typeof timestampField !== 'string') {
+            timestampField = 'createdAt';
+        }
 
-        const endDate = new Date(toDate);
-        endDate.setHours(23, 59, 59, 999);
+        console.log('Building date filter with:', { fromDate, toDate, timestampField });
 
-        filter[timestampField] = {
-            $gte: startDate,
-            $lte: endDate
-        };
-    } else if (fromDate) {
-        const startDate = new Date(fromDate);
-        startDate.setHours(0, 0, 0, 0);
-        filter[timestampField] = { $gte: startDate };
-    } else if (toDate) {
-        const endDate = new Date(toDate);
-        endDate.setHours(23, 59, 59, 999);
-        filter[timestampField] = { $lte: endDate };
+        if (fromDate && toDate) {
+            const startDate = new Date(fromDate);
+            const endDate = new Date(toDate);
+
+            // Validate dates
+            if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                console.error('Invalid dates provided:', { fromDate, toDate });
+                return filter;
+            }
+
+            // Ensure start date is before end date
+            if (startDate > endDate) {
+                console.error('Start date cannot be after end date:', { startDate, endDate });
+                return filter;
+            }
+
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
+
+            console.log('Final date range:', { startDate, endDate });
+
+            filter[timestampField] = {
+                $gte: startDate,
+                $lte: endDate
+            };
+        } else if (fromDate) {
+            const startDate = new Date(fromDate);
+            if (isNaN(startDate.getTime())) {
+                console.error('Invalid fromDate:', fromDate);
+                return filter;
+            }
+            startDate.setHours(0, 0, 0, 0);
+            filter[timestampField] = { $gte: startDate };
+            console.log('From date filter:', { startDate });
+        } else if (toDate) {
+            const endDate = new Date(toDate);
+            if (isNaN(endDate.getTime())) {
+                console.error('Invalid toDate:', toDate);
+                return filter;
+            }
+            endDate.setHours(23, 59, 59, 999);
+            filter[timestampField] = { $lte: endDate };
+            console.log('To date filter:', { endDate });
+        }
+
+        console.log('Final date filter:', filter);
+        return filter;
+
+    } catch (error) {
+        console.error('Error building date filter:', error);
+        return {};
     }
-
-    return filter;
 };
 
 /**
- * Build period filter with proper date ranges
+ * Build period filter with proper date ranges and validation
  */
 const buildPeriodFilter = (period, timestampField = 'createdAt') => {
-    if (!period) return {};
+    if (!period || typeof period !== 'string') {
+        return {};
+    }
 
+    try {
+        // Validate timestamp field
+        if (!timestampField || typeof timestampField !== 'string') {
+            timestampField = 'createdAt';
+        }
+
+        const startDate = new Date();
+        const endDate = new Date();
+
+        console.log('Building period filter:', { period, timestampField });
+
+        switch (period.toLowerCase()) {
+            case 'today':
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+
+            case 'yesterday':
+                startDate.setDate(startDate.getDate() - 1);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setDate(endDate.getDate() - 1);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+
+            case 'week':
+                startDate.setDate(startDate.getDate() - 7);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+
+            case 'month':
+                startDate.setMonth(startDate.getMonth() - 1);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+
+            case 'last-two-months':
+                startDate.setMonth(startDate.getMonth() - 2);
+                startDate.setDate(1); // Start from 1st of that month
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+
+            case 'year':
+                startDate.setFullYear(startDate.getFullYear() - 1);
+                startDate.setHours(0, 0, 0, 0);
+                endDate.setHours(23, 59, 59, 999);
+                break;
+
+            case 'all-time':
+                // No date filter for all-time
+                return {};
+
+            default:
+                console.warn('Unknown period provided:', period);
+                return {};
+        }
+
+        // Validate the calculated dates
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            console.error('Invalid dates calculated for period:', period);
+            return {};
+        }
+
+        const periodFilter = {
+            [timestampField]: {
+                $gte: startDate,
+                $lte: endDate
+            }
+        };
+
+        console.log('Period filter result:', { period, startDate, endDate, filter: periodFilter });
+        return periodFilter;
+
+    } catch (error) {
+        console.error('Error building period filter:', error);
+        return {};
+    }
+};
+
+/**
+ * Enhanced helper to get date range label with validation
+ */
+const getDateRangeLabel = (fromDate, toDate, period) => {
+    try {
+        if (fromDate && toDate) {
+            const from = new Date(fromDate);
+            const to = new Date(toDate);
+
+            if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+                return 'Invalid Date Range';
+            }
+
+            const fromStr = from.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            const toStr = to.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            return `${fromStr} - ${toStr}`;
+        }
+
+        if (fromDate) {
+            const from = new Date(fromDate);
+            if (isNaN(from.getTime())) return 'Invalid Start Date';
+            return `From ${from.toLocaleDateString('en-US')}`;
+        }
+
+        if (toDate) {
+            const to = new Date(toDate);
+            if (isNaN(to.getTime())) return 'Invalid End Date';
+            return `Until ${to.toLocaleDateString('en-US')}`;
+        }
+
+        const periodLabels = {
+            'today': 'Today',
+            'yesterday': 'Yesterday',
+            'week': 'Last 7 Days',
+            'month': 'Last 30 Days',
+            'last-two-months': 'Last Two Months',
+            'year': 'Last Year',
+            'all-time': 'All Time'
+        };
+
+        return periodLabels[period] || 'All Time';
+
+    } catch (error) {
+        console.error('Error generating date range label:', error);
+        return 'Date Range';
+    }
+};
+
+/**
+ * Utility function to validate date string
+ */
+const isValidDate = (dateString) => {
+    if (!dateString || typeof dateString !== 'string') return false;
+    const date = new Date(dateString);
+    return !isNaN(date.getTime());
+};
+
+/**
+ * Utility to get date range for a period (useful for UI)
+ */
+const getDateRangeForPeriod = (period) => {
     const startDate = new Date();
     const endDate = new Date();
 
@@ -62,27 +251,66 @@ const buildPeriodFilter = (period, timestampField = 'createdAt') => {
         case 'week':
             startDate.setDate(startDate.getDate() - 7);
             startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
             break;
         case 'month':
             startDate.setMonth(startDate.getMonth() - 1);
             startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
+            break;
+        case 'last-two-months':
+            startDate.setMonth(startDate.getMonth() - 2);
+            startDate.setDate(1);
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
             break;
         case 'year':
             startDate.setFullYear(startDate.getFullYear() - 1);
             startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
             break;
         default:
-            return {};
+            return null;
     }
 
     return {
-        [timestampField]: {
-            $gte: startDate,
-            $lte: endDate
-        }
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        startDateObj: startDate,
+        endDateObj: endDate
     };
 };
 
+/**
+ * Enhanced build filter that combines both date and period filters
+ */
+const buildEnhancedDateFilter = (fromDate, toDate, period = 'all-time', timestampField = 'createdAt') => {
+    try {
+        let finalFilter = {};
+
+        // Priority: Custom date range over period
+        if (fromDate || toDate) {
+            finalFilter = buildDateFilter(fromDate, toDate, timestampField);
+        } else if (period && period !== 'all-time') {
+            finalFilter = buildPeriodFilter(period, timestampField);
+        }
+
+        // Log for debugging
+        console.log('Enhanced date filter result:', {
+            fromDate,
+            toDate,
+            period,
+            timestampField,
+            finalFilter
+        });
+
+        return finalFilter;
+
+    } catch (error) {
+        console.error('Error in enhanced date filter:', error);
+        return {};
+    }
+};
 /**
  * Format currency values
  */
@@ -106,25 +334,6 @@ const getCouponStatus = (validTill, currentDistributions, maxDistributions) => {
     return "Active";
 };
 
-/**
- * Generate date range label
- */
-const getDateRangeLabel = (fromDate, toDate, period) => {
-    if (fromDate && toDate) {
-        return `${new Date(fromDate).toLocaleDateString()} - ${new Date(toDate).toLocaleDateString()}`;
-    }
-
-    const periodLabels = {
-        'today': 'Today',
-        'yesterday': 'Yesterday',
-        'week': 'Last 7 Days',
-        'month': 'Last 30 Days',
-        'year': 'Last Year',
-        'all-time': 'All Time'
-    };
-
-    return periodLabels[period] || 'All Time';
-};
 
 
 
