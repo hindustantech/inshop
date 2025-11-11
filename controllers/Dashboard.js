@@ -619,13 +619,13 @@ export const exportDashboardPDF = async (req, res) => {
                         totalCurrentDistributions: { $sum: "$currentDistributions" },
                         avgDiscountPercentage: { $avg: { $toDouble: "$discountPercentage" } },
                         totalCoupons: { $sum: 1 },
-                        totalPotentialRevenue: { 
-                            $sum: { 
+                        totalPotentialRevenue: {
+                            $sum: {
                                 $multiply: [
-                                    "$maxDistributions", 
+                                    "$maxDistributions",
                                     100 // Base amount per coupon
-                                ] 
-                            } 
+                                ]
+                            }
                         },
                         totalActualRevenue: {
                             $sum: {
@@ -869,11 +869,13 @@ export const exportDashboardPDF = async (req, res) => {
             }
         });
 
+        // Set headers before piping
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition',
             `attachment; filename="${stats.partnerInfo.firmName.replace(/[^a-zA-Z0-9]/g, '_')}_Performance_Report_${new Date().toISOString().slice(0, 10)}.pdf"`
         );
 
+        // Pipe the document to response
         doc.pipe(res);
 
         // ===== PROFESSIONAL PDF STYLING =====
@@ -885,9 +887,10 @@ export const exportDashboardPDF = async (req, res) => {
         const lightColor = '#f8fafc';
         const darkColor = '#1e293b';
 
+        // Use only standard PDF fonts to avoid font loading issues
         const bold = 'Helvetica-Bold';
         const regular = 'Helvetica';
-        const light = 'Helvetica-Light';
+        // Removed 'Helvetica-Light' as it's not a standard PDF font
 
         // Helper function for formatted currency
         const formatCurrencyWithSymbol = (amount) => {
@@ -905,7 +908,7 @@ export const exportDashboardPDF = async (req, res) => {
             .text('PERFORMANCE ANALYTICS REPORT', 0, 60, { align: 'center' });
 
         doc.fontSize(16)
-            .font(light)
+            .font(regular) // Use regular instead of light
             .text(stats.partnerInfo.firmName, 0, 100, { align: 'center' });
 
         doc.fillColor(darkColor)
@@ -934,10 +937,10 @@ export const exportDashboardPDF = async (req, res) => {
         doc.fillColor(darkColor)
             .fontSize(10)
             .font(regular)
-            .text(`Generated on: ${new Date().toLocaleDateString('en-IN', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
+            .text(`Generated on: ${new Date().toLocaleDateString('en-IN', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
                 day: 'numeric',
                 hour: '2-digit',
                 minute: '2-digit'
@@ -980,38 +983,38 @@ export const exportDashboardPDF = async (req, res) => {
             .moveDown(1);
 
         const kpis = [
-            { 
-                label: "TOTAL REVENUE", 
+            {
+                label: "TOTAL REVENUE",
                 value: formatCurrencyWithSymbol(totalAmount),
                 sublabel: "Gross Revenue",
                 color: successColor
             },
-            { 
-                label: "NET REVENUE", 
+            {
+                label: "NET REVENUE",
                 value: formatCurrencyWithSymbol(totalFinalAmount),
                 sublabel: "After Discounts",
                 color: secondaryColor
             },
-            { 
-                label: "TOTAL DISCOUNTS", 
+            {
+                label: "TOTAL DISCOUNTS",
                 value: formatCurrencyWithSymbol(totalDiscount),
                 sublabel: "Discounts Provided",
                 color: warningColor
             },
-            { 
-                label: "TOTAL SALES", 
+            {
+                label: "TOTAL SALES",
                 value: totalSales.toLocaleString(),
                 sublabel: "Completed Transactions",
                 color: primaryColor
             },
-            { 
-                label: "AVG TRANSACTION", 
+            {
+                label: "AVG TRANSACTION",
                 value: formatCurrencyWithSymbol(avgTransactionValue),
                 sublabel: "Per Sale",
                 color: accentColor
             },
-            { 
-                label: "REDEMPTION RATE", 
+            {
+                label: "REDEMPTION RATE",
                 value: `${stats.overview.redeemRate}%`,
                 sublabel: "Coupon Utilization",
                 color: successColor
@@ -1059,7 +1062,7 @@ export const exportDashboardPDF = async (req, res) => {
         // ===== DETAILED COUPON PERFORMANCE =====
         if (topCoupons.length > 0) {
             doc.addPage();
-            
+
             doc.fillColor(primaryColor)
                 .fontSize(18)
                 .font(bold)
@@ -1138,7 +1141,7 @@ export const exportDashboardPDF = async (req, res) => {
         // ===== SALES ANALYTICS TIMELINE =====
         if (analytics.length > 0) {
             doc.addPage();
-            
+
             doc.fillColor(primaryColor)
                 .fontSize(18)
                 .font(bold)
@@ -1147,7 +1150,7 @@ export const exportDashboardPDF = async (req, res) => {
 
             // Enhanced table with more metrics
             const analyticsTop = doc.y + 10;
-            
+
             // Table Header
             doc.fillColor(primaryColor)
                 .rect(50, analyticsTop, 500, 20)
@@ -1180,7 +1183,7 @@ export const exportDashboardPDF = async (req, res) => {
                 }
 
                 const avgSale = item.totalSales > 0 ? item.totalFinalAmount / item.totalSales : 0;
-                const growth = previousRevenue > 0 
+                const growth = previousRevenue > 0
                     ? ((item.totalFinalAmount - previousRevenue) / previousRevenue * 100).toFixed(1)
                     : 0;
 
@@ -1211,7 +1214,7 @@ export const exportDashboardPDF = async (req, res) => {
 
         // ===== PERFORMANCE INSIGHTS =====
         doc.addPage();
-        
+
         doc.fillColor(primaryColor)
             .fontSize(18)
             .font(bold)
@@ -1259,7 +1262,7 @@ export const exportDashboardPDF = async (req, res) => {
         const totalPages = doc.bufferedPageRange().count;
         for (let i = 0; i < totalPages; i++) {
             doc.switchToPage(i);
-            
+
             // Page number
             doc.fillColor('#64748b')
                 .fontSize(8)
@@ -1285,16 +1288,22 @@ export const exportDashboardPDF = async (req, res) => {
                 .stroke();
         }
 
+        // Properly end the document
         doc.end();
 
     } catch (error) {
         console.error("PDF export error:", error);
+
+        // Check if headers are already sent before sending error response
         if (!res.headersSent) {
             res.status(500).json({
                 success: false,
                 message: "Error generating PDF report",
                 error: error.message
             });
+        } else {
+            // If headers are sent, we can't send JSON response, so log the error
+            console.error("Headers already sent when error occurred:", error.message);
         }
     }
 };
