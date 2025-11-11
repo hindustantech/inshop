@@ -102,3 +102,100 @@ export const getMallshop = async (req, res) => {
         });
     }
 };
+
+
+
+import validator from "validator"; // npm install validator
+
+export const createOrUpdateMall = async (req, res) => {
+    try {
+        const data = req.body;
+        const { mallId } = data;
+
+        // 1️⃣ Required fields for creation
+        if (!mallId && (!data.name || !data.name.trim())) {
+            return res.status(400).json({ success: false, message: "Mall name is required" });
+        }
+        if (!mallId && (!data.manul_address || !data.manul_address.trim())) {
+            return res.status(400).json({ success: false, message: "Manual address is required" });
+        }
+
+        // 2️⃣ Location validation
+        if (data.location?.coordinates) {
+            if (
+                !Array.isArray(data.location.coordinates) ||
+                data.location.coordinates.length !== 2 ||
+                isNaN(data.location.coordinates[0]) ||
+                isNaN(data.location.coordinates[1])
+            ) {
+                return res.status(400).json({ success: false, message: "Valid location coordinates [lng, lat] are required" });
+            }
+        }
+
+        // 3️⃣ Contact validation
+        if (data.contact?.email && !validator.isEmail(data.contact.email)) {
+            return res.status(400).json({ success: false, message: "Invalid email address" });
+        }
+        if (data.contact?.phone && !validator.isMobilePhone(data.contact.phone, "any")) {
+            return res.status(400).json({ success: false, message: "Invalid phone number" });
+        }
+        if (data.contact?.website && !validator.isURL(data.contact.website)) {
+            return res.status(400).json({ success: false, message: "Invalid website URL" });
+        }
+
+        // 4️⃣ Sanitize strings and defaults
+        const mallData = {
+            name: data.name?.trim(),
+            tagline: data.tagline?.trim() || "",
+            description: data.description?.trim() || "",
+            manul_address: data.manul_address?.trim(),
+            address: {
+                street: data.address?.street?.trim() || "",
+                area: data.address?.area?.trim() || "",
+                city: data.address?.city?.trim() || "",
+                state: data.address?.state?.trim() || "",
+                country: data.address?.country?.trim() || "India",
+                pincode: data.address?.pincode?.trim() || "",
+            },
+            location: data.location
+                ? { type: "Point", coordinates: data.location.coordinates.map(Number) }
+                : undefined,
+            logo: data.logo || "",
+            facilities: {
+                parking: data.facilities?.parking || false,
+                foodCourt: data.facilities?.foodCourt || false,
+                kidsZone: data.facilities?.kidsZone || false,
+                wheelchairAccess: data.facilities?.wheelchairAccess || false,
+                cinema: data.facilities?.cinema || false,
+                restrooms: data.facilities?.restrooms !== undefined ? data.facilities.restrooms : true,
+                atm: data.facilities?.atm !== undefined ? data.facilities.atm : true,
+                wifi: data.facilities?.wifi || false,
+            },
+            timings: {
+                open: data.timings?.open || "10:00 AM",
+                close: data.timings?.close || "10:00 PM",
+                closedOn: data.timings?.closedOn || "None",
+            },
+            active: data.active !== undefined ? data.active : true,
+        };
+
+        let mall;
+
+        if (mallId) {
+            // 5️⃣ Update existing mall
+            mall = await Mall.findByIdAndUpdate(mallId, mallData, { new: true });
+            if (!mall) {
+                return res.status(404).json({ success: false, message: "Mall not found to update" });
+            }
+            return res.status(200).json({ success: true, message: "Mall updated successfully", mall });
+        } else {
+            // 6️⃣ Create new mall
+            mall = await Mall.create(mallData);
+            return res.status(201).json({ success: true, message: "Mall created successfully", mall });
+        }
+
+    } catch (error) {
+        console.error("Error in createOrUpdateMall:", error);
+        res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+    }
+};
