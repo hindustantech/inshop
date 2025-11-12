@@ -126,9 +126,9 @@ const userSchema = new mongoose.Schema({
   deviceId: {
     type: String,
     unique: true,
-    sparse: true,  // allows null values
+    sparse: true,
     required: true,
-  }, // UNIQUE device
+  },// UNIQUE device
 
 
   permissions: [
@@ -199,7 +199,7 @@ userSchema.pre('save', async function (next) {
 });
 
 userSchema.index({ latestLocation: "2dsphere" });
-userSchema.index({ deviceId: 1 }, { unique: true });
+// userSchema.index({ deviceId: 1 }, { unique: true });
 
 // userSchema.index({ referalCode: 1 });
 const User = mongoose.model('User', userSchema);
