@@ -582,7 +582,6 @@ const fetchCouponUserAnalyticsData = async (startDate, endDate) => {
 };
 
 
-
 export const exportDashboardPDF = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
@@ -593,8 +592,15 @@ export const exportDashboardPDF = async (req, res) => {
         const partnerName = partner?.businessName || partner?.name || "Partner";
         const appName = "Inshopzz Partner Dashboard";
 
-        // === CREATE PDF ===
-        const doc = new PDFDocument({ margin: 50, size: "A4" });
+        // === CREATE PDF WITH PROPER FONT ===
+        const doc = new PDFDocument({
+            margin: 50,
+            size: "A4",
+            bufferPages: true
+        });
+
+        // Register a font that supports Unicode characters (including Rupee symbol)
+        // You can use Helvetica which comes built-in with PDFKit
         const filePath = `/tmp/dashboard_report_${Date.now()}.pdf`;
         const stream = fs.createWriteStream(filePath);
         doc.pipe(stream);
@@ -624,10 +630,15 @@ export const exportDashboardPDF = async (req, res) => {
             addHeader();
         };
 
+        // Helper to format currency - use 'Rs.' instead of ₹ symbol
+        const formatCurrency = (amount) => {
+            return `Rs. ${parseFloat(amount).toFixed(2)}`;
+        };
+
         // === COVER PAGE ===
         addHeader();
         doc.moveDown(4);
-        doc.fontSize(22).fillColor("#222").text("📊 Dashboard Analytics Report", { align: "center" });
+        doc.fontSize(22).fillColor("#222").text("Dashboard Analytics Report", { align: "center" });
         doc.moveDown(1);
         doc.fontSize(14).fillColor("#555").text(`${partnerName}`, { align: "center" });
         doc.moveDown(1);
@@ -654,17 +665,17 @@ export const exportDashboardPDF = async (req, res) => {
 
         // === DASHBOARD SUMMARY ===
         const analytics = dashboardData.analytics;
-        doc.fontSize(16).fillColor("#004aad").text("📈 Dashboard Summary", { underline: true });
+        doc.fontSize(16).fillColor("#004aad").text("Dashboard Summary", { underline: true });
         doc.moveDown(0.5);
 
         const summary = [
-            ["Total Coupons", analytics.totalCoupons],
-            ["Used Coupons", analytics.usedCoupons],
-            ["Available Coupons", analytics.availableCoupons],
-            ["Total Amount (₹)", analytics.totalAmount],
-            ["Total Discount (₹)", analytics.totalDiscount],
-            ["Average Discount (₹)", analytics.averageDiscount],
-            ["Redeem Rate (%)", analytics.redeemRate],
+            ["Total Coupons", analytics.totalCoupons || 0],
+            ["Used Coupons", analytics.usedCoupons || 0],
+            ["Available Coupons", analytics.availableCoupons || 0],
+            ["Total Amount", formatCurrency(analytics.totalAmount || 0)],
+            ["Total Discount", formatCurrency(analytics.totalDiscount || 0)],
+            ["Average Discount", formatCurrency(analytics.averageDiscount || 0)],
+            ["Redeem Rate (%)", `${parseFloat(analytics.redeemRate || 0).toFixed(2)}%`],
         ];
 
         // Draw summary table
@@ -681,14 +692,14 @@ export const exportDashboardPDF = async (req, res) => {
                 .rect(startX + columnWidths[0], y, columnWidths[1], 25)
                 .stroke();
 
-            doc.fillColor("#000").fontSize(12).text(label, startX + 10, y + 8);
-            doc.fillColor("#004aad").text(value.toString(), startX + 260, y + 8);
+            doc.fillColor("#000").fontSize(12).text(String(label), startX + 10, y + 8);
+            doc.fillColor("#004aad").text(String(value), startX + 260, y + 8);
         });
         addFooter();
         newPage();
 
         // === COUPON LIST ===
-        doc.fontSize(16).fillColor("#004aad").text("🎟️ Coupon Summary", { underline: true });
+        doc.fontSize(16).fillColor("#004aad").text("Coupon Summary", { underline: true });
         doc.moveDown(0.5);
         const couponY = doc.y;
         const colX = [60, 200, 380, 500];
@@ -700,63 +711,89 @@ export const exportDashboardPDF = async (req, res) => {
 
         doc.moveTo(50, couponY + 15).lineTo(550, couponY + 15).strokeColor("#004aad").stroke();
 
+        let currentY = couponY + 25;
         couponData.coupons.forEach((c, i) => {
-            const y = couponY + 25 + i * 20;
-            if (y > 700) {
+            if (currentY > 700) {
                 addFooter();
                 newPage();
-                return;
+                currentY = doc.y + 10;
+
+                // Redraw header on new page
+                header.forEach((h, idx) => {
+                    doc.fillColor("#004aad").fontSize(12).text(h, colX[idx], currentY);
+                });
+                doc.moveTo(50, currentY + 15).lineTo(550, currentY + 15).strokeColor("#004aad").stroke();
+                currentY += 25;
             }
+
             doc
                 .fillColor("#000")
                 .fontSize(11)
-                .text(i + 1, colX[0], y)
-                .text(c.title, colX[1], y)
-                .text(c.shopName, colX[2], y)
-                .text(c.usedCoupon, colX[3], y);
+                .text(String(i + 1), colX[0], currentY)
+                .text(String(c.title || 'N/A'), colX[1], currentY, { width: 170, ellipsis: true })
+                .text(String(c.shopName || 'N/A'), colX[2], currentY, { width: 110, ellipsis: true })
+                .text(String(c.usedCoupon || 0), colX[3], currentY);
+
+            currentY += 20;
         });
         addFooter();
         newPage();
 
         // === SALES SUMMARY ===
         const sales = salesData.salesSummary;
-        doc.fontSize(16).fillColor("#004aad").text("💰 Sales Analytics", { underline: true });
+        doc.fontSize(16).fillColor("#004aad").text("Sales Analytics", { underline: true });
         doc.moveDown(1);
         doc.fillColor("#000").fontSize(12);
-        doc.text(`Total Sales: ₹${sales.totalSales}`);
-        doc.text(`Total Discount: ₹${sales.totalDiscount}`);
-        doc.text(`Transactions: ${sales.totalTransactions}`);
-        doc.text(`Average Transaction Value: ₹${sales.averageTransactionValue}`);
+        doc.text(`Total Sales: ${formatCurrency(sales.totalSales || 0)}`);
+        doc.text(`Total Discount: ${formatCurrency(sales.totalDiscount || 0)}`);
+        doc.text(`Transactions: ${sales.totalTransactions || 0}`);
+        doc.text(`Average Transaction Value: ${formatCurrency(sales.averageTransactionValue || 0)}`);
         doc.moveDown(1);
         doc.fillColor("#004aad").text("Top Selling Coupons:");
         doc.fillColor("#000");
+
         salesData.topSellingCoupons.forEach((c, i) => {
-            doc.text(`${i + 1}. ${c.couponTitle} (${c.shopName}) — ₹${c.totalSales}`);
+            const text = `${i + 1}. ${c.couponTitle || 'N/A'} (${c.shopName || 'N/A'}) - ${formatCurrency(c.totalSales || 0)}`;
+            doc.text(text);
         });
         addFooter();
         newPage();
 
         // === USER STATS ===
-        doc.fontSize(16).fillColor("#004aad").text("👥 Coupon User Analytics", { underline: true });
+        doc.fontSize(16).fillColor("#004aad").text("Coupon User Analytics", { underline: true });
         doc.moveDown(1);
-        userData.userStats.forEach((u) => {
-            doc.fillColor("#000").fontSize(12).text(`Status: ${u._id} — Count: ${u.count}`);
-        });
+
+        if (userData.userStats && userData.userStats.length > 0) {
+            userData.userStats.forEach((u) => {
+                doc.fillColor("#000").fontSize(12).text(`Status: ${u._id || 'N/A'} - Count: ${u.count || 0}`);
+            });
+        }
+
         doc.moveDown(1);
         doc.fillColor("#004aad").text("Top Transfers:");
         doc.fillColor("#000");
-        userData.transferStats.slice(0, 5).forEach((t, i) => {
-            doc.text(`${i + 1}. ${t.userName} — ${t.transferCount} transfers`);
-        });
+
+        if (userData.transferStats && userData.transferStats.length > 0) {
+            userData.transferStats.slice(0, 5).forEach((t, i) => {
+                doc.text(`${i + 1}. ${t.userName || 'N/A'} - ${t.transferCount || 0} transfers`);
+            });
+        }
         addFooter();
 
         // === END PDF ===
         doc.end();
+
         stream.on("finish", () => {
             res.download(filePath, "dashboard_report.pdf", (err) => {
-                if (!err) fs.unlinkSync(filePath);
+                if (err) {
+                    console.error("Download error:", err);
+                } else {
+                    // Delete file after successful download
+                    fs.unlinkSync(filePath);
+                }
             });
         });
+
     } catch (error) {
         console.error("PDF Export Error:", error);
         res.status(500).json({
@@ -766,4 +803,3 @@ export const exportDashboardPDF = async (req, res) => {
         });
     }
 };
-
