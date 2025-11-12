@@ -4,8 +4,9 @@ import {
   getCouponUserAnalytics,
   getCouponList,
   getSalesAnalytics,
-  exportDashboardPDF
+
 } from '../controllers/Dashboard.js';
+import { exportDashboardPDF } from '../controllers/exportdashboard.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 const router = express.Router();
 router.use(authMiddleware);
