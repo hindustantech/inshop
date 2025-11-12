@@ -4,7 +4,8 @@ import PatnerProfile from "../models/PatnerProfile.js";
 import PDFDocument from 'pdfkit';
 import mongoose from "mongoose";
 import UserCoupon from "../models/UserCoupon.js";
-
+import fs from "fs";
+import path from "path";
 
 
 // Main Dashboard Analytics
