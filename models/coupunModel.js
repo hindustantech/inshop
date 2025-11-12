@@ -153,20 +153,13 @@ const couponSchema = new mongoose.Schema({
     type: Boolean,
     default: false // Default: not transferable
   },
-  usedCopun: {
-    type: [mongoose.Schema.Types.ObjectId], // references id from another table
-    ref: 'User', // assuming you have an 'Owner' model or similar
-    required: true,
-  },
+
   tag: {
     type: [String],
     require: true,
   },
 
-  consumersId: {
-    type: [mongoose.Schema.Types.ObjectId], // list of consumer ids
-    ref: 'User', // assuming you have a 'Consumer' model or similar
-  }
+ 
 });
 
 couponSchema.index({ shope_location: '2dsphere' });
