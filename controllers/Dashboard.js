@@ -581,7 +581,6 @@ const fetchCouponUserAnalyticsData = async (startDate, endDate) => {
     return result;
 };
 
-
 export const exportDashboardPDF = async (req, res) => {
     try {
         const { startDate, endDate } = req.query;
@@ -592,203 +591,463 @@ export const exportDashboardPDF = async (req, res) => {
         const partnerName = partner?.businessName || partner?.name || "Partner";
         const appName = "Inshopzz Partner Dashboard";
 
-        // === CREATE PDF WITH PROPER FONT ===
+        // === COLOR SCHEME ===
+        const colors = {
+            primary: '#004aad',
+            secondary: '#0066cc',
+            accent: '#ff6b35',
+            success: '#28a745',
+            dark: '#1a1a1a',
+            gray: '#6c757d',
+            lightGray: '#f8f9fa',
+            border: '#dee2e6'
+        };
+
+        // === CREATE PDF ===
         const doc = new PDFDocument({
-            margin: 50,
+            margin: 40,
             size: "A4",
-            bufferPages: true
+            bufferPages: true,
+            autoFirstPage: false
         });
 
-        // Register a font that supports Unicode characters (including Rupee symbol)
-        // You can use Helvetica which comes built-in with PDFKit
         const filePath = `/tmp/dashboard_report_${Date.now()}.pdf`;
         const stream = fs.createWriteStream(filePath);
         doc.pipe(stream);
 
-        // === HEADER & FOOTER UTILS ===
-        const addHeader = () => {
-            doc
-                .fontSize(14)
-                .fillColor("#004aad")
-                .text(appName, 50, 30, { align: "left" })
-                .fillColor("black");
-            doc.moveTo(50, 50).lineTo(550, 50).strokeColor("#004aad").stroke();
-        };
-
-        const addFooter = () => {
-            doc
-                .fontSize(10)
-                .fillColor("#888")
-                .text(`Generated at: ${new Date().toLocaleString()}`, 50, 770, {
-                    align: "left",
-                })
-                .text("© 2025 Inshopzz", 0, 770, { align: "right" });
-        };
-
-        const newPage = () => {
-            doc.addPage();
-            addHeader();
-        };
-
-        // Helper to format currency - use 'Rs.' instead of ₹ symbol
+        // === UTILITY FUNCTIONS ===
         const formatCurrency = (amount) => {
-            return `Rs. ${parseFloat(amount).toFixed(2)}`;
+            return `Rs. ${parseFloat(amount || 0).toFixed(2)}`;
+        };
+
+        const formatNumber = (num) => {
+            return new Intl.NumberFormat('en-IN').format(num || 0);
+        };
+
+        const formatDate = (date) => {
+            return new Date(date).toLocaleDateString('en-IN', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        };
+
+        // === HEADER & FOOTER ===
+        const addHeader = (pageTitle = '') => {
+            // Gradient-like header background
+            doc.rect(0, 0, 595, 80).fill(colors.primary);
+            doc.rect(0, 70, 595, 10).fill(colors.secondary);
+
+            // App name
+            doc.fontSize(18).fillColor('white').text(appName, 40, 25, { align: 'left' });
+
+            // Page title
+            if (pageTitle) {
+                doc.fontSize(11).fillColor('#e0e0e0').text(pageTitle, 40, 50, { align: 'left' });
+            }
+
+            // Date on right
+            doc.fontSize(9).fillColor('#e0e0e0')
+                .text(formatDate(new Date()), 0, 30, { align: 'right', width: 555 });
+        };
+
+        const addFooter = (pageNum, totalPages) => {
+            const bottomY = 770;
+
+            // Footer line
+            doc.moveTo(40, bottomY - 10).lineTo(555, bottomY - 10)
+                .strokeColor(colors.border).lineWidth(0.5).stroke();
+
+            // Left side - generation time
+            doc.fontSize(8).fillColor(colors.gray)
+                .text(`Generated: ${new Date().toLocaleString('en-IN')}`, 40, bottomY);
+
+            // Center - page number
+            doc.text(`Page ${pageNum} of ${totalPages}`, 0, bottomY, {
+                align: 'center',
+                width: 595
+            });
+
+            // Right side - copyright
+            doc.text('© 2025 Inshopzz', 0, bottomY, {
+                align: 'right',
+                width: 555
+            });
         };
 
         // === COVER PAGE ===
-        addHeader();
-        doc.moveDown(4);
-        doc.fontSize(22).fillColor("#222").text("Dashboard Analytics Report", { align: "center" });
-        doc.moveDown(1);
-        doc.fontSize(14).fillColor("#555").text(`${partnerName}`, { align: "center" });
-        doc.moveDown(1);
-        doc
-            .fontSize(12)
-            .text(`Date Range: ${startDate || "All Time"} - ${endDate || "Now"}`, {
-                align: "center",
-            });
-        doc.moveDown(1);
-        doc.text(`Generated At: ${new Date().toLocaleString()}`, { align: "center" });
-        doc.moveDown(4);
-        doc.rect(100, 350, 400, 80).strokeColor("#004aad").stroke();
-        doc.fontSize(14).fillColor("#004aad").text("Inshopzz Analytics Suite", 0, 375, {
-            align: "center",
-        });
-        addFooter();
-        newPage();
+        doc.addPage();
 
-        // === FETCH ANALYTICS DATA ===
+        // Gradient background effect
+        doc.rect(0, 0, 595, 842).fill('#f8f9fa');
+        doc.rect(0, 0, 595, 300).fill(colors.primary);
+
+        // Large title area
+        doc.fontSize(32).fillColor('white').font('Helvetica-Bold')
+            .text('Analytics Report', 0, 120, { align: 'center', width: 595 });
+
+        doc.fontSize(16).fillColor('#e0e0e0').font('Helvetica')
+            .text('Dashboard Performance Overview', 0, 165, { align: 'center', width: 595 });
+
+        // Partner info card
+        const cardY = 320;
+        doc.roundedRect(100, cardY, 395, 180, 10).fill('white');
+        doc.roundedRect(100, cardY, 395, 60, 10).fill(colors.secondary);
+
+        doc.fontSize(20).fillColor('white').font('Helvetica-Bold')
+            .text(partnerName, 120, cardY + 20, { width: 355 });
+
+        // Info items in card
+        doc.fontSize(11).fillColor(colors.dark).font('Helvetica');
+        const infoY = cardY + 90;
+        doc.text('Report Period', 120, infoY);
+        doc.fontSize(13).fillColor(colors.primary).font('Helvetica-Bold')
+            .text(`${startDate || 'All Time'} - ${endDate || 'Now'}`, 120, infoY + 18);
+
+        doc.fontSize(11).fillColor(colors.dark).font('Helvetica')
+            .text('Generated On', 120, infoY + 50);
+        doc.fontSize(13).fillColor(colors.primary).font('Helvetica-Bold')
+            .text(formatDate(new Date()), 120, infoY + 68);
+
+        // Decorative elements
+        doc.circle(530, 750, 60).fill(colors.secondary).opacity(0.1);
+        doc.circle(65, 650, 40).fill(colors.accent).opacity(0.1);
+        doc.opacity(1);
+
+        // === FETCH DATA ===
         const dashboardData = await fetchDashboardAnalyticsData(userId, startDate, endDate);
-        const couponData = await fetchCouponListData(userId, 5);
+        const couponData = await fetchCouponListData(userId, 20);
         const salesData = await fetchSalesAnalyticsData(userId, startDate, endDate);
         const userData = await fetchCouponUserAnalyticsData(startDate, endDate);
 
-        // === DASHBOARD SUMMARY ===
-        const analytics = dashboardData.analytics;
-        doc.fontSize(16).fillColor("#004aad").text("Dashboard Summary", { underline: true });
-        doc.moveDown(0.5);
+        // === DASHBOARD SUMMARY PAGE ===
+        doc.addPage();
+        addHeader('Dashboard Summary');
+        doc.moveDown(6);
 
-        const summary = [
-            ["Total Coupons", analytics.totalCoupons || 0],
-            ["Used Coupons", analytics.usedCoupons || 0],
-            ["Available Coupons", analytics.availableCoupons || 0],
-            ["Total Amount", formatCurrency(analytics.totalAmount || 0)],
-            ["Total Discount", formatCurrency(analytics.totalDiscount || 0)],
-            ["Average Discount", formatCurrency(analytics.averageDiscount || 0)],
-            ["Redeem Rate (%)", `${parseFloat(analytics.redeemRate || 0).toFixed(2)}%`],
+        const analytics = dashboardData.analytics;
+
+        // Key Metrics Cards
+        const metrics = [
+            { label: 'Total Coupons', value: formatNumber(analytics.totalCoupons), icon: '■', color: colors.primary },
+            { label: 'Used Coupons', value: formatNumber(analytics.usedCoupons), icon: '●', color: colors.success },
+            { label: 'Available', value: formatNumber(analytics.availableCoupons), icon: '◆', color: colors.accent },
+            { label: 'Redeem Rate', value: `${parseFloat(analytics.redeemRate || 0).toFixed(1)}%`, icon: '▲', color: colors.secondary }
         ];
 
-        // Draw summary table
-        const tableTop = doc.y + 10;
-        const startX = 60;
-        const columnWidths = [250, 200];
+        let cardX = 40;
+        const cardY = doc.y;
+        const cardWidth = 120;
+        const cardHeight = 80;
+        const cardGap = 15;
 
-        summary.forEach(([label, value], i) => {
-            const y = tableTop + i * 25;
-            doc
-                .rect(startX, y, columnWidths[0], 25)
-                .strokeColor("#ccc")
-                .stroke()
-                .rect(startX + columnWidths[0], y, columnWidths[1], 25)
+        metrics.forEach((metric, i) => {
+            const x = cardX + (i * (cardWidth + cardGap));
+
+            // Card background
+            doc.roundedRect(x, cardY, cardWidth, cardHeight, 8)
+                .fill('white')
+                .strokeColor(colors.border)
+                .lineWidth(1)
                 .stroke();
 
-            doc.fillColor("#000").fontSize(12).text(String(label), startX + 10, y + 8);
-            doc.fillColor("#004aad").text(String(value), startX + 260, y + 8);
+            // Colored top bar
+            doc.roundedRect(x, cardY, cardWidth, 25, 8)
+                .fill(metric.color);
+
+            // Icon
+            doc.fontSize(16).fillColor('white')
+                .text(metric.icon, x + 10, cardY + 5);
+
+            // Value
+            doc.fontSize(20).fillColor(colors.dark).font('Helvetica-Bold')
+                .text(metric.value, x + 10, cardY + 35, { width: cardWidth - 20, align: 'left' });
+
+            // Label
+            doc.fontSize(9).fillColor(colors.gray).font('Helvetica')
+                .text(metric.label, x + 10, cardY + 62, { width: cardWidth - 20 });
         });
-        addFooter();
-        newPage();
 
-        // === COUPON LIST ===
-        doc.fontSize(16).fillColor("#004aad").text("Coupon Summary", { underline: true });
-        doc.moveDown(0.5);
-        const couponY = doc.y;
-        const colX = [60, 200, 380, 500];
-        const header = ["#", "Title", "Shop", "Used"];
+        doc.moveDown(8);
 
-        header.forEach((h, i) => {
-            doc.fillColor("#004aad").fontSize(12).text(h, colX[i], couponY);
-        });
+        // Financial Summary Table
+        doc.fontSize(14).fillColor(colors.primary).font('Helvetica-Bold')
+            .text('Financial Overview', 40, doc.y);
 
-        doc.moveTo(50, couponY + 15).lineTo(550, couponY + 15).strokeColor("#004aad").stroke();
+        doc.moveDown(1);
 
-        let currentY = couponY + 25;
-        couponData.coupons.forEach((c, i) => {
-            if (currentY > 700) {
-                addFooter();
-                newPage();
-                currentY = doc.y + 10;
+        const financeData = [
+            ['Total Amount', formatCurrency(analytics.totalAmount)],
+            ['Total Discount', formatCurrency(analytics.totalDiscount)],
+            ['Average Discount', formatCurrency(analytics.averageDiscount)]
+        ];
 
-                // Redraw header on new page
-                header.forEach((h, idx) => {
-                    doc.fillColor("#004aad").fontSize(12).text(h, colX[idx], currentY);
-                });
-                doc.moveTo(50, currentY + 15).lineTo(550, currentY + 15).strokeColor("#004aad").stroke();
-                currentY += 25;
+        const tableStartY = doc.y + 10;
+        const col1Width = 200;
+        const col2Width = 250;
+
+        financeData.forEach((row, i) => {
+            const y = tableStartY + (i * 35);
+            const isEven = i % 2 === 0;
+
+            // Alternating row background
+            if (isEven) {
+                doc.rect(40, y, col1Width + col2Width, 35)
+                    .fill(colors.lightGray);
             }
 
-            doc
-                .fillColor("#000")
-                .fontSize(11)
-                .text(String(i + 1), colX[0], currentY)
-                .text(String(c.title || 'N/A'), colX[1], currentY, { width: 170, ellipsis: true })
-                .text(String(c.shopName || 'N/A'), colX[2], currentY, { width: 110, ellipsis: true })
-                .text(String(c.usedCoupon || 0), colX[3], currentY);
+            // Label
+            doc.fontSize(11).fillColor(colors.dark).font('Helvetica')
+                .text(row[0], 50, y + 12);
 
-            currentY += 20;
+            // Value
+            doc.fontSize(13).fillColor(colors.primary).font('Helvetica-Bold')
+                .text(row[1], 260, y + 12);
         });
-        addFooter();
-        newPage();
 
-        // === SALES SUMMARY ===
+        addFooter(2, 5);
+
+        // === COUPON LIST PAGE ===
+        doc.addPage();
+        addHeader('Coupon Performance');
+        doc.moveDown(6);
+
+        doc.fontSize(14).fillColor(colors.primary).font('Helvetica-Bold')
+            .text('Top Performing Coupons', 40, doc.y);
+
+        doc.moveDown(1);
+
+        // Table header
+        const headerY = doc.y + 10;
+        doc.rect(40, headerY, 515, 30).fill(colors.primary);
+
+        const columns = [
+            { label: '#', x: 50, width: 30 },
+            { label: 'Coupon Title', x: 85, width: 180 },
+            { label: 'Shop Name', x: 270, width: 150 },
+            { label: 'Used', x: 480, width: 60 }
+        ];
+
+        columns.forEach(col => {
+            doc.fontSize(10).fillColor('white').font('Helvetica-Bold')
+                .text(col.label, col.x, headerY + 10, { width: col.width });
+        });
+
+        // Table rows
+        let rowY = headerY + 35;
+        couponData.coupons.slice(0, 15).forEach((coupon, i) => {
+            if (rowY > 720) {
+                addFooter(3, 5);
+                doc.addPage();
+                addHeader('Coupon Performance (Continued)');
+                rowY = 120;
+            }
+
+            const isEven = i % 2 === 0;
+
+            // Alternating row background
+            if (isEven) {
+                doc.rect(40, rowY, 515, 25).fill(colors.lightGray);
+            }
+
+            doc.fontSize(10).fillColor(colors.dark).font('Helvetica');
+
+            // Serial number
+            doc.text(String(i + 1), columns[0].x, rowY + 8, { width: columns[0].width });
+
+            // Coupon title
+            doc.text(String(coupon.title || 'N/A'), columns[1].x, rowY + 8, {
+                width: columns[1].width,
+                ellipsis: true
+            });
+
+            // Shop name
+            doc.text(String(coupon.shopName || 'N/A'), columns[2].x, rowY + 8, {
+                width: columns[2].width,
+                ellipsis: true
+            });
+
+            // Used count with badge
+            const usedCount = String(coupon.usedCoupon || 0);
+            doc.roundedRect(columns[3].x, rowY + 5, 50, 18, 4)
+                .fill(colors.success)
+                .fillColor('white')
+                .fontSize(9)
+                .font('Helvetica-Bold')
+                .text(usedCount, columns[3].x, rowY + 9, {
+                    width: 50,
+                    align: 'center'
+                });
+
+            rowY += 25;
+        });
+
+        addFooter(3, 5);
+
+        // === SALES ANALYTICS PAGE ===
+        doc.addPage();
+        addHeader('Sales Analytics');
+        doc.moveDown(6);
+
         const sales = salesData.salesSummary;
-        doc.fontSize(16).fillColor("#004aad").text("Sales Analytics", { underline: true });
-        doc.moveDown(1);
-        doc.fillColor("#000").fontSize(12);
-        doc.text(`Total Sales: ${formatCurrency(sales.totalSales || 0)}`);
-        doc.text(`Total Discount: ${formatCurrency(sales.totalDiscount || 0)}`);
-        doc.text(`Transactions: ${sales.totalTransactions || 0}`);
-        doc.text(`Average Transaction Value: ${formatCurrency(sales.averageTransactionValue || 0)}`);
-        doc.moveDown(1);
-        doc.fillColor("#004aad").text("Top Selling Coupons:");
-        doc.fillColor("#000");
 
-        salesData.topSellingCoupons.forEach((c, i) => {
-            const text = `${i + 1}. ${c.couponTitle || 'N/A'} (${c.shopName || 'N/A'}) - ${formatCurrency(c.totalSales || 0)}`;
-            doc.text(text);
+        // Sales metrics grid
+        doc.fontSize(14).fillColor(colors.primary).font('Helvetica-Bold')
+            .text('Sales Performance', 40, doc.y);
+
+        doc.moveDown(1.5);
+
+        const salesMetrics = [
+            { label: 'Total Sales', value: formatCurrency(sales.totalSales), color: colors.success },
+            { label: 'Total Discount', value: formatCurrency(sales.totalDiscount), color: colors.accent },
+            { label: 'Transactions', value: formatNumber(sales.totalTransactions), color: colors.primary },
+            { label: 'Avg. Transaction', value: formatCurrency(sales.averageTransactionValue), color: colors.secondary }
+        ];
+
+        let metricsY = doc.y;
+        salesMetrics.forEach((metric, i) => {
+            const row = Math.floor(i / 2);
+            const col = i % 2;
+            const x = 40 + (col * 260);
+            const y = metricsY + (row * 70);
+
+            // Metric card
+            doc.roundedRect(x, y, 240, 60, 8)
+                .fill('white')
+                .strokeColor(metric.color)
+                .lineWidth(2)
+                .stroke();
+
+            // Colored left border
+            doc.rect(x, y + 8, 4, 44).fill(metric.color);
+
+            doc.fontSize(10).fillColor(colors.gray).font('Helvetica')
+                .text(metric.label, x + 15, y + 15);
+
+            doc.fontSize(18).fillColor(metric.color).font('Helvetica-Bold')
+                .text(metric.value, x + 15, y + 32);
         });
-        addFooter();
-        newPage();
 
-        // === USER STATS ===
-        doc.fontSize(16).fillColor("#004aad").text("Coupon User Analytics", { underline: true });
+        doc.moveDown(12);
+
+        // Top selling coupons
+        doc.fontSize(14).fillColor(colors.primary).font('Helvetica-Bold')
+            .text('Top Selling Coupons', 40, doc.y);
+
+        doc.moveDown(1);
+
+        salesData.topSellingCoupons.slice(0, 8).forEach((coupon, i) => {
+            const y = doc.y;
+
+            // Rank badge
+            doc.circle(55, y + 10, 12).fill(colors.secondary);
+            doc.fontSize(9).fillColor('white').font('Helvetica-Bold')
+                .text(String(i + 1), 50, y + 6);
+
+            // Coupon details
+            doc.fontSize(11).fillColor(colors.dark).font('Helvetica-Bold')
+                .text(String(coupon.couponTitle || 'N/A'), 75, y + 3, { width: 250 });
+
+            doc.fontSize(9).fillColor(colors.gray).font('Helvetica')
+                .text(String(coupon.shopName || 'N/A'), 75, y + 18, { width: 250 });
+
+            // Sales amount
+            doc.fontSize(12).fillColor(colors.success).font('Helvetica-Bold')
+                .text(formatCurrency(coupon.totalSales), 400, y + 8);
+
+            doc.moveDown(2);
+        });
+
+        addFooter(4, 5);
+
+        // === USER ANALYTICS PAGE ===
+        doc.addPage();
+        addHeader('User Analytics');
+        doc.moveDown(6);
+
+        // User stats
+        doc.fontSize(14).fillColor(colors.primary).font('Helvetica-Bold')
+            .text('Coupon Status Distribution', 40, doc.y);
+
         doc.moveDown(1);
 
         if (userData.userStats && userData.userStats.length > 0) {
-            userData.userStats.forEach((u) => {
-                doc.fillColor("#000").fontSize(12).text(`Status: ${u._id || 'N/A'} - Count: ${u.count || 0}`);
+            const statsY = doc.y;
+            userData.userStats.forEach((stat, i) => {
+                const y = statsY + (i * 40);
+
+                doc.roundedRect(40, y, 515, 35, 6)
+                    .fill('white')
+                    .strokeColor(colors.border)
+                    .stroke();
+
+                // Status label
+                doc.fontSize(12).fillColor(colors.dark).font('Helvetica-Bold')
+                    .text(String(stat._id || 'N/A'), 55, y + 12);
+
+                // Count badge
+                doc.roundedRect(440, y + 8, 100, 20, 10)
+                    .fill(colors.primary);
+
+                doc.fontSize(11).fillColor('white').font('Helvetica-Bold')
+                    .text(`${formatNumber(stat.count)} Users`, 445, y + 12, {
+                        width: 90,
+                        align: 'center'
+                    });
             });
+
+            doc.moveDown(userData.userStats.length * 2.5 + 2);
         }
+
+        // Top transfers
+        doc.fontSize(14).fillColor(colors.primary).font('Helvetica-Bold')
+            .text('Top Coupon Transfers', 40, doc.y);
 
         doc.moveDown(1);
-        doc.fillColor("#004aad").text("Top Transfers:");
-        doc.fillColor("#000");
 
         if (userData.transferStats && userData.transferStats.length > 0) {
-            userData.transferStats.slice(0, 5).forEach((t, i) => {
-                doc.text(`${i + 1}. ${t.userName || 'N/A'} - ${t.transferCount || 0} transfers`);
+            userData.transferStats.slice(0, 10).forEach((transfer, i) => {
+                const y = doc.y;
+                const barWidth = Math.min((transfer.transferCount / userData.transferStats[0].transferCount) * 300, 300);
+
+                // User name
+                doc.fontSize(10).fillColor(colors.dark).font('Helvetica')
+                    .text(String(transfer.userName || 'N/A'), 40, y, { width: 150 });
+
+                // Progress bar background
+                doc.rect(200, y, 300, 15)
+                    .fill('#e9ecef');
+
+                // Progress bar fill
+                doc.rect(200, y, barWidth, 15)
+                    .fill(colors.secondary);
+
+                // Transfer count
+                doc.fontSize(10).fillColor(colors.dark).font('Helvetica-Bold')
+                    .text(`${formatNumber(transfer.transferCount)} transfers`, 510, y);
+
+                doc.moveDown(1.3);
             });
         }
-        addFooter();
 
-        // === END PDF ===
+        addFooter(5, 5);
+
+        // === FINALIZE PDF ===
+        const range = doc.bufferedPageRange();
+        for (let i = 0; i < range.count; i++) {
+            doc.switchToPage(i);
+            if (i > 0) { // Skip cover page
+                addFooter(i + 1, range.count);
+            }
+        }
+
         doc.end();
 
         stream.on("finish", () => {
-            res.download(filePath, "dashboard_report.pdf", (err) => {
+            res.download(filePath, `Inshopzz_Analytics_Report_${Date.now()}.pdf`, (err) => {
                 if (err) {
                     console.error("Download error:", err);
                 } else {
-                    // Delete file after successful download
                     fs.unlinkSync(filePath);
                 }
             });
