@@ -1,4 +1,12 @@
 // === BUSINESS LOGIC FUNCTIONS ===
+import Coupon from "../models/coupunModel.js";
+import Sales from "../models/Sales.js";
+import PatnerProfile from "../models/PatnerProfile.js";
+import PDFDocument from 'pdfkit';
+import mongoose from "mongoose";
+import UserCoupon from "../models/UserCoupon.js";
+import fs from "fs";
+import path from "path";
 
 // Dashboard Analytics Data (without response object)
 const getDashboardAnalyticsData = async (shopId, startDate, endDate) => {
