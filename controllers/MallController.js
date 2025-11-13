@@ -51,58 +51,75 @@ export const getMallsWithUserLocation = async (req, res) => {
 };
 
 
+
 export const getMallshop = async (req, res) => {
     try {
         const { mallId, search = '', page = 1, limit = 10 } = req.query;
 
-        // Validate mallId
+        // ✅ 1. Validate mallId
         if (!mallId) {
             return res.status(400).json({
-                message: "Mall id not provided",
+                message: "Mall ID not provided",
                 success: false,
             });
         }
 
         const parsedPage = parseInt(page);
         const parsedLimit = parseInt(limit);
-        if (isNaN(parsedPage) || parsedPage < 1) return res.status(400).json({ success: false, message: "Invalid page number" });
-        if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) return res.status(400).json({ success: false, message: "Invalid limit" });
+
+        if (isNaN(parsedPage) || parsedPage < 1)
+            return res.status(400).json({ success: false, message: "Invalid page number" });
+        if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100)
+            return res.status(400).json({ success: false, message: "Invalid limit value" });
 
         const skip = (parsedPage - 1) * parsedLimit;
 
-        // Build search query
-        const query = { mallId };
+        // ✅ 2. Build query to fetch shops under this mall only
+        const query = {
+            mallId,
+            isIndependent: false // only shops linked to malls
+        };
+
+        // ✅ 3. Optional search by firm_name or email
         if (search.trim()) {
             const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-            query.name = searchRegex; // assuming PatnerProfile has `name` field
+            query.$or = [
+                { firm_name: searchRegex },
+                { email: searchRegex }
+            ];
         }
 
-        // Fetch total count
+        // ✅ 4. Fetch total and paginated shops
         const total = await PatnerProfile.countDocuments(query);
-
-        // Fetch paginated shops
         const shopunderthemall = await PatnerProfile.find(query)
             .skip(skip)
             .limit(parsedLimit)
-            .sort({ createdAt: -1 }); // newest first, optional
+            .sort({ createdAt: -1 })
+            .populate("User_id", "name email type") // optional: populate owner details
+            .populate("mallId", "name") // optional: mall name
+            .lean();
 
+        // ✅ 5. Send response
         res.status(200).json({
             success: true,
-            message: "Shops fetched successfully",
+            message: "Shops under this mall fetched successfully",
             page: parsedPage,
             limit: parsedLimit,
             total,
             pages: total ? Math.ceil(total / parsedLimit) : 0,
             mallshop: shopunderthemall
         });
+
     } catch (error) {
         console.error("Error fetching mall shops:", error);
         res.status(500).json({
             success: false,
-            message: "Something went wrong"
+            message: "Something went wrong",
+            error: error.message
         });
     }
 };
+
 
 
 
