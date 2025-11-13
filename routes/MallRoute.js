@@ -3,7 +3,9 @@ import {
     getMallsWithUserLocation,
     createOrUpdateMall,
     getMallshop,
-    addintomall
+    addintomall,
+    getAllMall,
+    getPartnerByPhone
 } from '../controllers/MallController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 const router = express.Router();
@@ -14,5 +16,7 @@ router.post('/createOrUpdateMall', createOrUpdateMall);
 router.get('/getMallshop', getMallshop);
 // router.get('/addintomall', authMiddleware, checkPermission(assing.add), addintomall);
 router.get('/addintomall', authMiddleware, addintomall);
+router.get('/getAllMall', authMiddleware, getAllMall);
+router.get('/getPartnerByPhone', authMiddleware, getPartnerByPhone);
 
 export default router;

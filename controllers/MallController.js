@@ -4,7 +4,7 @@ import { parseAndValidateMallQuery } from "../services/queryParser.js";
 import { locationFactory } from "../services/locationFactory.js";
 import { buildMallAggregationPipeline } from "../services/pipelineBuilder.js";
 import validator from "validator";
-
+import User from "../models/userModel.js";
 
 export const getMallsWithUserLocation = async (req, res) => {
     try {
@@ -49,8 +49,6 @@ export const getMallsWithUserLocation = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-
-
 
 export const getMallshop = async (req, res) => {
     try {
@@ -119,8 +117,6 @@ export const getMallshop = async (req, res) => {
         });
     }
 };
-
-
 
 
 export const createOrUpdateMall = async (req, res) => {
@@ -247,3 +243,125 @@ export const addintomall = async (req, res) => {
     }
 };
 
+
+
+export const getAllMall = async (req, res) => {
+    try {
+        const { search = '', page = 1, limit = 10, status } = req.query;
+
+        const parsedPage = parseInt(page);
+        const parsedLimit = parseInt(limit);
+
+        if (isNaN(parsedPage) || parsedPage < 1) {
+            return res.status(400).json({ success: false, message: "Invalid page number" });
+        }
+
+        if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+            return res.status(400).json({ success: false, message: "Invalid limit" });
+        }
+
+        const skip = (parsedPage - 1) * parsedLimit;
+
+        // 🔍 Build search filter
+        const query = {};
+
+        // Filter by search term (name, city, state, manual address)
+        if (search.trim()) {
+            const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+            query.$or = [
+                { name: searchRegex },
+                { "address.city": searchRegex },
+                { "address.state": searchRegex },
+                { manul_address: searchRegex },
+            ];
+        }
+
+        // ✅ Filter by active/inactive status if provided
+        if (status === "active") {
+            query.active = true;
+        } else if (status === "inactive") {
+            query.active = false;
+        }
+
+        // 📊 Count summary (for dashboard display)
+        const [total, activeCount, inactiveCount] = await Promise.all([
+            Mall.countDocuments(),
+            Mall.countDocuments({ active: true }),
+            Mall.countDocuments({ active: false })
+        ]);
+
+        // 🧾 Get filtered count for pagination
+        const filteredTotal = await Mall.countDocuments(query);
+
+        // ⚡ Fetch paginated mall data
+        const malls = await Mall.find(query)
+            .skip(skip)
+            .limit(parsedLimit)
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({
+            success: true,
+            message: "Malls fetched successfully",
+            page: parsedPage,
+            limit: parsedLimit,
+            totalMalls: total,
+            activeMalls: activeCount,
+            inactiveMalls: inactiveCount,
+            filteredTotal,
+            totalPages: filteredTotal ? Math.ceil(filteredTotal / parsedLimit) : 0,
+            malls,
+        });
+
+    } catch (error) {
+        console.error("Error fetching malls:", error);
+        res.status(500).json({
+            success: false,
+            message: "Something went wrong while fetching malls",
+        });
+    }
+};
+
+
+
+export const getPartnerByPhone = async (req, res) => {
+    try {
+        const { phone } = req.query;
+
+        // ✅ 1. Validate phone input
+        if (!phone || phone.trim() === "") {
+            return res.status(400).json({
+                success: false,
+                message: "Phone number is required",
+            });
+        }
+
+        // ✅ 2. Find the user with type = 'partner'
+        const user = await User.findOne({ phone, type: "partner" });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "No partner found with this phone number",
+            });
+        }
+
+        // ✅ 3. Fetch the partner profile (if available)
+        const partnerProfile = await PatnerProfile.findOne({ User_id: user._id })
+            .populate("mallId", "name address") // optional: get mall details if linked
+            .lean();
+
+        // ✅ 4. Respond with full data
+        return res.status(200).json({
+            success: true,
+            message: "Partner found successfully",
+            user,
+            partnerProfile: partnerProfile || null,
+        });
+    } catch (error) {
+        console.error("Error finding partner by phone:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Something went wrong while fetching partner details",
+        });
+    }
+};
