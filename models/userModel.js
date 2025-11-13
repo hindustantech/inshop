@@ -127,8 +127,12 @@ const userSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true,
-    required: true,
-  },// UNIQUE device
+    required: function () {
+      // Only require deviceId for regular users and other types except admin, partner, super_admin
+      return !['super_admin', 'admin', 'partner'].includes(this.type);
+    }
+  }
+  ,
 
 
   permissions: [

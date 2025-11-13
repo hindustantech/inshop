@@ -29,7 +29,7 @@ const PatnerProfileSchema = new mongoose.Schema({
     },
     isIndependent: {
         type: Boolean,
-        default: false, // true = shop not linked to any mall
+        default: true, // true = shop not linked to any mall
     },
     address: {
         city: {

@@ -1,9 +1,10 @@
 import Mall from "../models/MallSchema.js";
+import PatnerProfile from "../models/PatnerProfile.js";
 import { parseAndValidateMallQuery } from "../services/queryParser.js";
 import { locationFactory } from "../services/locationFactory.js";
 import { buildMallAggregationPipeline } from "../services/pipelineBuilder.js";
+import validator from "validator";
 
-import PatnerProfile from "../models/PatnerProfile.js";
 
 export const getMallsWithUserLocation = async (req, res) => {
     try {
@@ -105,8 +106,6 @@ export const getMallshop = async (req, res) => {
 
 
 
-import validator from "validator"; // npm install validator
-
 export const createOrUpdateMall = async (req, res) => {
     try {
         const data = req.body;
@@ -199,3 +198,35 @@ export const createOrUpdateMall = async (req, res) => {
         res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
     }
 };
+
+
+
+export const addintomall = async (req, res) => {
+    const UserId = req.user.id;
+    const { mallId } = req.body;
+
+    try {
+        // 1️⃣ Find the shop for the current user
+        const shop = await PatnerProfile.findOne({ User_id: UserId });
+        if (!shop) return res.status(404).json({ message: "Shop not found" });
+
+        // 2️⃣ Update the shop to set its mallId
+        shop.mallId = mallId;
+        shop.isIndependent = false; // now it's linked to a mall
+        await shop.save();
+
+        // 3️⃣ Add the shop to the mall's shops array
+        const mall = await Mall.findByIdAndUpdate(
+            mallId,
+            { $addToSet: { shops: shop._id } }, // $addToSet avoids duplicates
+            { new: true }
+        );
+        if (!mall) return res.status(404).json({ message: "Mall not found" });
+
+        res.status(200).json({ message: "Shop successfully added to mall", mall });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+

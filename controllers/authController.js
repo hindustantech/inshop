@@ -597,14 +597,16 @@ const verifyOtp = async (req, res) => {
   }
 };
 
+
+
 const login = async (req, res) => {
   try {
     const { phone, password, deviceId, deviceToken } = req.body;
 
-    // ✅ 1. Basic validation
-    if (!phone || !password || !deviceId || !deviceToken) {
+    // ✅ 1. Basic validation for phone & password only
+    if (!phone || !password) {
       return res.status(400).json({
-        message: 'Phone, password, deviceId, and deviceToken are required'
+        message: 'Phone and password are required'
       });
     }
 
@@ -620,44 +622,55 @@ const login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid phone number or password' });
     }
 
-    // ✅ 4. Check if deviceId already used by another user
-    const deviceIdInUse = await User.findOne({
-      deviceId,
-      _id: { $ne: user._id }
-    });
-    if (deviceIdInUse) {
-      return res.status(400).json({
-        message: 'This device ID is already registered with another account.'
+    // ✅ 4. Roles that require deviceId & deviceToken
+    const requiresDevice = !['super_admin', 'admin', 'partner'].includes(user.type);
+
+    if (requiresDevice) {
+      if (!deviceId || !deviceToken) {
+        return res.status(400).json({
+          message: 'deviceId and deviceToken are required for your account type'
+        });
+      }
+
+      // Check if deviceId already used by another user
+      const deviceIdInUse = await User.findOne({
+        deviceId,
+        _id: { $ne: user._id }
       });
-    }
+      if (deviceIdInUse) {
+        return res.status(400).json({
+          message: 'This device ID is already registered with another account.'
+        });
+      }
 
-    // ✅ 5. Check if deviceToken already used by another user
-    const deviceTokenInUse = await User.findOne({
-      deviceToken,
-      _id: { $ne: user._id }
-    });
-    if (deviceTokenInUse) {
-      return res.status(400).json({
-        message: 'This device token is already registered with another account.'
+      // Check if deviceToken already used by another user
+      const deviceTokenInUse = await User.findOne({
+        deviceToken,
+        _id: { $ne: user._id }
       });
+      if (deviceTokenInUse) {
+        return res.status(400).json({
+          message: 'This device token is already registered with another account.'
+        });
+      }
+
+      // Save or update deviceId & deviceToken if changed
+      let updated = false;
+      if (user.deviceId !== deviceId) {
+        user.deviceId = deviceId;
+        updated = true;
+      }
+      if (user.deviceToken !== deviceToken) {
+        user.deviceToken = deviceToken;
+        updated = true;
+      }
+      if (updated) await user.save();
     }
 
-    // ✅ 6. Save or update both if missing or changed
-    let updated = false;
-    if (user.deviceId !== deviceId) {
-      user.deviceId = deviceId;
-      updated = true;
-    }
-    if (user.deviceToken !== deviceToken) {
-      user.deviceToken = deviceToken;
-      updated = true;
-    }
-    if (updated) await user.save();
-
-    // ✅ 7. Generate JWT token
+    // ✅ 5. Generate JWT token
     const token = generateToken(user._id.toString(), user.type);
 
-    // ✅ 8. Send response
+    // ✅ 6. Send response
     return res.status(200).json({
       success: true,
       token,
@@ -676,6 +689,8 @@ const login = async (req, res) => {
     });
   }
 };
+
+
 
 
 
