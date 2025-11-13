@@ -5,7 +5,7 @@ import { locationFactory } from "../services/locationFactory.js";
 import { buildMallAggregationPipeline } from "../services/pipelineBuilder.js";
 import validator from "validator";
 import User from "../models/userModel.js";
-
+import Coupon from "../models/coupunModel.js";
 export const getMallsWithUserLocation = async (req, res) => {
     try {
         // 1️⃣ Parse query
@@ -118,6 +118,53 @@ export const getMallshop = async (req, res) => {
     }
 };
 
+export const getMallshopCoupon = async (req, res) => {
+    try {
+        const { patnerId } = req.query;
+
+        // 1️⃣ Find the shop using partner ID
+        const shop = await PatnerProfile.findById(patnerId);
+        if (!shop) {
+            return res.status(404).json({
+                success: false,
+                message: "Shop not found",
+            });
+        }
+
+        // 2️⃣ Find all active and valid coupons
+        const coupons = await Coupon.find({
+            ownerId: shop.User_id,
+            active: true,
+            validTill: { $gte: new Date() }, // coupon still valid
+        })
+            .sort({ creationDate: -1 }) // latest first
+            .lean(); // faster, returns plain JS objects
+
+        // 3️⃣ No coupons found case
+        if (!coupons.length) {
+            return res.status(200).json({
+                success: true,
+                message: "No active coupons found for this shop",
+                data: [],
+            });
+        }
+
+        // 4️⃣ Success Response
+        res.status(200).json({
+            success: true,
+            count: coupons.length,
+            data: coupons,
+        });
+
+    } catch (error) {
+        console.error("Error fetching coupons:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+};
 
 export const createOrUpdateMall = async (req, res) => {
     try {
@@ -245,6 +292,8 @@ export const addintomall = async (req, res) => {
 
 
 
+
+
 export const getAllMall = async (req, res) => {
     try {
         const { search = '', page = 1, limit = 10, status } = req.query;
@@ -365,3 +414,4 @@ export const getPartnerByPhone = async (req, res) => {
         });
     }
 };
+

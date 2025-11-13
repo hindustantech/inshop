@@ -5,7 +5,8 @@ import {
     getMallshop,
     addintomall,
     getAllMall,
-    getPartnerByPhone
+    getPartnerByPhone,
+    getMallshopCoupon
 } from '../controllers/MallController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 const router = express.Router();
@@ -18,5 +19,7 @@ router.get('/getMallshop', getMallshop);
 router.get('/addintomall', authMiddleware, addintomall);
 router.get('/getAllMall', authMiddleware, getAllMall);
 router.get('/getPartnerByPhone', authMiddleware, getPartnerByPhone);
+
+router.get('/getMallshopCoupon', getMallshopCoupon);
 
 export default router;
