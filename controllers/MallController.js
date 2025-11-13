@@ -1,5 +1,6 @@
 import Mall from "../models/MallSchema.js";
 import PatnerProfile from "../models/PatnerProfile.js";
+import Banner from "../models/Banner.js";
 import { parseAndValidateMallQuery } from "../services/queryParser.js";
 import { locationFactory } from "../services/locationFactory.js";
 import { buildMallAggregationPipeline } from "../services/pipelineBuilder.js";
@@ -165,6 +166,56 @@ export const getMallshopCoupon = async (req, res) => {
         });
     }
 };
+
+export const getMallshopBanner = async (req, res) => {
+    try {
+        const { patnerId } = req.query;
+
+        // 1️⃣ Find the shop using partner ID
+        const shop = await PatnerProfile.findById(patnerId);
+        if (!shop) {
+            return res.status(404).json({
+                success: false,
+                message: "Shop not found",
+            });
+        }
+
+        // 2️⃣ Find all active banners (not expired)
+        const banners = await Banner.find({
+            ownerId: shop.User_id,
+            $or: [
+                { expiryAt: null }, // No expiry
+                { expiryAt: { $gte: new Date() } }, // Still valid
+            ],
+        })
+            .sort({ createdAt: -1 }) // latest first
+            .lean();
+
+        // 3️⃣ No banners found case
+        if (!banners.length) {
+            return res.status(200).json({
+                success: true,
+                message: "No active banners found for this shop",
+                data: [],
+            });
+        }
+
+        // 4️⃣ Success Response
+        res.status(200).json({
+            success: true,
+            count: banners.length,
+            data: banners,
+        });
+
+    } catch (error) {
+        console.error("Error fetching banners:", error);
+        res.status(500).json({
+            success: false,
+            message: "Internal Server Error",
+            error: error.message,
+        });
+    }
+}
 
 export const createOrUpdateMall = async (req, res) => {
     try {
