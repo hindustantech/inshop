@@ -10,11 +10,13 @@ import {
     getMallshopBanner
 } from '../controllers/MallController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
+import { authMiddleware1 } from '../middlewares/checkuser.js'
+import { uploadMallFiles } from '../utils/uploadFiles.js';
 const router = express.Router();
 
 // Endpoint: GET /api/malls/getMalls
-router.get('/getMalls', authMiddleware, getMallsWithUserLocation);
-router.post('/createOrUpdateMall', createOrUpdateMall);
+router.get('/getMalls', authMiddleware1, getMallsWithUserLocation);
+router.post("/createOrUpdateMall", uploadMallFiles, createOrUpdateMall);
 router.get('/getMallshop', getMallshop);
 // router.get('/addintomall', authMiddleware, checkPermission(assing.add), addintomall);
 router.get('/addintomall', authMiddleware, addintomall);
