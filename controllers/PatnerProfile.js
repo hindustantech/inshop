@@ -5,20 +5,37 @@ import mongoose from "mongoose";
 // @route   POST /api/patner-profile
 // @access  Private
 
-
 export const createOrUpdateProfile = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
         const userId = req.user?._id || req.user.id;
-        const { email, firm_name, address, pan } = req.body;
+
+        // mallId string / JSON both accepted
+        let { email, firm_name, address, pan, mallId, detilsmall } = req.body;
+
+        // Convert mallId safely
+        if (typeof mallId === "string" && mallId.trim() === "") {
+            mallId = null;
+        }
+
+        if (mallId && typeof mallId === "string") {
+            try {
+                // prevent invalid ObjectId crash
+                if (mongoose.Types.ObjectId.isValid(mallId) === false) {
+                    mallId = null;
+                }
+            } catch (e) {
+                mallId = null;
+            }
+        }
 
         if (!userId) {
             return res.status(400).json({ success: false, message: "User ID is required" });
         }
 
-        // Find existing profile
+        // Find profile
         let profile = await PatnerProfile.findOne({ User_id: userId }).session(session);
 
         if (!profile) {
@@ -27,52 +44,74 @@ export const createOrUpdateProfile = async (req, res) => {
                 email: email || "",
                 firm_name: firm_name || "New Firm",
                 pan: pan || "",
-                address: {
-                    city: "",
-                    state: "",
-                }
+                mallId: mallId || null,
+                address: { city: "", state: "" }
             });
         }
 
-        // Update logo if file provided
+        // Logo upload
         if (req.file?.buffer) {
             const uploaded = await uploadToCloudinary(req.file.buffer, "partners");
             if (!uploaded.secure_url) throw new Error("Failed to upload logo");
             profile.logo = uploaded.secure_url;
         }
 
-        // Update basic fields
+        // Basic fields
         if (email) profile.email = email;
         if (firm_name) profile.firm_name = firm_name;
         if (pan) profile.pan = pan;
 
-        // Update address safely
+        // ⭐ MALL LOGIC FIX ⭐
+        if (mallId) {
+            profile.mallId = mallId;
+            profile.isIndependent = false;
+
+            if (detilsmall) {
+                let mallObj = typeof detilsmall === "string" ? JSON.parse(detilsmall) : detilsmall;
+                profile.detilsmall = { ...profile.detilsmall, ...mallObj };
+            } else {
+                // auto create
+                profile.detilsmall ??= {
+                    details: { name: null, contact: null, website: null },
+                    logo: [],
+                    location: { floor: null, address: null },
+                    rating: { average: 0, totalReviews: 0 }
+                };
+            }
+
+        } else {
+            // No mall selected
+            profile.mallId = null;
+            profile.isIndependent = true;
+            profile.detilsmall = null;
+        }
+
+        // Address
         if (address) {
-            let addressObj = typeof address === "string" ? JSON.parse(address) : address;
+            let addr = typeof address === "string" ? JSON.parse(address) : address;
             profile.address = {
-                city: addressObj.city || profile.address.city || "",
-                state: addressObj.state || profile.address.state || ""
+                city: addr.city || profile.address.city,
+                state: addr.state || profile.address.state
             };
         }
 
-        // Save and commit
         await profile.save({ session });
         await session.commitTransaction();
         session.endSession();
 
         return res.status(200).json({
             success: true,
-            message: "Partner profile saved successfully",
+            message: "Profile saved successfully",
             data: profile.toObject()
         });
 
     } catch (error) {
         await session.abortTransaction();
         session.endSession();
-        console.error("Error in createOrUpdateProfile:", error);
+
         return res.status(500).json({
             success: false,
-            message: "Error saving partner profile",
+            message: "Error saving profile",
             error: error.message
         });
     }
