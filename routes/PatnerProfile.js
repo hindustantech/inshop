@@ -8,7 +8,10 @@ const upload = multer(); // memory storage (for buffer upload)
 // Create or Update Profile with Cloudinary logo
 router.post(
     "/",
-    upload.fields([{ name: "logo", maxCount: 1 }]),
+    upload.fields([
+        { name: "logo", maxCount: 1 },
+        { name: "mallImage", maxCount: 5 }
+    ]),
     authMiddleware,
     createOrUpdateProfile
 );

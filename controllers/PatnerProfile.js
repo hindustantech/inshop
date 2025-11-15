@@ -12,89 +12,128 @@ export const createOrUpdateProfile = async (req, res) => {
     try {
         const userId = req.user?._id || req.user.id;
 
-        // mallId string / JSON both accepted
         let { email, firm_name, address, pan, mallId, detilsmall } = req.body;
 
-        // Convert mallId safely
-        if (typeof mallId === "string" && mallId.trim() === "") {
-            mallId = null;
-        }
-
-        if (mallId && typeof mallId === "string") {
-            try {
-                // prevent invalid ObjectId crash
-                if (mongoose.Types.ObjectId.isValid(mallId) === false) {
-                    mallId = null;
-                }
-            } catch (e) {
-                mallId = null;
-            }
-        }
+        // Clean mallId
+        if (typeof mallId === "string" && mallId.trim() === "") mallId = null;
+        if (mallId && !mongoose.Types.ObjectId.isValid(mallId)) mallId = null;
 
         if (!userId) {
-            return res.status(400).json({ success: false, message: "User ID is required" });
+            return res.status(400).json({ success: false, message: "User ID missing" });
         }
 
-        // Find profile
+        // Find Partner Profile
         let profile = await PatnerProfile.findOne({ User_id: userId }).session(session);
 
         if (!profile) {
             profile = new PatnerProfile({
                 User_id: userId,
-                email: email || "",
+                email,
                 firm_name: firm_name || "New Firm",
-                pan: pan || "",
+                pan,
                 mallId: mallId || null,
                 address: { city: "", state: "" }
             });
         }
 
-        // Logo upload
-        if (req.file?.buffer) {
-            const uploaded = await uploadToCloudinary(req.file.buffer, "partners");
-            if (!uploaded.secure_url) throw new Error("Failed to upload logo");
+        /*
+        -------------------------------------------------------
+        1️⃣ UPLOAD LOGO (single)
+        -------------------------------------------------------
+        */
+        if (req.files?.logo?.length > 0) {
+            const file = req.files.logo[0];
+            const uploaded = await uploadToCloudinary(file.buffer, "partners");
+
+            if (!uploaded.secure_url) throw new Error("Logo upload failed");
+
             profile.logo = uploaded.secure_url;
         }
 
-        // Basic fields
+        /*
+        -------------------------------------------------------
+        2️⃣ UPLOAD MALL IMAGES (multiple)
+        -------------------------------------------------------
+        */
+        let uploadedMallImages = [];
+
+        if (req.files?.mallImage?.length > 0) {
+            for (const file of req.files.mallImage) {
+                const uploaded = await uploadToCloudinary(file.buffer, "mall_images");
+                if (uploaded.secure_url) {
+                    uploadedMallImages.push(uploaded.secure_url);
+                }
+            }
+        }
+
+        /*
+        -------------------------------------------------------
+        3️⃣ Basic Fields Update
+        -------------------------------------------------------
+        */
         if (email) profile.email = email;
         if (firm_name) profile.firm_name = firm_name;
         if (pan) profile.pan = pan;
 
-        // ⭐ MALL LOGIC FIX ⭐
+        /*
+        -------------------------------------------------------
+        4️⃣ MALL LOGIC
+        -------------------------------------------------------
+        */
         if (mallId) {
             profile.mallId = mallId;
             profile.isIndependent = false;
 
+            // Parse detilsmall
+            let mallObj = {};
             if (detilsmall) {
-                let mallObj = typeof detilsmall === "string" ? JSON.parse(detilsmall) : detilsmall;
-                profile.detilsmall = { ...profile.detilsmall, ...mallObj };
-            } else {
-                // auto create
-                profile.detilsmall ??= {
+                mallObj = typeof detilsmall === "string" ? JSON.parse(detilsmall) : detilsmall;
+            }
+
+            // If no detilsmall exists → create fresh
+            if (!profile.detilsmall) {
+                profile.detilsmall = {
                     details: { name: null, contact: null, website: null },
-                    logo: [],
+                    mallImage: [],
                     location: { floor: null, address: null },
                     rating: { average: 0, totalReviews: 0 }
                 };
             }
 
+            // Merge incoming data
+            profile.detilsmall = { ...profile.detilsmall, ...mallObj };
+
+            // Push uploaded images to mallImage array
+            if (uploadedMallImages.length > 0) {
+                profile.detilsmall.mallImage.push(...uploadedMallImages);
+            }
+
         } else {
-            // No mall selected
+            // No mall selected → independent
             profile.mallId = null;
             profile.isIndependent = true;
             profile.detilsmall = null;
         }
 
-        // Address
+        /*
+        -------------------------------------------------------
+        5️⃣ Address Update
+        -------------------------------------------------------
+        */
         if (address) {
             let addr = typeof address === "string" ? JSON.parse(address) : address;
+
             profile.address = {
                 city: addr.city || profile.address.city,
                 state: addr.state || profile.address.state
             };
         }
 
+        /*
+        -------------------------------------------------------
+        SAVE + COMMIT
+        -------------------------------------------------------
+        */
         await profile.save({ session });
         await session.commitTransaction();
         session.endSession();
@@ -102,13 +141,12 @@ export const createOrUpdateProfile = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Profile saved successfully",
-            data: profile.toObject()
+            data: profile
         });
 
     } catch (error) {
         await session.abortTransaction();
         session.endSession();
-
         return res.status(500).json({
             success: false,
             message: "Error saving profile",
@@ -116,6 +154,7 @@ export const createOrUpdateProfile = async (req, res) => {
         });
     }
 };
+
 
 
 // @desc    Get Partner Profile by User

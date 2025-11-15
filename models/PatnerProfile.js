@@ -7,7 +7,7 @@ const MallDetailsSchema = new mongoose.Schema({
         website: { type: String, trim: true, default: null },
     },
 
-    logo: [{ type: String }],
+    mallImage: [{ type: String }],
 
     location: {
         floor: { type: String, trim: true, default: null },
