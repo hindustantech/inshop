@@ -43,7 +43,8 @@ router.put('/updateCouponDeatils/:couponId', authMiddleware, updateCouponDeatils
 
 router.put(
     "/admin/coupons/:couponId",
-    authMiddleware,   // check login
+    authMiddleware,
+    checkPermission('coupon.update'), // check login
     isSuperAdmin,          // check role is admin
     updateCouponByAdmin
 )
@@ -70,7 +71,7 @@ router.get('/getAllCouponsWithStatusTag', authMiddleware1, getAllCouponsWithStat
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);
 // router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
-router.get("/coupons/admin", authMiddleware,checkPermission('coupon.list'), getAllCouponsForAdmin);
+router.get("/coupons/admin", authMiddleware, checkPermission('coupon.list'), getAllCouponsForAdmin);
 router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
 
 router.post("/claimCoupon", authMiddleware, claimCoupon);

@@ -220,6 +220,7 @@ export const getMallshopBanner = async (req, res) => {
 }
 
 // ==========================
+
 export const createOrUpdateMall = async (req, res) => {
   try {
     const data = req.body;

@@ -9,10 +9,11 @@ import {
 } from "../controllers/category.js";
 import optionalAuth from "../middlewares/optionalAuth.js";
 import { checkPermission } from "../middlewares/checkPermission.js";
+import authMiddleware from "../middlewares/authMiddleware.js";
 const router = express.Router();
 
 // Create new category (requires authentication, adjust as needed)
-router.post("/createCategory", optionalAuth, checkPermission('category.create'), createCategory);
+router.post("/createCategory", authMiddleware, checkPermission('category.create'), createCategory);
 
 // Get all categories (with pagination, search, and optional auth)
 router.get("/getCategories", optionalAuth,  getCategories);
