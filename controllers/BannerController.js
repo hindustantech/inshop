@@ -1179,20 +1179,26 @@ export const updateBanner = async (req, res) => {
       }
     }
 
-    // Handle file upload
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Banner image is required' });
-    }
-    try {
-      const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
-      banner_image = uploadResult.secure_url;
-    } catch (err) {
-      return res.status(500).json({ success: false, message: 'Error uploading image', error: err.message });
+    // Handle file upload (OPTIONAL for updates)
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
+        updateData.banner_image = uploadResult.secure_url;
+      } catch (err) {
+        return res.status(500).json({
+          success: false,
+          message: 'Error uploading image',
+          error: err.message
+        });
+      }
     }
 
     // Check if updateData is empty
     if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({ success: false, message: 'No valid fields provided for update' });
+      return res.status(400).json({
+        success: false,
+        message: 'No valid fields provided for update'
+      });
     }
 
     // Find and update banner
@@ -1214,9 +1220,15 @@ export const updateBanner = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating banner:', error);
-    return res.status(500).json({ success: false, message: 'Server error' });
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
   }
 };
+
+// Route definition
 
 
 
