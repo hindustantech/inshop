@@ -1180,16 +1180,14 @@ export const updateBanner = async (req, res) => {
     }
 
     // Handle file upload
-    if (req.file) {
-      try {
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'banners',
-          public_id: `banner_${id}_${Date.now()}`,
-        });
-        updateData.banner_image = result.secure_url;
-      } catch (error) {
-        return res.status(500).json({ success: false, message: 'Failed to upload image' });
-      }
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Banner image is required' });
+    }
+    try {
+      const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
+      banner_image = uploadResult.secure_url;
+    } catch (err) {
+      return res.status(500).json({ success: false, message: 'Error uploading image', error: err.message });
     }
 
     // Check if updateData is empty
