@@ -282,6 +282,7 @@ export const createBanneradmin = async (req, res) => {
       title,
       main_keyword,
       keyword,
+      address_notes,
       website_url,
       search_radius,
       manual_address,
@@ -300,7 +301,7 @@ export const createBanneradmin = async (req, res) => {
     /* ======================
        🔹 Required Fields Validation
     ====================== */
-    if (!title || !manual_address || !banner_type || !lat || !lng) {
+    if (!title || !manual_address || !banner_type || !lat || !lng || !address_notes) {
       return res.status(400).json({
         success: false,
         message: 'Missing required fields: title, manual_address, banner_type, lat, lng',
@@ -428,6 +429,7 @@ export const createBanneradmin = async (req, res) => {
       ownerId: finalOwnerId,
       banner_image,
       website_url,
+      address_notes,
       google_location_url,
       banner_type,
       manual_address,
