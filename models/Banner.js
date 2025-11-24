@@ -15,12 +15,12 @@ const BannerSchema = new mongoose.Schema(
       required: true
     },
 
-    promotion:[
-        {
-          type: mongoose.Schema.Types.ObjectId, // references id from another table
-          ref: 'Ad',
-        }
-      ],
+    promotion: [
+      {
+        type: mongoose.Schema.Types.ObjectId, // references id from another table
+        ref: 'Ad',
+      }
+    ],
 
 
 
@@ -30,6 +30,11 @@ const BannerSchema = new mongoose.Schema(
       required: true,
       trim: true,
       index: true
+    },
+
+    address_notes: {
+      type: String,
+      trim: true
     },
 
     banner_image: {
