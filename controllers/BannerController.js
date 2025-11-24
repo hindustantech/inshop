@@ -906,6 +906,7 @@ export const getUserNearestBanners = async (req, res) => {
           keyword: 1,
           manual_address: 1,
           location: 1,
+          address_notes:1,
           category: 1,
           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
         },
@@ -947,6 +948,7 @@ export const getUserNearestBanners = async (req, res) => {
             google_location_url: 1,
             keyword: 1,
             manual_address: 1,
+            address_notes:1,
             location: 1,
             category: 1,
             distanceInKm: { $literal: 0 }, // No distance for fallback
