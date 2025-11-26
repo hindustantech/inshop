@@ -1,5 +1,5 @@
 import express from 'express';
-import { updateBanner,createBanneradmin, createBanner, getUserNearestBanners, getMyBanners, getAllBannersForAdmin, getBannerById, updateBannerExpiry } from '../controllers/BannerController.js';
+import {deleteBanner, updateBanner,createBanneradmin, createBanner, getUserNearestBanners, getMyBanners, getAllBannersForAdmin, getBannerById, updateBannerExpiry } from '../controllers/BannerController.js';
 import multer from 'multer';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1 } from '../middlewares/checkuser.js';
@@ -18,10 +18,7 @@ router.post('/createbanner', authMiddleware, upload.single("images"), createBann
 router.post('/createBanneradmin', authMiddleware, upload.single("images"), checkPermission('banner.create'), createBanneradmin);
 
 router.put('/updatebanner/:id', authMiddleware, upload.single('images'), checkPermission('banner.update'), updateBanner);
-router.delete('/deletebanner/:id', authMiddleware, checkPermission('banner.delete'),checkPermission('banner.delete'), async (req, res) => {
-    // Implement delete banner logic here
-    res.status(200).json({ message: 'Banner deleted successfully' });
-});
+router.delete('/deletebanner/:id', authMiddleware, checkPermission('banner.delete'), deleteBanner);
 
 
 router.get('/getbanner', authMiddleware1, getUserNearestBanners);

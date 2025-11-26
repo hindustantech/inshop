@@ -461,6 +461,29 @@ export const createBanneradmin = async (req, res) => {
 /*  */
 
 
+
+export const deleteBanner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?._id;
+
+  
+    // Check if the banner exists
+    const banner = await Banner.findById(id);
+    if (!banner) {
+      return res.status(404).json({ message: 'Banner not found' });
+    }
+
+    // Delete the banner
+    await Banner.findByIdAndDelete(id);
+
+    res.status(200).json({ message: 'Banner deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting banner:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 // export const getUserNearestBanners = async (req, res) => {
 //   try {
 //     const {
@@ -906,7 +929,7 @@ export const getUserNearestBanners = async (req, res) => {
           keyword: 1,
           manual_address: 1,
           location: 1,
-          address_notes:1,
+          address_notes: 1,
           category: 1,
           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
         },
@@ -948,7 +971,7 @@ export const getUserNearestBanners = async (req, res) => {
             google_location_url: 1,
             keyword: 1,
             manual_address: 1,
-            address_notes:1,
+            address_notes: 1,
             location: 1,
             category: 1,
             distanceInKm: { $literal: 0 }, // No distance for fallback

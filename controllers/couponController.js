@@ -12,7 +12,6 @@ import QRCode from "qrcode";
 import admin from '../utils/firebaseadmin.js'
 import ReferralUsage from '../models/ReferralUsage.js';
 import { sendNotification } from '../utils/SendNotificaion.js';
-
 const statesAndUTs = [
   'Andhra Pradesh',
   'Arunachal Pradesh',
@@ -54,6 +53,28 @@ const statesAndUTs = [
 
 
 const JWT_SECRET = process.env.JWT_SECRET || "your_super_secret_key"; // keep this secret in env
+
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in kilometers
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(lat1)) *
+    Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in KM
+}
+
+function deg2rad(deg) {
+  return deg * (Math.PI / 180);
+}
+
+
 
 export const generateTheQRCode = async (req, res) => {
   try {
@@ -1267,7 +1288,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
     if (tag) filter.tag = { $in: [tag] };
 
     // Category filter
-    if (category &&  mongoose.Types.ObjectId.isValid(category))
+    if (category && mongoose.Types.ObjectId.isValid(category))
       filter.category = category;
 
     // Active / Inactive filter
@@ -2153,8 +2174,26 @@ export const transferCoupon = async (req, res) => {
     const receiver = await User.findById(receiverId).session(session);
     const coupon = await Coupon.findById(couponId).session(session);
 
+
+
+
     if (!sender || !receiver || !coupon) {
       throw new Error("Sender, receiver, or coupon not found");
+    }
+
+    const sendercodes = sender.latestLocation?.coordinates || [];
+    const receivercodes = receiver.latestLocation?.coordinates || [];
+    if (sendercodes.length !== 2 || receivercodes.length !== 2) {
+      throw new Error("Sender or receiver location not found");
+    }
+    const distance = getDistanceFromLatLonInKm(
+      sendercodes[1],
+      sendercodes[0],
+      receivercodes[1],
+      receivercodes[0]
+    );
+    if (distance > 100) {
+      throw new Error("Receiver is out of transfer range (100 km)");
     }
 
     if (!coupon.active || (coupon.validTill && new Date(coupon.validTill) < new Date())) {
@@ -2169,7 +2208,7 @@ export const transferCoupon = async (req, res) => {
       throw new Error("Max distributions reached");
     }
 
-    if (sender.couponCount < 1) {
+    if (sender.couponCount < 3) {
       throw new Error("Sender has insufficient coupon count");
     }
 
