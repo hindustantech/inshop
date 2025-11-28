@@ -467,7 +467,7 @@ export const deleteBanner = async (req, res) => {
     const { id } = req.params;
     const userId = req.user?._id;
 
-  
+
     // Check if the banner exists
     const banner = await Banner.findById(id);
     if (!banner) {
@@ -484,31 +484,32 @@ export const deleteBanner = async (req, res) => {
   }
 };
 
+
 // export const getUserNearestBanners = async (req, res) => {
 //   try {
 //     const {
 //       radius = 100000,
-//       search = "",
+//       search = '',
 //       page = 1,
 //       limit = 50,
 //       manualCode,
 //       lat,
 //       lng,
-//       category
+//       category, // Can be a single ID or array of IDs (e.g., category[]=id1&category[]=id2)
 //     } = req.query;
 
 //     const skip = (page - 1) * limit;
 
-//     let mode = "user";
+//     let mode = 'user';
 //     let baseLocation = null;
 //     let effectiveRadius = Number(radius);
 
 //     // 1️⃣ Logged-in user
 //     if (req.user?.id) {
-//       const user = await User.findById(req.user.id).select("latestLocation");
+//       const user = await User.findById(req.user.id).select('latestLocation');
 //       if (user?.latestLocation?.coordinates) {
 //         const [userLng, userLat] = user.latestLocation.coordinates;
-//         baseLocation = { type: "Point", coordinates: [userLng, userLat] };
+//         baseLocation = { type: 'Point', coordinates: [userLng, userLat] };
 //         console.log(`User location: ${JSON.stringify(baseLocation)}`);
 //       }
 //     }
@@ -516,12 +517,12 @@ export const deleteBanner = async (req, res) => {
 //     // 2️⃣ Manual location
 //     let manualLocation = null;
 //     if (manualCode) {
-//       manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select("city state location");
+//       manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('city state location');
 //       if (manualLocation?.location?.coordinates) {
 //         if (!baseLocation) {
 //           // Guest user → use manual location as base
 //           baseLocation = manualLocation.location;
-//           mode = "manual";
+//           mode = 'manual';
 //           effectiveRadius = null; // No radius limit
 //           console.log(`Manual location: ${JSON.stringify(baseLocation)}`);
 //         } else {
@@ -530,10 +531,9 @@ export const deleteBanner = async (req, res) => {
 //             {
 //               $geoNear: {
 //                 near: baseLocation,
-//                 distanceField: "distance",
+//                 distanceField: 'distance',
 //                 spherical: true,
 //                 query: { uniqueCode: manualCode },
-//                 // limit: 1,
 //               },
 //             },
 //             { $project: { distance: 1 } },
@@ -541,7 +541,7 @@ export const deleteBanner = async (req, res) => {
 
 //           const distance = check[0]?.distance || 0;
 //           if (distance > 100000) {
-//             mode = "manual";
+//             mode = 'manual';
 //             baseLocation = manualLocation.location;
 //             effectiveRadius = null;
 //             console.log(`Switched to manual location: ${JSON.stringify(baseLocation)}`);
@@ -554,16 +554,24 @@ export const deleteBanner = async (req, res) => {
 
 //     // 3️⃣ Custom location from query params (lat, lng)
 //     if (lat && lng) {
-//       baseLocation = { type: "Point", coordinates: [Number(lng), Number(lat)] };
-//       mode = "custom";
+//       const parsedLat = Number(lat);
+//       const parsedLng = Number(lng);
+//       if (isNaN(parsedLat) || isNaN(parsedLng)) {
+//         return res.status(400).json({
+//           success: false,
+//           message: 'Invalid latitude or longitude',
+//         });
+//       }
+//       baseLocation = { type: 'Point', coordinates: [parsedLng, parsedLat] };
+//       mode = 'custom';
 //       effectiveRadius = Number(radius) || 100000;
 //       console.log(`Custom location: ${JSON.stringify(baseLocation)}, radius: ${effectiveRadius}`);
 //     }
 
 //     // 4️⃣ Fallback for guest with no manualCode or custom location
 //     if (!baseLocation) {
-//       baseLocation = { type: "Point", coordinates: [78.9629, 20.5937] }; // Center of India
-//       mode = "default";
+//       baseLocation = { type: 'Point', coordinates: [78.9629, 20.5937] }; // Center of India
+//       mode = 'default';
 //       effectiveRadius = null; // Remove radius limit for default mode
 //       console.log(`Default location: ${JSON.stringify(baseLocation)}`);
 //     }
@@ -574,14 +582,27 @@ export const deleteBanner = async (req, res) => {
 //     // 6️⃣ Build category filter
 //     let categoryFilter = {};
 //     if (category) {
-//       if (mongoose.Types.ObjectId.isValid(category)) {
-//         categoryFilter = { category: new mongoose.Types.ObjectId(category) };
-//         console.log(`Category filter applied: ${category}`);
+//       // Handle category as array or single ID
+//       const categoryIds = Array.isArray(category) ? category : [category];
+//       const validCategoryIds = [];
+//       for (const catId of categoryIds) {
+//         if (mongoose.Types.ObjectId.isValid(catId)) {
+//           validCategoryIds.push(new mongoose.Types.ObjectId(catId));
+//         } else {
+//           console.log(`Invalid category ID: ${catId}`);
+//           return res.status(400).json({
+//             success: false,
+//             message: `Invalid category ID: ${catId}`,
+//           });
+//         }
+//       }
+//       if (validCategoryIds.length > 0) {
+//         categoryFilter = { category: { $in: validCategoryIds } };
+//         console.log(`Category filter applied: ${validCategoryIds.join(', ')}`);
 //       } else {
-//         console.log(`Invalid category ID: ${category}`);
 //         return res.status(400).json({
 //           success: false,
-//           message: "Invalid category ID format"
+//           message: 'No valid category IDs provided',
 //         });
 //       }
 //     }
@@ -591,7 +612,7 @@ export const deleteBanner = async (req, res) => {
 //       $and: [
 //         expiryQuery,
 //         categoryFilter,
-//       ].filter(condition => Object.keys(condition).length > 0)
+//       ].filter((condition) => Object.keys(condition).length > 0),
 //     };
 
 //     // 8️⃣ Build aggregation pipeline
@@ -599,7 +620,7 @@ export const deleteBanner = async (req, res) => {
 //       {
 //         $geoNear: {
 //           near: baseLocation,
-//           distanceField: "distance",
+//           distanceField: 'distance',
 //           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
 //           spherical: true,
 //           query: mainQuery,
@@ -607,7 +628,7 @@ export const deleteBanner = async (req, res) => {
 //       },
 //     ];
 
-//     if (mode === "manual" && manualLocation?.city) {
+//     if (mode === 'manual' && manualLocation?.city) {
 //       dataPipeline.push({ $match: { manual_address: manualLocation.city } });
 //       console.log(`Filtering by manual city: ${manualLocation.city}`);
 //     }
@@ -616,9 +637,9 @@ export const deleteBanner = async (req, res) => {
 //       dataPipeline.push({
 //         $match: {
 //           $or: [
-//             { title: { $regex: search, $options: "i" } },
-//             { keyword: { $regex: search, $options: "i" } },
-//             { main_keyword: { $regex: search, $options: "i" } },
+//             { title: { $regex: search, $options: 'i' } },
+//             { keyword: { $regex: search, $options: 'i' } },
+//             { main_keyword: { $regex: search, $options: 'i' } },
 //           ],
 //         },
 //       });
@@ -638,10 +659,11 @@ export const deleteBanner = async (req, res) => {
 //           keyword: 1,
 //           manual_address: 1,
 //           location: 1,
+//           address_notes: 1,
 //           category: 1,
-//           distanceInKm: { $round: [{ $divide: ["$distance", 1000] }, 2] },
+//           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
 //         },
-//       }
+//       },
 //     );
 
 //     let data = await Banner.aggregate(dataPipeline);
@@ -649,18 +671,25 @@ export const deleteBanner = async (req, res) => {
 
 //     // 9️⃣ Fallback: If no data, fetch all non-expired banners
 //     if (data.length === 0) {
-//       console.log("No banners found with initial query, falling back to all non-expired banners");
+//       console.log('No banners found with initial query, falling back to all non-expired banners');
 //       const fallbackPipeline = [
 //         { $match: expiryQuery },
-//         ...(search.trim() ? [{
-//           $match: {
-//             $or: [
-//               { title: { $regex: search, $options: "i" } },
-//               { keyword: { $regex: search, $options: "i" } },
-//               { main_keyword: { $regex: search, $options: "i" } },
-//             ],
-//           },
-//         }] : []),
+//         ...(categoryFilter.category
+//           ? [{ $match: { category: { $in: validCategoryIds } } }]
+//           : []),
+//         ...(search.trim()
+//           ? [
+//             {
+//               $match: {
+//                 $or: [
+//                   { title: { $regex: search, $options: 'i' } },
+//                   { keyword: { $regex: search, $options: 'i' } },
+//                   { main_keyword: { $regex: search, $options: 'i' } },
+//                 ],
+//               },
+//             },
+//           ]
+//           : []),
 //         { $sort: { createdAt: -1 } }, // Sort by newest first
 //         { $skip: skip },
 //         { $limit: Number(limit) },
@@ -672,14 +701,15 @@ export const deleteBanner = async (req, res) => {
 //             google_location_url: 1,
 //             keyword: 1,
 //             manual_address: 1,
+//             address_notes: 1,
 //             location: 1,
 //             category: 1,
 //             distanceInKm: { $literal: 0 }, // No distance for fallback
 //           },
-//         }
+//         },
 //       ];
 //       data = await Banner.aggregate(fallbackPipeline);
-//       mode = "fallback";
+//       mode = 'fallback';
 //       console.log(`Fallback query returned ${data.length} banners`);
 //     }
 
@@ -688,7 +718,7 @@ export const deleteBanner = async (req, res) => {
 //       {
 //         $geoNear: {
 //           near: baseLocation,
-//           distanceField: "distance",
+//           distanceField: 'distance',
 //           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
 //           spherical: true,
 //           query: mainQuery,
@@ -696,7 +726,7 @@ export const deleteBanner = async (req, res) => {
 //       },
 //     ];
 
-//     if (mode === "manual" && manualLocation?.city) {
+//     if (mode === 'manual' && manualLocation?.city) {
 //       countPipeline.push({ $match: { manual_address: manualLocation.city } });
 //     }
 
@@ -704,31 +734,38 @@ export const deleteBanner = async (req, res) => {
 //       countPipeline.push({
 //         $match: {
 //           $or: [
-//             { title: { $regex: search, $options: "i" } },
-//             { keyword: { $regex: search, $options: "i" } },
-//             { main_keyword: { $regex: search, $options: "i" } },
+//             { title: { $regex: search, $options: 'i' } },
+//             { keyword: { $regex: search, $options: 'i' } },
+//             { main_keyword: { $regex: search, $options: 'i' } },
 //           ],
 //         },
 //       });
 //     }
 
-//     countPipeline.push({ $count: "total" });
+//     countPipeline.push({ $count: 'total' });
 //     let total = (await Banner.aggregate(countPipeline))[0]?.total || 0;
 
 //     // Adjust total for fallback mode
-//     if (data.length > 0 && mode === "fallback") {
+//     if (data.length > 0 && mode === 'fallback') {
 //       const fallbackCountPipeline = [
 //         { $match: expiryQuery },
-//         ...(search.trim() ? [{
-//           $match: {
-//             $or: [
-//               { title: { $regex: search, $options: "i" } },
-//               { keyword: { $regex: search, $options: "i" } },
-//               { main_keyword: { $regex: search, $options: "i" } },
-//             ],
-//           },
-//         }] : []),
-//         { $count: "total" }
+//         ...(categoryFilter.category
+//           ? [{ $match: { category: { $in: validCategoryIds } } }]
+//           : []),
+//         ...(search.trim()
+//           ? [
+//             {
+//               $match: {
+//                 $or: [
+//                   { title: { $regex: search, $options: 'i' } },
+//                   { keyword: { $regex: search, $options: 'i' } },
+//                   { main_keyword: { $regex: search, $options: 'i' } },
+//                 ],
+//               },
+//             },
+//           ]
+//           : []),
+//         { $count: 'total' },
 //       ];
 //       total = (await Banner.aggregate(fallbackCountPipeline))[0]?.total || 0;
 //     }
@@ -742,14 +779,14 @@ export const deleteBanner = async (req, res) => {
 //       pages: Math.ceil(total / limit),
 //       data,
 //       filters: {
-//         category: category || null,
+//         category: category || null, // Return the array of category IDs
 //         search: search || null,
-//         radius: effectiveRadius || null
-//       }
+//         radius: effectiveRadius || null,
+//       },
 //     });
 //   } catch (err) {
-//     console.error("Error fetching nearest banners:", err);
-//     res.status(500).json({ success: false, message: "Error fetching nearest banners", error: err.message });
+//     console.error('Error fetching nearest banners:', err);
+//     res.status(500).json({ success: false, message: 'Error fetching nearest banners', error: err.message });
 //   }
 // };
 
@@ -759,164 +796,129 @@ export const getUserNearestBanners = async (req, res) => {
   try {
     const {
       radius = 100000,
-      search = '',
+      search = "",
       page = 1,
       limit = 50,
       manualCode,
       lat,
       lng,
-      category, // Can be a single ID or array of IDs (e.g., category[]=id1&category[]=id2)
+      category,
     } = req.query;
 
     const skip = (page - 1) * limit;
-
-    let mode = 'user';
+    let mode = "user";
     let baseLocation = null;
     let effectiveRadius = Number(radius);
 
-    // 1️⃣ Logged-in user
+    /* ============================
+       STEP 1: FIND BASE LOCATION
+    ============================ */
+
+    // 1️⃣ Logged in user location
     if (req.user?.id) {
-      const user = await User.findById(req.user.id).select('latestLocation');
+      const user = await User.findById(req.user.id).select("latestLocation");
       if (user?.latestLocation?.coordinates) {
-        const [userLng, userLat] = user.latestLocation.coordinates;
-        baseLocation = { type: 'Point', coordinates: [userLng, userLat] };
-        console.log(`User location: ${JSON.stringify(baseLocation)}`);
+        const [lng, lat] = user.latestLocation.coordinates;
+        baseLocation = { type: "Point", coordinates: [lng, lat] };
       }
     }
 
-    // 2️⃣ Manual location
+    // 2️⃣ Manual Code location
     let manualLocation = null;
     if (manualCode) {
-      manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('city state location');
+      manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode });
+
       if (manualLocation?.location?.coordinates) {
         if (!baseLocation) {
-          // Guest user → use manual location as base
           baseLocation = manualLocation.location;
-          mode = 'manual';
-          effectiveRadius = null; // No radius limit
-          console.log(`Manual location: ${JSON.stringify(baseLocation)}`);
-        } else {
-          // Logged-in user → check distance from manual location
-          const check = await ManualAddress.aggregate([
-            {
-              $geoNear: {
-                near: baseLocation,
-                distanceField: 'distance',
-                spherical: true,
-                query: { uniqueCode: manualCode },
-              },
-            },
-            { $project: { distance: 1 } },
-          ]);
-
-          const distance = check[0]?.distance || 0;
-          if (distance > 100000) {
-            mode = 'manual';
-            baseLocation = manualLocation.location;
-            effectiveRadius = null;
-            console.log(`Switched to manual location: ${JSON.stringify(baseLocation)}`);
-          }
+          effectiveRadius = null;
+          mode = "manual";
         }
-      } else {
-        console.log(`Manual location not found for code: ${manualCode}`);
       }
     }
 
-    // 3️⃣ Custom location from query params (lat, lng)
+    // 3️⃣ Custom lat/lng
     if (lat && lng) {
-      const parsedLat = Number(lat);
-      const parsedLng = Number(lng);
-      if (isNaN(parsedLat) || isNaN(parsedLng)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid latitude or longitude',
-        });
-      }
-      baseLocation = { type: 'Point', coordinates: [parsedLng, parsedLat] };
-      mode = 'custom';
-      effectiveRadius = Number(radius) || 100000;
-      console.log(`Custom location: ${JSON.stringify(baseLocation)}, radius: ${effectiveRadius}`);
+      const Lat = Number(lat);
+      const Lng = Number(lng);
+      baseLocation = { type: "Point", coordinates: [Lng, Lat] };
+      effectiveRadius = Number(radius);
+      mode = "custom";
     }
 
-    // 4️⃣ Fallback for guest with no manualCode or custom location
+    // 4️⃣ No location at all → default India center
     if (!baseLocation) {
-      baseLocation = { type: 'Point', coordinates: [78.9629, 20.5937] }; // Center of India
-      mode = 'default';
-      effectiveRadius = null; // Remove radius limit for default mode
-      console.log(`Default location: ${JSON.stringify(baseLocation)}`);
+      baseLocation = { type: "Point", coordinates: [78.9629, 20.5937] };
+      effectiveRadius = null;
+      mode = "default";
     }
 
-    // 5️⃣ Build expiry query
-    const expiryQuery = { $or: [{ expiryAt: { $gt: new Date() } }, { expiryAt: null }] };
+    /* ============================
+       STEP 2: SEARCH FILTER (FIXED)
+    ============================ */
 
-    // 6️⃣ Build category filter
+    let searchFilter = {};
+    if (search.trim()) {
+      const s = search.trim();
+      searchFilter = {
+        $or: [
+          { title: { $regex: s, $options: "i" } },
+          { keyword: { $regex: s, $options: "i" } },
+          { main_keyword: { $regex: s, $options: "i" } },
+        ],
+      };
+    }
+
+    /* ============================
+       STEP 3: CATEGORY FILTER
+    ============================ */
     let categoryFilter = {};
+    let validCategoryIds = [];
+
     if (category) {
-      // Handle category as array or single ID
-      const categoryIds = Array.isArray(category) ? category : [category];
-      const validCategoryIds = [];
-      for (const catId of categoryIds) {
-        if (mongoose.Types.ObjectId.isValid(catId)) {
-          validCategoryIds.push(new mongoose.Types.ObjectId(catId));
-        } else {
-          console.log(`Invalid category ID: ${catId}`);
-          return res.status(400).json({
-            success: false,
-            message: `Invalid category ID: ${catId}`,
-          });
+      const array = Array.isArray(category) ? category : [category];
+      for (const c of array) {
+        if (!mongoose.Types.ObjectId.isValid(c)) {
+          return res.status(400).json({ success: false, message: `Invalid category: ${c}` });
         }
+        validCategoryIds.push(new mongoose.Types.ObjectId(c));
       }
-      if (validCategoryIds.length > 0) {
-        categoryFilter = { category: { $in: validCategoryIds } };
-        console.log(`Category filter applied: ${validCategoryIds.join(', ')}`);
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: 'No valid category IDs provided',
-        });
-      }
+
+      categoryFilter = { category: { $in: validCategoryIds } };
     }
 
-    // 7️⃣ Combine all filters
+    /* ============================
+       STEP 4: EXPIRY FILTER
+    ============================ */
+    const expiryQuery = {
+      $or: [{ expiryAt: { $gt: new Date() } }, { expiryAt: null }],
+    };
+
+    /* ============================
+       STEP 5: COMBINE ALL FILTERS
+    ============================ */
     const mainQuery = {
       $and: [
         expiryQuery,
         categoryFilter,
-      ].filter((condition) => Object.keys(condition).length > 0),
+        searchFilter, // ⭐ FIXED SEARCH HERE
+      ].filter((x) => Object.keys(x).length > 0),
     };
 
-    // 8️⃣ Build aggregation pipeline
+    /* ============================
+       STEP 6: MAIN QUERY PIPELINE
+    ============================ */
+
     const dataPipeline = [
       {
         $geoNear: {
           near: baseLocation,
-          distanceField: 'distance',
-          ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+          distanceField: "distance",
           spherical: true,
-          query: mainQuery,
+          ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+          query: mainQuery, // ⭐ SEARCH + CATEGORY + EXPIRY HERE
         },
       },
-    ];
-
-    if (mode === 'manual' && manualLocation?.city) {
-      dataPipeline.push({ $match: { manual_address: manualLocation.city } });
-      console.log(`Filtering by manual city: ${manualLocation.city}`);
-    }
-
-    if (search.trim()) {
-      dataPipeline.push({
-        $match: {
-          $or: [
-            { title: { $regex: search, $options: 'i' } },
-            { keyword: { $regex: search, $options: 'i' } },
-            { main_keyword: { $regex: search, $options: 'i' } },
-          ],
-        },
-      });
-      console.log(`Search filter applied: ${search}`);
-    }
-
-    dataPipeline.push(
       { $sort: { distance: 1 } },
       { $skip: skip },
       { $limit: Number(limit) },
@@ -927,40 +929,30 @@ export const getUserNearestBanners = async (req, res) => {
           website_url: 1,
           google_location_url: 1,
           keyword: 1,
+          main_keyword: 1,
           manual_address: 1,
-          location: 1,
           address_notes: 1,
+          location: 1,
           category: 1,
-          distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
+          distanceInKm: { $round: [{ $divide: ["$distance", 1000] }, 2] },
         },
       },
-    );
+    ];
 
     let data = await Banner.aggregate(dataPipeline);
-    console.log(`Initial query returned ${data.length} banners`);
 
-    // 9️⃣ Fallback: If no data, fetch all non-expired banners
+    /* ============================
+       STEP 7: FALLBACK IF NO BANNERS
+    ============================ */
+
     if (data.length === 0) {
-      console.log('No banners found with initial query, falling back to all non-expired banners');
       const fallbackPipeline = [
         { $match: expiryQuery },
-        ...(categoryFilter.category
+        ...(validCategoryIds.length
           ? [{ $match: { category: { $in: validCategoryIds } } }]
           : []),
-        ...(search.trim()
-          ? [
-            {
-              $match: {
-                $or: [
-                  { title: { $regex: search, $options: 'i' } },
-                  { keyword: { $regex: search, $options: 'i' } },
-                  { main_keyword: { $regex: search, $options: 'i' } },
-                ],
-              },
-            },
-          ]
-          : []),
-        { $sort: { createdAt: -1 } }, // Sort by newest first
+        ...(search.trim() ? [{ $match: searchFilter }] : []),
+        { $sort: { createdAt: -1 } },
         { $skip: skip },
         { $limit: Number(limit) },
         {
@@ -970,78 +962,59 @@ export const getUserNearestBanners = async (req, res) => {
             website_url: 1,
             google_location_url: 1,
             keyword: 1,
+            main_keyword: 1,
             manual_address: 1,
             address_notes: 1,
             location: 1,
             category: 1,
-            distanceInKm: { $literal: 0 }, // No distance for fallback
+            distanceInKm: { $literal: 0 },
           },
         },
       ];
+
       data = await Banner.aggregate(fallbackPipeline);
-      mode = 'fallback';
-      console.log(`Fallback query returned ${data.length} banners`);
+      mode = "fallback";
     }
 
-    // 🔟 Count total with same filters
-    const countPipeline = [
-      {
-        $geoNear: {
-          near: baseLocation,
-          distanceField: 'distance',
-          ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-          spherical: true,
-          query: mainQuery,
+    /* ============================
+       STEP 8: COUNT TOTAL
+    ============================ */
+
+    let total = 0;
+
+    if (mode !== "fallback") {
+      const countPipeline = [
+        {
+          $geoNear: {
+            near: baseLocation,
+            distanceField: "distance",
+            spherical: true,
+            ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+            query: mainQuery,
+          },
         },
-      },
-    ];
+        { $count: "total" },
+      ];
 
-    if (mode === 'manual' && manualLocation?.city) {
-      countPipeline.push({ $match: { manual_address: manualLocation.city } });
-    }
-
-    if (search.trim()) {
-      countPipeline.push({
-        $match: {
-          $or: [
-            { title: { $regex: search, $options: 'i' } },
-            { keyword: { $regex: search, $options: 'i' } },
-            { main_keyword: { $regex: search, $options: 'i' } },
-          ],
-        },
-      });
-    }
-
-    countPipeline.push({ $count: 'total' });
-    let total = (await Banner.aggregate(countPipeline))[0]?.total || 0;
-
-    // Adjust total for fallback mode
-    if (data.length > 0 && mode === 'fallback') {
+      total = (await Banner.aggregate(countPipeline))[0]?.total || 0;
+    } else {
       const fallbackCountPipeline = [
         { $match: expiryQuery },
-        ...(categoryFilter.category
+        ...(validCategoryIds.length
           ? [{ $match: { category: { $in: validCategoryIds } } }]
           : []),
-        ...(search.trim()
-          ? [
-            {
-              $match: {
-                $or: [
-                  { title: { $regex: search, $options: 'i' } },
-                  { keyword: { $regex: search, $options: 'i' } },
-                  { main_keyword: { $regex: search, $options: 'i' } },
-                ],
-              },
-            },
-          ]
-          : []),
-        { $count: 'total' },
+        ...(search.trim() ? [{ $match: searchFilter }] : []),
+        { $count: "total" },
       ];
+
       total = (await Banner.aggregate(fallbackCountPipeline))[0]?.total || 0;
     }
 
-    // 🔟 Send response
-    res.json({
+    /* ============================
+       STEP 9: SEND RESPONSE
+    ============================ */
+
+    return res.json({
       success: true,
       mode,
       total,
@@ -1049,16 +1022,22 @@ export const getUserNearestBanners = async (req, res) => {
       pages: Math.ceil(total / limit),
       data,
       filters: {
-        category: category || null, // Return the array of category IDs
-        search: search || null,
+        search,
+        category: category || null,
         radius: effectiveRadius || null,
       },
     });
+
   } catch (err) {
-    console.error('Error fetching nearest banners:', err);
-    res.status(500).json({ success: false, message: 'Error fetching nearest banners', error: err.message });
+    console.error("Error fetching nearest banners:", err);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching nearest banners",
+      error: err.message,
+    });
   }
 };
+
 
 // Update expiry date (Admin only)
 export const updateBannerExpiry = async (req, res) => {
