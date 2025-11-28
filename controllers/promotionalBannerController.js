@@ -5,6 +5,9 @@ import ManualAddress from "../models/ManualAddress.js";
 import mongoose from "mongoose";
 import { uploadToCloudinary } from "../utils/Cloudinary.js";
 
+// controllers/bannerController.js
+
+import FileUpload from "../models/FileUpload.js";
 
 export const createPromotionalBanner = async (req, res) => {
     try {
@@ -16,10 +19,11 @@ export const createPromotionalBanner = async (req, res) => {
             manualAddress,
             coordinates,
             searchRadius,
-            expiryAt
+            expiryAt,
+            fileId // optional: for chunked upload flow, client sends fileId after merge
         } = req.body;
 
-        // Validation
+        // Basic validation
         if (!ownerId || !title || !manualAddress) {
             return res.status(400).json({
                 success: false,
@@ -52,18 +56,38 @@ export const createPromotionalBanner = async (req, res) => {
             });
         }
 
-        // Upload image if provided
-        let bannerImage = null;
-        if (req.file) {
+        // Determine bannerImage URL(s)
+        const bannerImageUrls = [];
+
+        // 1) If client uploaded single file via req.file (multer single flow)
+        if (req.file && req.file.buffer) {
             try {
-                bannerImage = await uploadToCloudinary(req.file.buffer, 'banners');
+                const uploaded = await uploadToCloudinary(req.file.buffer, 'banners');
+                bannerImageUrls.push(uploaded.secure_url || uploaded.url || uploaded);
             } catch (uploadError) {
-                console.error("Error uploading image:", uploadError);
-                return res.status(500).json({
+                console.error("Error uploading single banner image:", uploadError);
+                return res.status(500).json({ success: false, message: "Failed to upload banner image" });
+            }
+        }
+
+        // 2) Else if client provides fileId (chunk flow), check FileUpload record
+        if (fileId) {
+            const fileRecord = await FileUpload.findOne({ fileId });
+            if (!fileRecord || fileRecord.status !== "completed" || !fileRecord.finalFileUrl) {
+                return res.status(400).json({
                     success: false,
-                    message: "Failed to upload banner image"
+                    message: "File not ready. Merge not completed or fileId invalid"
                 });
             }
+            bannerImageUrls.push(fileRecord.finalFileUrl);
+        }
+
+        // At least one banner image required
+        if (bannerImageUrls.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Banner image is required (either single-file upload or chunked upload + merge)"
+            });
         }
 
         // Validate expiry date
@@ -77,7 +101,6 @@ export const createPromotionalBanner = async (req, res) => {
                 });
             }
 
-            // Check if expiry date is in the future
             if (expiryDate <= new Date()) {
                 return res.status(400).json({
                     success: false,
@@ -87,15 +110,15 @@ export const createPromotionalBanner = async (req, res) => {
         }
 
         const newBanner = new PromotionalBanner({
-            createdBy: createdBy || ownerId, // Fallback to ownerId if createdBy not provided
+            createdBy: createdBy || ownerId,
             ownerId,
             title: title.trim(),
             description: description?.trim() || '',
-            bannerImage:bannerImage?.url,
+            bannerImage: bannerImageUrls, // array of strings
             manualAddress,
             location: {
                 type: "Point",
-                coordinates: parsedCoordinates,
+                coordinates: parsedCoordinates
             },
             searchRadius: radius,
             expiryAt: expiryDate,
@@ -104,44 +127,32 @@ export const createPromotionalBanner = async (req, res) => {
 
         await newBanner.save();
 
-        // Populate the response with user details if needed
         const populatedBanner = await PromotionalBanner.findById(newBanner._id)
             .populate('ownerId', 'name email phone')
             .populate('createdBy', 'name email');
 
-        res.status(201).json({
+        return res.status(201).json({
             success: true,
             message: "Promotional banner created successfully",
-            data: populatedBanner,
+            data: populatedBanner
         });
+
     } catch (error) {
         console.error("Error creating promotional banner:", error);
 
-        // Handle duplicate key errors
         if (error.code === 11000) {
-            return res.status(400).json({
-                success: false,
-                message: "A banner with similar details already exists"
-            });
+            return res.status(400).json({ success: false, message: "A banner with similar details already exists" });
         }
 
-        // Handle validation errors
         if (error.name === 'ValidationError') {
             const errors = Object.values(error.errors).map(err => err.message);
-            return res.status(400).json({
-                success: false,
-                message: "Validation failed",
-                errors: errors
-            });
+            return res.status(400).json({ success: false, message: "Validation failed", errors });
         }
 
-        res.status(500).json({
-            success: false,
-            message: "Failed to create promotional banner",
-            error: error.message,
-        });
+        return res.status(500).json({ success: false, message: "Failed to create promotional banner", error: error.message });
     }
 };
+
 
 
 export const getPromotionalBanners = async (req, res) => {
