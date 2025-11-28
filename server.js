@@ -30,6 +30,7 @@ import permissionRoutes from './routes/permissionRoutes.js';
 import paymentroute from './routes/paymentRoutes.js';
 import dashroute from './routes/Dashboard.js'
 import mall from './routes/MallRoute.js'
+import chunkuploadimage from './routes/uploadRoutes.js'
 
 dotenv.config();
 connectDB();
@@ -80,6 +81,8 @@ app.use('/api/notification', notification);
 app.use('/api/banner', banner);
 
 app.use('/api/PromotionalBanner', PromotionalBanner);
+app.use('/api', chunkuploadimage);
+
 
 app.use('/api/manul', manuladdress);
 app.use('/api/category', Categoryroute);
