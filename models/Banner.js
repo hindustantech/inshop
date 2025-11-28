@@ -93,8 +93,10 @@ const BannerSchema = new mongoose.Schema(
 // Geospatial
 BannerSchema.index({ location: "2dsphere" });
 
-// Text search
-BannerSchema.index({ title: "text", keyword: "text", main_keyword: "text" });
+// ✅ BETTER SEARCH INDEXES
+BannerSchema.index({ title: 1 });
+BannerSchema.index({ keyword: 1 });
+BannerSchema.index({ main_keyword: 1 });
 
 // Compound index
 BannerSchema.index({ manual_address: 1, banner_type: 1 });

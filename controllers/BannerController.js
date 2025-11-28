@@ -863,8 +863,8 @@ export const getUserNearestBanners = async (req, res) => {
       searchFilter = {
         $or: [
           { title: { $regex: s, $options: "i" } },
-          { keyword: { $regex: s, $options: "i" } },
-          { main_keyword: { $regex: s, $options: "i" } },
+          { keyword: { $in: [new RegExp(search, "i")] } },
+          { main_keyword: { $in: [new RegExp(search, "i")] } },
         ],
       };
     }
