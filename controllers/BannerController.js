@@ -860,11 +860,14 @@ export const getUserNearestBanners = async (req, res) => {
     let searchFilter = {};
     if (search.trim()) {
       const s = search.trim();
+      const searchRegex = new RegExp(s, "i");
+
       searchFilter = {
         $or: [
-          { title: { $regex: s, $options: "i" } },
-          { keyword: { $in: [new RegExp(search, "i")] } },
-          { main_keyword: { $in: [new RegExp(search, "i")] } },
+          { title: searchRegex },
+          { keyword: searchRegex },
+          { main_keyword: searchRegex },
+          { manual_address: searchRegex } // Optional: include address
         ],
       };
     }
@@ -901,7 +904,7 @@ export const getUserNearestBanners = async (req, res) => {
       $and: [
         expiryQuery,
         categoryFilter,
-        searchFilter, // ⭐ FIXED SEARCH HERE
+        searchFilter,
       ].filter((x) => Object.keys(x).length > 0),
     };
 
@@ -916,7 +919,7 @@ export const getUserNearestBanners = async (req, res) => {
           distanceField: "distance",
           spherical: true,
           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-          query: mainQuery, // ⭐ SEARCH + CATEGORY + EXPIRY HERE
+          query: mainQuery,
         },
       },
       { $sort: { distance: 1 } },
