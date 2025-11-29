@@ -6,6 +6,7 @@ import { exportToCSV } from "../utils/exportcsv.js";
 import Category from "../models/CategoryCopun.js";
 import mongoose from "mongoose";
 import ManualAddress from "../models/ManualAddress.js";
+import logger from "../utils/logger.js";
 
 // export const createBanner = async (req, res) => {
 //     try {
@@ -792,6 +793,7 @@ export const deleteBanner = async (req, res) => {
 
 
 
+
 export const getUserNearestBanners = async (req, res) => {
   try {
     const {
@@ -805,6 +807,11 @@ export const getUserNearestBanners = async (req, res) => {
       category,
     } = req.query;
 
+    logger.info("=== BANNER SEARCH STARTED ===", {
+      queryParams: { radius, search, page, limit, manualCode, lat, lng, category },
+      user: req.user?.id || 'no-user'
+    });
+
     const skip = (page - 1) * limit;
     let mode = "user";
     let baseLocation = null;
@@ -814,18 +821,25 @@ export const getUserNearestBanners = async (req, res) => {
        STEP 1: FIND BASE LOCATION
     ============================ */
 
+    logger.debug("STEP 1: Finding base location");
+
     // 1️⃣ Logged in user location
     if (req.user?.id) {
+      logger.debug("Checking user location", { userId: req.user.id });
       const user = await User.findById(req.user.id).select("latestLocation");
       if (user?.latestLocation?.coordinates) {
         const [lng, lat] = user.latestLocation.coordinates;
         baseLocation = { type: "Point", coordinates: [lng, lat] };
+        logger.debug("User location found", { baseLocation });
+      } else {
+        logger.debug("No user location found");
       }
     }
 
     // 2️⃣ Manual Code location
     let manualLocation = null;
     if (manualCode) {
+      logger.debug("Checking manual code location", { manualCode });
       manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode });
 
       if (manualLocation?.location?.coordinates) {
@@ -833,17 +847,22 @@ export const getUserNearestBanners = async (req, res) => {
           baseLocation = manualLocation.location;
           effectiveRadius = null;
           mode = "manual";
+          logger.debug("Manual location found and set", { baseLocation, mode });
         }
+      } else {
+        logger.debug("Manual location not found for code", { manualCode });
       }
     }
 
     // 3️⃣ Custom lat/lng
     if (lat && lng) {
+      logger.debug("Using custom lat/lng", { lat, lng });
       const Lat = Number(lat);
       const Lng = Number(lng);
       baseLocation = { type: "Point", coordinates: [Lng, Lat] };
       effectiveRadius = Number(radius);
       mode = "custom";
+      logger.debug("Custom location set", { baseLocation, mode });
     }
 
     // 4️⃣ No location at all → default India center
@@ -851,7 +870,10 @@ export const getUserNearestBanners = async (req, res) => {
       baseLocation = { type: "Point", coordinates: [78.9629, 20.5937] };
       effectiveRadius = null;
       mode = "default";
+      logger.debug("Using default location", { baseLocation, mode });
     }
+
+    logger.info("Base location determined", { mode, baseLocation, effectiveRadius });
 
     /* ============================
        STEP 2: SEARCH FILTER (FIXED)
@@ -867,9 +889,17 @@ export const getUserNearestBanners = async (req, res) => {
           { title: searchRegex },
           { keyword: searchRegex },
           { main_keyword: searchRegex },
-          { manual_address: searchRegex } // Optional: include address
+          { manual_address: searchRegex }
         ],
       };
+
+      logger.debug("Search filter created", {
+        searchTerm: s,
+        searchFilter: JSON.stringify(searchFilter),
+        regexPattern: searchRegex.toString()
+      });
+    } else {
+      logger.debug("No search term provided");
     }
 
     /* ============================
@@ -880,14 +910,23 @@ export const getUserNearestBanners = async (req, res) => {
 
     if (category) {
       const array = Array.isArray(category) ? category : [category];
+      logger.debug("Processing categories", { inputCategories: array });
+
       for (const c of array) {
         if (!mongoose.Types.ObjectId.isValid(c)) {
+          logger.error("Invalid category ID", { category: c });
           return res.status(400).json({ success: false, message: `Invalid category: ${c}` });
         }
         validCategoryIds.push(new mongoose.Types.ObjectId(c));
       }
 
       categoryFilter = { category: { $in: validCategoryIds } };
+      logger.debug("Category filter created", {
+        validCategoryIds: validCategoryIds.map(id => id.toString()),
+        categoryFilter: JSON.stringify(categoryFilter)
+      });
+    } else {
+      logger.debug("No category filter provided");
     }
 
     /* ============================
@@ -896,6 +935,8 @@ export const getUserNearestBanners = async (req, res) => {
     const expiryQuery = {
       $or: [{ expiryAt: { $gt: new Date() } }, { expiryAt: null }],
     };
+
+    logger.debug("Expiry query", { expiryQuery: JSON.stringify(expiryQuery), currentTime: new Date() });
 
     /* ============================
        STEP 5: COMBINE ALL FILTERS
@@ -907,6 +948,13 @@ export const getUserNearestBanners = async (req, res) => {
         searchFilter,
       ].filter((x) => Object.keys(x).length > 0),
     };
+
+    logger.info("Main query constructed", {
+      mainQuery: JSON.stringify(mainQuery),
+      hasExpiry: Object.keys(expiryQuery).length > 0,
+      hasCategory: Object.keys(categoryFilter).length > 0,
+      hasSearch: Object.keys(searchFilter).length > 0
+    });
 
     /* ============================
        STEP 6: MAIN QUERY PIPELINE
@@ -942,13 +990,33 @@ export const getUserNearestBanners = async (req, res) => {
       },
     ];
 
+    logger.debug("Main data pipeline", {
+      pipeline: JSON.stringify(dataPipeline),
+      skip,
+      limit: Number(limit)
+    });
+
     let data = await Banner.aggregate(dataPipeline);
+    logger.info("Main query results", {
+      dataCount: data.length,
+      mode: "primary",
+      sampleData: data.length > 0 ? {
+        firstBanner: {
+          title: data[0].title,
+          keywords: data[0].keyword,
+          mainKeywords: data[0].main_keyword,
+          distance: data[0].distanceInKm
+        }
+      } : 'no-data'
+    });
 
     /* ============================
        STEP 7: FALLBACK IF NO BANNERS
     ============================ */
 
     if (data.length === 0) {
+      logger.warn("No results from main query, using fallback");
+
       const fallbackPipeline = [
         { $match: expiryQuery },
         ...(validCategoryIds.length
@@ -975,8 +1043,22 @@ export const getUserNearestBanners = async (req, res) => {
         },
       ];
 
+      logger.debug("Fallback pipeline", { pipeline: JSON.stringify(fallbackPipeline) });
+
       data = await Banner.aggregate(fallbackPipeline);
       mode = "fallback";
+
+      logger.info("Fallback query results", {
+        dataCount: data.length,
+        mode: "fallback",
+        sampleData: data.length > 0 ? {
+          firstBanner: {
+            title: data[0].title,
+            keywords: data[0].keyword,
+            mainKeywords: data[0].main_keyword
+          }
+        } : 'no-data'
+      });
     }
 
     /* ============================
@@ -986,6 +1068,7 @@ export const getUserNearestBanners = async (req, res) => {
     let total = 0;
 
     if (mode !== "fallback") {
+      logger.debug("Counting total for primary query");
       const countPipeline = [
         {
           $geoNear: {
@@ -999,8 +1082,11 @@ export const getUserNearestBanners = async (req, res) => {
         { $count: "total" },
       ];
 
-      total = (await Banner.aggregate(countPipeline))[0]?.total || 0;
+      const countResult = await Banner.aggregate(countPipeline);
+      total = countResult[0]?.total || 0;
+      logger.debug("Primary count result", { countResult, total });
     } else {
+      logger.debug("Counting total for fallback query");
       const fallbackCountPipeline = [
         { $match: expiryQuery },
         ...(validCategoryIds.length
@@ -1010,14 +1096,16 @@ export const getUserNearestBanners = async (req, res) => {
         { $count: "total" },
       ];
 
-      total = (await Banner.aggregate(fallbackCountPipeline))[0]?.total || 0;
+      const countResult = await Banner.aggregate(fallbackCountPipeline);
+      total = countResult[0]?.total || 0;
+      logger.debug("Fallback count result", { countResult, total });
     }
 
     /* ============================
        STEP 9: SEND RESPONSE
     ============================ */
 
-    return res.json({
+    const response = {
       success: true,
       mode,
       total,
@@ -1029,10 +1117,33 @@ export const getUserNearestBanners = async (req, res) => {
         category: category || null,
         radius: effectiveRadius || null,
       },
+    };
+
+    logger.info("=== BANNER SEARCH COMPLETED ===", {
+      mode,
+      total,
+      page: Number(page),
+      pages: Math.ceil(total / limit),
+      dataCount: data.length,
+      searchUsed: search.trim(),
+      searchWorking: data.some(banner =>
+        banner.title?.toLowerCase().includes(search.toLowerCase()) ||
+        banner.keyword?.some(kw => kw.toLowerCase().includes(search.toLowerCase())) ||
+        banner.main_keyword?.some(kw => kw.toLowerCase().includes(search.toLowerCase())) ||
+        banner.manual_address?.toLowerCase().includes(search.toLowerCase())
+      )
     });
 
+    return res.json(response);
+
   } catch (err) {
-    console.error("Error fetching nearest banners:", err);
+    logger.error("Error fetching nearest banners:", {
+      error: err.message,
+      stack: err.stack,
+      queryParams: req.query,
+      user: req.user?.id || 'no-user'
+    });
+
     res.status(500).json({
       success: false,
       message: "Error fetching nearest banners",
@@ -1041,6 +1152,75 @@ export const getUserNearestBanners = async (req, res) => {
   }
 };
 
+
+
+
+export const debugSearch = async (req, res) => {
+  try {
+    const { search = "" } = req.query;
+
+    if (!search.trim()) {
+      return res.status(400).json({ success: false, message: "Search term required" });
+    }
+
+    const searchRegex = new RegExp(search.trim(), "i");
+
+    // Test individual search fields
+    const titleResults = await Banner.find({ title: searchRegex }).limit(5);
+    const keywordResults = await Banner.find({ keyword: searchRegex }).limit(5);
+    const mainKeywordResults = await Banner.find({ main_keyword: searchRegex }).limit(5);
+    const addressResults = await Banner.find({ manual_address: searchRegex }).limit(5);
+
+    // Test combined search
+    const combinedResults = await Banner.find({
+      $or: [
+        { title: searchRegex },
+        { keyword: searchRegex },
+        { main_keyword: searchRegex },
+        { manual_address: searchRegex }
+      ]
+    }).limit(10);
+
+    logger.info("DEBUG SEARCH RESULTS", {
+      searchTerm: search,
+      titleCount: titleResults.length,
+      keywordCount: keywordResults.length,
+      mainKeywordCount: mainKeywordResults.length,
+      addressCount: addressResults.length,
+      combinedCount: combinedResults.length,
+      sampleKeywords: keywordResults.length > 0 ? keywordResults[0].keyword : 'none',
+      sampleMainKeywords: mainKeywordResults.length > 0 ? mainKeywordResults[0].main_keyword : 'none'
+    });
+
+    res.json({
+      success: true,
+      searchTerm: search,
+      results: {
+        byTitle: titleResults.map(b => ({ title: b.title, keywords: b.keyword })),
+        byKeyword: keywordResults.map(b => ({ title: b.title, keywords: b.keyword })),
+        byMainKeyword: mainKeywordResults.map(b => ({ title: b.title, main_keywords: b.main_keyword })),
+        byAddress: addressResults.map(b => ({ title: b.title, address: b.manual_address })),
+        combined: combinedResults.map(b => ({
+          title: b.title,
+          keywords: b.keyword,
+          main_keywords: b.main_keyword,
+          address: b.manual_address
+        }))
+      },
+      counts: {
+        title: titleResults.length,
+        keyword: keywordResults.length,
+        mainKeyword: mainKeywordResults.length,
+        address: addressResults.length,
+        combined: combinedResults.length
+      }
+    });
+
+  } catch (err) {
+    logger.error("Debug search error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
 
 // Update expiry date (Admin only)
 export const updateBannerExpiry = async (req, res) => {
