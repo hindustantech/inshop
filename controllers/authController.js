@@ -444,8 +444,8 @@ const signup = async (req, res) => {
     const { name, email, phone, type, password, referralCode, deviceId } = req.body;
 
 
-    if (!name || !email || !phone || !password) {
-      return res.status(400).json({ message: 'Name, email, phone, and password are required' });
+    if (!name  || !phone || !password) {
+      return res.status(400).json({ message: 'Name, phone, and password are required' });
     }
     if (password.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters long' });
