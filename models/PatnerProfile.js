@@ -42,9 +42,32 @@ const PatnerProfileSchema = new mongoose.Schema({
         required: true,
     },
 
-    pan: {
+    idType: {
+        type: String,
+        enum: ["PAN", "GST"],
+        default: "PAN",   // ✅ Default selected PAN
+        required: true
+    },
+
+    idNumber: {
         type: String,
         required: true,
+        validate: {
+            validator: function (value) {
+                const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+                const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
+                if (this.idType === "PAN") return panRegex.test(value);
+                if (this.idType === "GST") return gstRegex.test(value);
+
+                return false;
+            },
+            message: function () {
+                return this.idType === "PAN"
+                    ? "Invalid PAN number format"
+                    : "Invalid GST number format";
+            }
+        }
     },
 
     firm_name: {
