@@ -183,23 +183,38 @@ export const getUserProfile = async (req, res) => {
 };
 
 // PUT /api/users/:id/role - Change user role
+// PUT /api/users/:id/role - Change user role
 export const changeUserRole = async (req, res) => {
   try {
     const { id } = req.params;
-    const { role } = req.body; // Expected: 'user', 'partner', 'agency', 'super_admin'
+    const { role } = req.body;
 
-    if (!['user', 'partner', 'agency', 'super_admin'].includes(role)) {
+    // Validate role against schema enum
+    if (!['user', 'partner', 'agency', 'admin', 'super_admin'].includes(role)) {
       return res.status(400).json({
         success: false,
         data: null,
-        message: 'Invalid role'
+        message: 'Invalid role. Must be: user, partner, agency, admin, or super_admin'
+      });
+    }
+
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: 'Invalid user ID'
       });
     }
 
     const user = await User.findByIdAndUpdate(
       id,
-      { type: role },
-      { new: true, runValidators: true }
+      { type: role }, // Schema uses 'type', not 'role'
+      {
+        new: true,
+        runValidators: true,
+        context: 'query' // Ensures validators run on update
+      }
     ).select('-password -otp');
 
     if (!user) {
@@ -213,9 +228,10 @@ export const changeUserRole = async (req, res) => {
     res.status(200).json({
       success: true,
       data: user,
-      message: 'Role updated successfully'
+      message: `User role updated to ${role} successfully`
     });
   } catch (error) {
+    console.error('Change role error:', error);
     res.status(500).json({
       success: false,
       data: null,
@@ -229,7 +245,16 @@ export const toggleUserBlock = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = await User.findById(id).select('suspend');
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: 'Invalid user ID'
+      });
+    }
+
+    const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -241,7 +266,10 @@ export const toggleUserBlock = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       id,
       { suspend: !user.suspend },
-      { new: true }
+      {
+        new: true,
+        runValidators: true
+      }
     ).select('-password -otp');
 
     const action = updatedUser.suspend ? 'blocked' : 'unblocked';
@@ -252,6 +280,7 @@ export const toggleUserBlock = async (req, res) => {
       message: `User ${action} successfully`
     });
   } catch (error) {
+    console.error('Toggle block error:', error);
     res.status(500).json({
       success: false,
       data: null,
@@ -261,9 +290,10 @@ export const toggleUserBlock = async (req, res) => {
 };
 
 // POST /api/users - Add new user
+// POST /api/users - Add new user
 export const createUser = async (req, res) => {
   try {
-    const { name, email, password, phone, type = 'user' } = req.body;
+    const { name, email, password, phone, type = 'user', isVerified = true } = req.body;
 
     // Validate required fields
     if (!name || !email || !password) {
@@ -274,41 +304,81 @@ export const createUser = async (req, res) => {
       });
     }
 
+    // Validate role type
+    if (!['user', 'partner', 'agency', 'admin', 'super_admin'].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: 'Invalid user type'
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      $or: [
+        { email: email.toLowerCase().trim() },
+        ...(phone ? [{ phone: phone.trim() }] : [])
+      ]
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: 'User with this email or phone already exists'
+      });
+    }
+
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const newUser = new User({
-      name,
-      email,
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
       password: hashedPassword,
-      phone,
-      type
-      // Other fields will be handled by schema defaults/pre-save
+      phone: phone ? phone.trim() : undefined,
+      type,
+      isVerified: Boolean(isVerified) // ✅ Configurable verification status
     });
 
     const savedUser = await newUser.save();
 
     // Exclude sensitive fields in response
-    const { password: _, otp: __, ...userResponse } = savedUser.toObject();
+    const userResponse = savedUser.toObject();
+    delete userResponse.password;
+    delete userResponse.otp;
 
     res.status(201).json({
       success: true,
       data: userResponse,
-      message: 'User created successfully'
+      message: `User created successfully ${isVerified ? '(Verified)' : '(Pending Verification)'}`
     });
   } catch (error) {
+    console.error('Create user error:', error);
+
     if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
       return res.status(400).json({
         success: false,
         data: null,
-        message: 'Email or phone already exists'
+        message: `User with this ${field} already exists`
       });
     }
+
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        data: null,
+        message: messages.join(', ')
+      });
+    }
+
     res.status(500).json({
       success: false,
       data: null,
-      message: error.message
+      message: 'Internal server error'
     });
   }
 };
