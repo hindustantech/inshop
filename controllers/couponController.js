@@ -1495,55 +1495,35 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
 export const getById = async (req, res) => {
   try {
-    const { bannerId } = req.params;
+    const { id } = req.params; // 👈 FIXED here
 
-    if (!bannerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Banner ID is required",
-      });
-    }
+    // Fetch coupon with details, only phone + name for users
+    const coupon = await Coupon.findById(id)
+      .populate("createdby", "name phone")
+      .populate("category", "name")
+      .populate("ownerId", "name phone")
 
-    const banner = await Banner.findById(bannerId)
-      .populate({
-        path: "ownerId",
-        select: "name email phone" // 👈 phone here
-      })
-      .populate({
-        path: "createdby",
-        select: "name email phone" // 👈 phone here also
-      })
-      .populate({
-        path: "promotion",
-        select: "title description ad_image"
-      })
-      .populate({
-        path: "category",
-        select: "name icon"
-      })
-      .lean();
-
-    if (!banner) {
+    if (!coupon) {
       return res.status(404).json({
         success: false,
-        message: "Banner not found",
+        message: "Coupon not found",
       });
     }
 
-    res.json({
+    res.status(200).json({
       success: true,
-      data: banner,
+      message: "Coupon fetched successfully",
+      data: coupon,
     });
-
   } catch (error) {
+    console.error("Error fetching coupon:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching banner details",
+      message: "Error fetching coupon",
       error: error.message,
     });
   }
 };
-
 
 
 

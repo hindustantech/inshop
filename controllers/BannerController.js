@@ -1259,7 +1259,8 @@ export const updateBannerExpiry = async (req, res) => {
 
 
 
-export const getBannerById = async (req, res) => {
+
+export const getById = async (req, res) => {
   try {
     const { bannerId } = req.params;
 
@@ -1270,7 +1271,24 @@ export const getBannerById = async (req, res) => {
       });
     }
 
-    const banner = await Banner.findById(bannerId).lean();
+    const banner = await Banner.findById(bannerId)
+      .populate({
+        path: "ownerId",
+        select: "name email phone" // 👈 phone here
+      })
+      .populate({
+        path: "createdby",
+        select: "name email phone" // 👈 phone here also
+      })
+      .populate({
+        path: "promotion",
+        select: "title description ad_image"
+      })
+      .populate({
+        path: "category",
+        select: "name icon"
+      })
+      .lean();
 
     if (!banner) {
       return res.status(404).json({
@@ -1283,6 +1301,7 @@ export const getBannerById = async (req, res) => {
       success: true,
       data: banner,
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -1291,6 +1310,8 @@ export const getBannerById = async (req, res) => {
     });
   }
 };
+
+
 
 // Update banner controller
 export const updateBanner = async (req, res) => {
