@@ -26,7 +26,7 @@ router.get('/getbanner', authMiddleware1, getUserNearestBanners);
 
 router.get("/banners/my", authMiddleware, getMyBanners);
 router.get("/banners/admin", authMiddleware, getAllBannersForAdmin);
-router.get("/getdeatils/:bannerId", getBannerById);
+router.get("/getdeatils/:bannerId",authMiddleware, getBannerById);
 router.patch("/updateBannerExpiry/:id", authMiddleware,checkPermission('banner.update'),updateBannerExpiry);
 
 export default router;
