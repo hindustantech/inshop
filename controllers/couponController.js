@@ -158,6 +158,120 @@ export const updateCouponByAdmin = async (req, res) => {
 };
 
 
+
+
+
+export const updateCouponFromAdmin = async (req, res) => {
+  try {
+    const couponId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(couponId)) {
+      return res.status(400).json({ success: false, message: 'Invalid coupon ID' });
+    }
+
+    const updates = { ...req.body };
+
+    // 1. Handle ownerId by phone number
+    if (updates.ownerPhone) {
+      const phone = String(updates.ownerPhone).trim();
+
+      if (!phone || phone.length < 10) {
+        return res.status(400).json({ success: false, message: 'Valid phone number required for owner' });
+      }
+
+      const user = await User.findOne({ phone });
+
+      if (!user) {
+        return res.status(404).json({ success: false, message: `User with phone ${phone} not found` });
+      }
+
+      // Set ownerId to found user's _id
+      updates.ownerId = user._id;
+      delete updates.ownerPhone; // clean up
+    }
+
+    // 2. Handle shope_location
+    if (updates.shope_location) {
+      try {
+        updates.shope_location = typeof updates.shope_location === 'string'
+          ? JSON.parse(updates.shope_location)
+          : updates.shope_location;
+      } catch (e) {
+        return res.status(400).json({ message: 'Invalid shope_location format' });
+      }
+    }
+
+    // 3. Handle Images → Cloudinary
+    if (req.files && req.files.length > 0) {
+      const results = await Promise.all(
+        req.files.map(file => uploadToCloudinary(file.buffer, 'coupons'))
+      );
+      updates.copuon_image = results.map(r => r.secure_url);
+    }
+
+    // 4. DISCOUNT: Save EXACTLY what user types
+    if (updates.hasOwnProperty('discountPercentage')) {
+      let input = updates.discountPercentage;
+      if (input === null || input === undefined) input = '';
+      input = String(input).trim();
+      updates.discountPercentage = input === '' ? '0' : input;
+    }
+
+    // 5. Handle Arrays safely
+    ['tag', 'categoryIds', 'is_spacial_copun_user'].forEach(field => {
+      if (updates[field] !== undefined) {
+        if (typeof updates[field] === 'string') {
+          try { updates[field] = JSON.parse(updates[field]); } catch { }
+        }
+        if (!Array.isArray(updates[field])) updates[field] = [];
+      }
+    });
+
+    if (updates.categoryIds) {
+      updates.category = updates.categoryIds;
+      delete updates.categoryIds;
+    }
+
+    // 6. PROTECTED FIELDS – Never allow update
+    const protectedFields = [
+      'currentDistributions', 'consumersId', 'creationDate',
+      'createdBy', 'createdby', 'promotion', '__v'
+    ];
+    protectedFields.forEach(f => delete updates[f]);
+
+    // 7. Final Update
+    const updatedCoupon = await Coupon.findByIdAndUpdate(
+      couponId,
+      { $set: updates },
+      { new: true, runValidators: true }
+    )
+      .select('-consumersId -__v -promotion')
+      .populate('category', 'name')
+      .populate('ownerId', 'name phone') // Show owner name & phone
+      .populate('is_spacial_copun_user', 'name phone referralCode')
+      .lean();
+
+    if (!updatedCoupon) {
+      return res.status(404).json({ success: false, message: 'Coupon not found' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Coupon updated successfully',
+      data: updatedCoupon
+    });
+
+  } catch (error) {
+    console.error('Update coupon error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
+
 // helper for image upload
 // export const createCoupon = async (req, res) => {
 //   try {
@@ -1381,35 +1495,55 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
 export const getById = async (req, res) => {
   try {
-    const { id } = req.params; // 👈 FIXED here
+    const { bannerId } = req.params;
 
-    // Fetch coupon with details, only phone + name for users
-    const coupon = await Coupon.findById(id)
-      .populate("createdby", "name phone")
-      .populate("category", "name")
-      .populate("ownerId", "name phone")
-
-    if (!coupon) {
-      return res.status(404).json({
+    if (!bannerId) {
+      return res.status(400).json({
         success: false,
-        message: "Coupon not found",
+        message: "Banner ID is required",
       });
     }
 
-    res.status(200).json({
+    const banner = await Banner.findById(bannerId)
+      .populate({
+        path: "ownerId",
+        select: "name email phone" // 👈 phone here
+      })
+      .populate({
+        path: "createdby",
+        select: "name email phone" // 👈 phone here also
+      })
+      .populate({
+        path: "promotion",
+        select: "title description ad_image"
+      })
+      .populate({
+        path: "category",
+        select: "name icon"
+      })
+      .lean();
+
+    if (!banner) {
+      return res.status(404).json({
+        success: false,
+        message: "Banner not found",
+      });
+    }
+
+    res.json({
       success: true,
-      message: "Coupon fetched successfully",
-      data: coupon,
+      data: banner,
     });
+
   } catch (error) {
-    console.error("Error fetching coupon:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching coupon",
+      message: "Error fetching banner details",
       error: error.message,
     });
   }
 };
+
 
 
 

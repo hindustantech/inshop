@@ -31,6 +31,7 @@ import paymentroute from './routes/paymentRoutes.js';
 import dashroute from './routes/Dashboard.js'
 import mall from './routes/MallRoute.js'
 import chunkuploadimage from './routes/uploadRoutes.js'
+import qrgenerater from './routes/qr.route.js'
 
 dotenv.config();
 connectDB();
@@ -79,6 +80,7 @@ app.use('/download', downloadRoutes);
 app.use('/api/send', sendnotification);
 app.use('/api/notification', notification);
 app.use('/api/banner', banner);
+app.use('/api/qrgenerater', qrgenerater);
 
 app.use('/api/PromotionalBanner', PromotionalBanner);
 app.use('/api', chunkuploadimage);
