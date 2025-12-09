@@ -1259,8 +1259,7 @@ export const updateBannerExpiry = async (req, res) => {
 
 
 
-
-export const getById = async (req, res) => {
+export const getBannerById = async (req, res) => {
   try {
     const { bannerId } = req.params;
 
@@ -1310,7 +1309,6 @@ export const getById = async (req, res) => {
     });
   }
 };
-
 
 
 // Update banner controller
