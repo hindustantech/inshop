@@ -1259,56 +1259,127 @@ export const updateBannerExpiry = async (req, res) => {
 
 
 
+// export const getBannerById = async (req, res) => {
+//   try {
+//     const { bannerId } = req.params;
+
+//     if (!bannerId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Banner ID is required",
+//       });
+//     }
+
+//     const banner = await Banner.findById(bannerId)
+//       .populate({
+//         path: "ownerId",
+//         select: "name email phone" // 👈 phone here
+//       })
+//       .populate({
+//         path: "createdby",
+//         select: "name email phone" // 👈 phone here also
+//       })
+//       .populate({
+//         path: "promotion",
+//         select: "title description ad_image"
+//       })
+//       .populate({
+//         path: "category",
+//         select: "name icon"
+//       })
+//       .lean();
+
+//     if (!banner) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Banner not found",
+//       });
+//     }
+
+//     res.json({
+//       success: true,
+//       data: banner,
+//     });
+
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching banner details",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
 export const getBannerById = async (req, res) => {
   try {
     const { bannerId } = req.params;
+    const userId = req.user._id; // assuming you have authentication middleware
 
     if (!bannerId) {
-      return res.status(400).json({
-        success: false,
-        message: "Banner ID is required",
-      });
+      return res.status(400).json({ success: false, message: "Banner ID is required" });
+    }
+
+    // Fetch the user location
+    const user = await User.findById(userId).lean();
+    if (!user || !user.latestLocation || !user.latestLocation.coordinates) {
+      return res.status(400).json({ success: false, message: "User location not available" });
     }
 
     const banner = await Banner.findById(bannerId)
-      .populate({
-        path: "ownerId",
-        select: "name email phone" // 👈 phone here
-      })
-      .populate({
-        path: "createdby",
-        select: "name email phone" // 👈 phone here also
-      })
-      .populate({
-        path: "promotion",
-        select: "title description ad_image"
-      })
-      .populate({
-        path: "category",
-        select: "name icon"
-      })
+      .populate({ path: "ownerId", select: "name email phone" })
+      .populate({ path: "createdby", select: "name email phone" })
+      // .populate({ path: "promotion", select: "title description ad_image" })
+      // .populate({ path: "category", select: "name " })
       .lean();
 
     if (!banner) {
-      return res.status(404).json({
-        success: false,
-        message: "Banner not found",
-      });
+      return res.status(404).json({ success: false, message: "Banner not found" });
     }
+
+    // Calculate distance using MongoDB $geoNear aggregation
+    const userLng = user.latestLocation.coordinates[0];
+    const userLat = user.latestLocation.coordinates[1];
+
+    const distanceInMeters = calculateDistance(
+      userLat,
+      userLng,
+      banner.location.coordinates[1],
+      banner.location.coordinates[0]
+    );
 
     res.json({
       success: true,
-      data: banner,
+      data: {
+        ...banner,
+        distanceInMeters,
+        distanceInKm: (distanceInMeters / 1000).toFixed(2)
+      },
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: "Error fetching banner details",
+      message: "Error fetching banner with distance",
       error: error.message,
     });
   }
 };
+
+// Haversine formula to calculate distance between two lat/lng points
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371000; // Earth radius in meters
+  const toRad = (deg) => (deg * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // distance in meters
+}
 
 
 // Update banner controller
