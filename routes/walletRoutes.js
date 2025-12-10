@@ -2,7 +2,7 @@ import express from "express";
 import authMiddleware from "../middlewares/authMiddleware.js";
 import { validateCouponMiddleware } from "../middlewares/couponValidation.js";
 import { getWalletSummary, getWalletTransactions } from "../controllers/walletController.js";
-import { createTopup } from "../controllers/topupController.js";
+import { createTopup,getPaymentStatus } from "../controllers/topupController.js";
 import CouponController from "../controllers/couponshopController.js";
 
 import { razorpayWebhookHandler } from "../controllers/webhookController.js";
@@ -17,6 +17,9 @@ router.get("/wallet/transactions", authMiddleware, getWalletTransactions);
 // Top-up routes
 router.post("/wallet/topup", authMiddleware, validateCouponMiddleware, createTopup);
 
+
+// In your router.js - Just add this ONE line:
+router.get("/wallet/topup/status/:orderId", authMiddleware, getPaymentStatus);
 // Coupon routes
 router.post("/coupons/validate", authMiddleware, CouponController.validateCoupon);
 router.get("/coupons/available", authMiddleware, CouponController.getAvailableCoupons);
