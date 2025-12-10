@@ -1,69 +1,21 @@
+// models/Wallet.js
 import mongoose from "mongoose";
+const { Schema } = mongoose;
 
-const transactionSchema = new mongoose.Schema({
-    type: {
-        type: String,
-        enum: ["credit", "debit"],
-        required: true,
+const walletSchema = new Schema(
+    {
+        userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true, unique: true },
+        currency: { type: String, default: "INR" },
+        balance: { type: Number, default: 0 }, // stored in paise
+        reserved: { type: Number, default: 0 },
+        status: { type: String, enum: ["active", "frozen", "closed"], default: "active" },
+        version: { type: Number, default: 0 }, // OCC for concurrency
+        lastTransactionAt: { type: Date },
+        metadata: Schema.Types.Mixed,
     },
-    amount: {
-        type: Number,
-        required: true,
-    },
-    description: {
-        type: String,
-        default: "",
-    },
-    orderId: {
-        type: String,
-        required: true,
-    },
-    transactionId: {
-        type: String,
-        unique: true, // prevents duplicate credit/debit
-        sparse: true, // allows null initially
-    },
-    status: {
-        type: String,
-        enum: ["pending", "success", "failed"],
-        default: "pending",
-    },
-    meta: {
-        // optional: extra logs, e.g., Razorpay response or error details
-        type: Object,
-        default: {},
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now,
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now,
-    },
-});
+    { timestamps: true }
+);
 
-const walletSchema = new mongoose.Schema({
-    userId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
-        index: true,
-    },
-    balance: {
-        type: Number,
-        default: 0,
-    },
-    transactions: [transactionSchema],
-    lastUpdated: {
-        type: Date,
-        default: Date.now,
-    },
-});
-
-walletSchema.pre("save", function (next) {
-    this.lastUpdated = new Date();
-    next();
-});
-
-export default mongoose.model("Wallet", walletSchema);
+walletSchema.index({ userId: 1 });
+walletSchema.set("versionKey", "version");
+export default mongoose.models.Wallet || mongoose.model("Wallet", walletSchema);

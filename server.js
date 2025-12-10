@@ -32,6 +32,7 @@ import dashroute from './routes/Dashboard.js'
 import mall from './routes/MallRoute.js'
 import chunkuploadimage from './routes/uploadRoutes.js'
 import qrgenerater from './routes/qr.route.js'
+import wallet from './routes/walletRoutes.js'
 
 dotenv.config();
 connectDB();
@@ -94,6 +95,7 @@ app.use('/api/referal', Referal);
 app.use('/api/mall', mall);
 
 app.use('/api/dashroute', dashroute);
+app.use('/api/wallet', wallet);
 
 // payment route
 app.use('/api/paymentroute', paymentroute);
