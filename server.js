@@ -33,13 +33,20 @@ import mall from './routes/MallRoute.js'
 import chunkuploadimage from './routes/uploadRoutes.js'
 import qrgenerater from './routes/qr.route.js'
 import wallet from './routes/walletRoutes.js'
-
+import { razorpayWebhookHandler } from './controllers/webhookController.js';
+import { rawBodyMiddleware } from './middlewares/rawBody.js'
 dotenv.config();
 connectDB();
 
 const app = express();
 
 app.set('view engine', 'ejs');
+
+app.post(
+  "/api/wallet/webhook/razorpay",
+  rawBodyMiddleware,
+  razorpayWebhookHandler
+);
 app.use(express.json({ limit: "50mb" }));          // For JSON requests
 app.use(express.urlencoded({ limit: "50mb", extended: true })); // For 
 

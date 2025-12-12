@@ -373,3 +373,33 @@ export async function storeAndProcessWebhook({ rawBody, body, signature }) {
     throw err;
   }
 }
+
+
+export function verifyManualPaymentSignature({
+  razorpay_order_id,
+  razorpay_payment_id,
+  razorpay_signature
+}) {
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    throw new Error("Missing required Razorpay parameters");
+  }
+
+  const secret = process.env.RAZORPAY_API_SECRET;
+  const payload = `${razorpay_order_id}|${razorpay_payment_id}`;
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(payload)
+    .digest("hex");
+
+  const isValid = expectedSignature === razorpay_signature;
+
+  console.log("🔍 Manual verification:", {
+    order_id: razorpay_order_id,
+    payment_id: razorpay_payment_id,
+    expectedSignature,
+    receivedSignature: razorpay_signature,
+    valid: isValid,
+  });
+
+  return isValid;
+}
