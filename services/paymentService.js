@@ -16,17 +16,26 @@ export const razor = new Razorpay({
 });
 
 
+// utils/verifyRazorpaySignature.js
+
 export function verifyRazorpaySignature(rawBody, signature) {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET; // ✅ never fall back to API secret
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET; // ✅ strictly webhook secret only
+
   if (!secret) {
-    console.error("❌ Missing RAZORPAY_WEBHOOK_SECRET in .env file");
+    console.error("❌ Missing RAZORPAY_WEBHOOK_SECRET in environment");
+    return false;
+  }
+
+  if (!rawBody || typeof rawBody !== "string") {
+    console.error("❌ Invalid rawBody — must be unmodified string");
     return false;
   }
 
   try {
+    // Razorpay uses HMAC-SHA256(rawBody, webhook_secret)
     const expected = crypto
       .createHmac("sha256", secret)
-      .update(rawBody, "utf8")   // ✅ ensure UTF-8 encoding
+      .update(rawBody, "utf8") // ✅ ensure identical encoding
       .digest("hex");
 
     const isValid = expected === signature;
@@ -45,6 +54,7 @@ export function verifyRazorpaySignature(rawBody, signature) {
     return false;
   }
 }
+
 
 export async function createTopupOrder({
   userId,
