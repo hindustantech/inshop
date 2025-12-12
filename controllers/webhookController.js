@@ -2,28 +2,31 @@
 import { storeAndProcessWebhook } from "../services/paymentService.js";
 import { verifyManualPaymentSignature, processSuccessfulPayment } from "../services/paymentService.js";
 
-export async function razorpayWebhookHandler(req, res, next) {
-    console.log("razorpayWebhookHandler Enter")
+export async function razorpayWebhookHandler(req, res) {
+    console.log("⚡ razorpayWebhookHandler Enter");
+    console.log("Headers:", req.headers);
+    console.log("Raw body length:", req.rawBody ? req.rawBody.length : "❌ Missing");
+
     try {
-        const signature =
-            req.headers["x-razorpay-signature"] ||
-            req.headers["x-razorpay-signature".toLowerCase()];
+        const signature = req.headers["x-razorpay-signature"];
+        if (!req.rawBody) {
+            throw new Error("rawBody missing — express.json() might have consumed it!");
+        }
 
         await storeAndProcessWebhook({
             rawBody: req.rawBody,
             body: req.body,
             signature,
         });
-        console.log("Success");
 
-
+        console.log("✅ Webhook processed successfully");
         return res.status(200).json({ status: "ok" });
     } catch (err) {
-        // Webhook endpoints usually just log and return 200/400
-        console.error("Webhook error:", err.message);
+        console.error("❌ Webhook error:", err.message);
         return res.status(400).json({ status: "error" });
     }
 }
+
 
 export async function verifyPaymentController(req, res) {
     try {
