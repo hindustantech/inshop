@@ -17,9 +17,33 @@ export const razor = new Razorpay({
 
 
 export function verifyRazorpaySignature(rawBody, signature) {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_API_SECRET;
-  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-  return expected === signature;
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET; // ✅ never fall back to API secret
+  if (!secret) {
+    console.error("❌ Missing RAZORPAY_WEBHOOK_SECRET in .env file");
+    return false;
+  }
+
+  try {
+    const expected = crypto
+      .createHmac("sha256", secret)
+      .update(rawBody, "utf8")   // ✅ ensure UTF-8 encoding
+      .digest("hex");
+
+    const isValid = expected === signature;
+
+    if (!isValid) {
+      console.error("❌ Signature mismatch");
+      console.error("Expected:", expected);
+      console.error("Received:", signature);
+    } else {
+      console.log("✅ Razorpay webhook signature verified");
+    }
+
+    return isValid;
+  } catch (err) {
+    console.error("❌ Signature verification failed:", err.message);
+    return false;
+  }
 }
 
 export async function createTopupOrder({
