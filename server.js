@@ -41,7 +41,8 @@ connectDB();
 const app = express();
 
 app.set('view engine', 'ejs');
-
+// Configure CORS (Allow all origins by default)
+app.use(cors());
 app.post(
   "/api/wallet/webhook/razorpay",
   rawBodyMiddleware,
@@ -50,8 +51,7 @@ app.post(
 app.use(express.json({ limit: "50mb" }));          // For JSON requests
 app.use(express.urlencoded({ limit: "50mb", extended: true })); // For 
 
-// Configure CORS (Allow all origins by default)
-app.use(cors());
+
 
 // Test route
 // ---------------------------

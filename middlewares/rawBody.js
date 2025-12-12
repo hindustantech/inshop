@@ -1,33 +1,33 @@
-// middleware/rawBody.js
+// middlewares/rawBody.js
 export function rawBodyMiddleware(req, res, next) {
-    // Only apply for Razorpay webhook route or JSON content-type
-    if (
-        req.originalUrl.includes("/api/payment/webhook") &&
-        req.headers["content-type"] === "application/json"
-    ) {
-        let data = "";
+  // Apply ONLY to Razorpay webhooks
+  if (
+    req.originalUrl.includes("/api/wallet/webhook/razorpay") &&
+    req.method === "POST"
+  ) {
+    let data = "";
+    req.setEncoding("utf8");
 
-        req.setEncoding("utf8");
+    req.on("data", chunk => {
+      data += chunk;
+    });
 
-        req.on("data", chunk => {
-            data += chunk;
-        });
+    req.on("end", () => {
+      // Save unparsed body string for signature verification
+      req.rawBody = data;
 
-        req.on("end", () => {
-            req.rawBody = data;
+      try {
+        // Also parse JSON for later use
+        req.body = JSON.parse(data || "{}");
+      } catch (err) {
+        console.error("⚠️ Razorpay Webhook JSON parse error:", err.message);
+        req.body = {};
+      }
 
-            try {
-                req.body = JSON.parse(data || "{}");
-            } catch (err) {
-                console.error("⚠️ Webhook JSON parse error:", err.message);
-                req.body = {};
-            }
-
-            next();
-        });
-    } else {
-        // For all other routes, skip this (important!)
-        next();
-    }
+      next();
+    });
+  } else {
+    // Skip for all other routes
+    next();
+  }
 }
-
