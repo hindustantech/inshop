@@ -59,19 +59,7 @@ app.get('/', (req, res) => {
   res.send('inshop is Running Smoothly!');
 });
 
-// app.get('/', (req, res) => {
-//   const filePath = path.resolve('public/index.html');
-//   res.sendFile(filePath);
-// });
-// app.get('/home', (req, res) => {
-//   const filePath = path.resolve('public/index.html'); // Adjust path if necessary
-//   res.sendFile(filePath);
-// });
-// app.get('/reports', (req, res) => {
-//   const filePath = path.resolve('public/reports.html'); // Adjust path if necessary
-//   res.sendFile(filePath);
-// });
-// AdminJS setup
+
 
 app.use('/admin', adminRouter);
 app.use('/api/usermanagement', usermanagement);
