@@ -10,8 +10,8 @@ export async function getWalletSummary(req, res, next) {
       success: true,
       data: {
         walletId: wallet._id,
-        balance: wallet.balance / 100,
-        reserved: wallet.reserved / 100,
+        balance: wallet.balance ,
+        reserved: wallet.reserved ,
         currency: wallet.currency,
         status: wallet.status,
         lastTransactionAt: wallet.lastTransactionAt,
@@ -44,9 +44,9 @@ export async function getWalletTransactions(req, res, next) {
       success: true,
       data: txs.map(tx => ({
         ...tx,
-        amount: tx.amount / 100,
-        balanceBefore: tx.balanceBefore / 100,
-        balanceAfter: tx.balanceAfter / 100
+        amount: tx.amount,
+        balanceBefore: tx.balanceBefore ,
+        balanceAfter: tx.balanceAfter
       })),
       pagination: {
         total,
