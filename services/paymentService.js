@@ -312,15 +312,17 @@ export async function processSuccessfulPayment({
         { session }
       );
 
+      const expiresAt = plan.calculateExpiry();
+
       await UserPlan.create(
         [{
           userId: topup.userId,
           planId: plan._id,
           status: "active",
           startedAt: new Date(),
-          expiresAt: plan.calculateExpiry(),
+          expiresAt: expiresAt || null,
           couponsAllowed: plan.couponsIncluded,
-          couponsUsedCount: 0,
+          couponsUsed: 0,
           metadata: {
             topupId: topup._id,
             paymentId: razorpayPaymentId,
@@ -328,6 +330,7 @@ export async function processSuccessfulPayment({
         }],
         { session }
       );
+
     }
 
     /* ===== Finalize ===== */

@@ -92,10 +92,25 @@ planSchema.virtual('formattedValidity').get(function () {
 
 // Method to calculate expiry date
 planSchema.methods.calculateExpiry = function (fromDate = new Date()) {
-    if (this.validityDays === 0) return null; // Never expires
+    // Lifetime plan
+    if (
+        this.validityDaysCoupons === null ||
+        this.validityDaysCoupons === undefined
+    ) {
+        return null;
+    }
+
+    if (typeof this.validityDaysCoupons !== "number") {
+        throw new Error("Invalid plan validityDaysCoupons");
+    }
 
     const expiryDate = new Date(fromDate);
-    expiryDate.setDate(expiryDate.getDate() + this.validityDays);
+    expiryDate.setDate(expiryDate.getDate() + this.validityDaysCoupons);
+
+    if (isNaN(expiryDate.getTime())) {
+        throw new Error("Calculated expiry date is invalid");
+    }
+
     return expiryDate;
 };
 
