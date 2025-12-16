@@ -9,9 +9,13 @@ const couponSchema = new mongoose.Schema({
     type: String,
     require: true,
   },
-  inmortal:{
-    type:Boolean,
-    default:false,
+  planId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Plan',
+  },
+  inmortal: {
+    type: Boolean,
+    default: false,
 
   },
   createdby: {
@@ -145,7 +149,7 @@ const couponSchema = new mongoose.Schema({
     {
       type: mongoose.Schema.Types.ObjectId, // references id from another table
       ref: 'User', // assuming you have an 'Owner' model or similar
-    
+
     }
   ],
 
@@ -159,7 +163,7 @@ const couponSchema = new mongoose.Schema({
     require: true,
   },
 
- 
+
 });
 
 couponSchema.index({ shope_location: '2dsphere' });

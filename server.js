@@ -35,6 +35,7 @@ import qrgenerater from './routes/qr.route.js'
 import wallet from './routes/walletRoutes.js'
 import { razorpayWebhookHandler } from './controllers/webhookController.js';
 import { rawBodyMiddleware } from './middlewares/rawBody.js'
+import comment  from './routes/comment.route.js'
 dotenv.config();
 connectDB();
 
@@ -94,6 +95,7 @@ app.use('/api/wallet', wallet);
 
 // payment route
 app.use('/api/paymentroute', paymentroute);
+app.use('/api/comment', comment);
 
 app.use('/api/agency', agencyDashboardRoutes);
 app.use('/api/permissionRoutes', permissionRoutes);
