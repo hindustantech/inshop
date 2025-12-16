@@ -4,6 +4,7 @@ import Wallet from "../models/Wallet.js";
 import Transaction from "../models/Transaction.js";
 import { AppError } from "../utils/AppError.js";
 
+
 export async function ensureWallet(userId, session = null) {
     let wallet = await Wallet.findOne({ userId }).session(session || null);
 

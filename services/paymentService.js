@@ -9,6 +9,7 @@ import RazorpayWebhook from "../models/RazorpayWebhook.js";
 import { CouponService } from "./couponService.js";
 import { ensureWallet, applyWalletTransaction } from "./walletService.js";
 import { AppError, ValidationError, PaymentError } from "../utils/AppError.js";
+import UserPlan from "../models/UserPlan.js";
 
 export const razor = new Razorpay({
   key_id: process.env.RAZORPAY_API_KEY,
@@ -17,7 +18,6 @@ export const razor = new Razorpay({
 
 
 // utils/verifyRazorpaySignature.js
-
 export function verifyRazorpaySignature(rawBody, signature) {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET; // ✅ strictly webhook secret only
 
@@ -101,10 +101,10 @@ export async function createTopupOrder({
     console.log("✅ Plan fetched:", {
       planId: plan._id,
       price: plan.price,
-      creditAmount: plan.creditAmount
+      baseAmountPaise: plan.price,// stored in paise
     });
     baseAmountPaise = plan.price;
-    baseCreditAmountPaise = plan.creditAmount;
+    baseCreditAmountPaise = plan.creditAmount ?? plan.price;
     currency = plan.currency || "INR";
   } else {
     console.log(`💰 Manual amount mode: INR ${amountINR}`);
@@ -264,11 +264,8 @@ export async function processSuccessfulPayment({
   razorpayPaymentId,
   rawPayment
 }) {
-  if (!razorpayOrderId || !razorpayPaymentId) {
-    throw new PaymentError("Missing payment identifiers");
-  }
-
   const session = await mongoose.startSession();
+
   try {
     session.startTransaction();
 
@@ -276,47 +273,16 @@ export async function processSuccessfulPayment({
       .findOne({ providerOrderId: razorpayOrderId })
       .session(session);
 
-    if (!topup) {
-      throw new PaymentError("TopUpAttempt not found for this order", {
-        razorpayOrderId,
-      });
-    }
+    if (!topup) throw new Error("Topup not found");
 
     if (topup.status === "completed") {
       await session.commitTransaction();
-      return { topup, alreadyProcessed: true };
+      return { alreadyProcessed: true };
     }
 
-    // Check for duplicate transaction
-    const existingTx = await mongoose.model("Transaction").findOne({
-      "external.paymentId": razorpayPaymentId,
-    }).session(session);
-
-    if (existingTx) {
-      if (topup.status !== "completed") {
-        topup.status = "completed";
-        topup.providerPaymentId = razorpayPaymentId;
-        topup.rawResponse = rawPayment || topup.rawResponse;
-        await topup.save({ session });
-      }
-
-      // Mark coupon as redeemed if exists
-      if (topup.couponUsageId) {
-        await CouponService.markCouponAsRedeemed({
-          couponUsageId: topup.couponUsageId,
-          topUpAttemptId: topup._id,
-          session
-        });
-      }
-
-      await session.commitTransaction();
-      return { topup, transaction: existingTx, alreadyProcessed: true };
-    }
-
+    // ===== Wallet credit =====
     const wallet = await Wallet.findById(topup.walletId).session(session);
-    if (!wallet) throw new AppError("Wallet not found for topup", 500);
 
-    // Apply wallet transaction
     const tx = await applyWalletTransaction({
       session,
       wallet,
@@ -329,26 +295,46 @@ export async function processSuccessfulPayment({
         provider: "razorpay",
         paymentId: razorpayPaymentId,
         orderId: razorpayOrderId,
-        raw: rawPayment,
       },
-      idempotencyKey: topup.idempotencyKey,
       referenceId: topup._id.toString(),
-      note: `Wallet top-up via Razorpay${topup.couponCode ? ` with coupon ${topup.couponCode}` : ''}`,
-      metadata: {
-        source: "razorpay_webhook",
-        couponCode: topup.couponCode,
-        discountAmount: topup.discountAmount,
-        bonusAmount: topup.bonusAmount
-      },
     });
 
-    // Update top-up status
+    /* ===========================
+       ✅ ACTIVATE PLAN HERE
+    ============================ */
+    if (topup.planId) {
+      const plan = await Plan.findById(topup.planId).session(session);
+      if (!plan) throw new Error("Plan not found");
+
+      await UserPlan.updateMany(
+        { userId: topup.userId, status: "active" },
+        { status: "expired" },
+        { session }
+      );
+
+      await UserPlan.create(
+        [{
+          userId: topup.userId,
+          planId: plan._id,
+          status: "active",
+          startedAt: new Date(),
+          expiresAt: plan.calculateExpiry(),
+          couponsAllowed: plan.couponsIncluded,
+          couponsUsedCount: 0,
+          metadata: {
+            topupId: topup._id,
+            paymentId: razorpayPaymentId,
+          }
+        }],
+        { session }
+      );
+    }
+
+    /* ===== Finalize ===== */
     topup.status = "completed";
     topup.providerPaymentId = razorpayPaymentId;
-    topup.rawResponse = rawPayment || topup.rawResponse;
     await topup.save({ session });
 
-    // Mark coupon as redeemed if exists
     if (topup.couponUsageId) {
       await CouponService.markCouponAsRedeemed({
         couponUsageId: topup.couponUsageId,
@@ -358,7 +344,8 @@ export async function processSuccessfulPayment({
     }
 
     await session.commitTransaction();
-    return { topup, transaction: tx, alreadyProcessed: false };
+    return { transaction: tx };
+
   } catch (err) {
     await session.abortTransaction();
     throw err;

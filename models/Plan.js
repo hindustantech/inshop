@@ -28,32 +28,33 @@ const planSchema = new Schema(
             type: Boolean,
             default: true
         },
-        
+
         // Number of coupons user can create with this plan
         couponsIncluded: {
             type: Number,
             default: 0,
             min: 0
         },
-        
+
         // Validity period in days (0 = lifetime/unlimited)
-        validityDays: {
+        validityDaysCoupons: {
             type: Number,
-            default: 0, // 0 means lifetime validity
-            min: 0
+            default: null,   // null = lifetime
+            min: 1           // 0 is NOT allowed
         },
-        
+
+
         // Specific dates for time-bound plans
         validFrom: Date,
         validTill: Date,
-        
+
         // Validity period type (optional, for display purposes)
         validityType: {
             type: String,
             enum: ["days", "months", "years", "lifetime"],
             default: "days"
         },
-        
+
         eligibility: {
             type: String,
             enum: ["all", "new_user", "enterprise", "premium"],
@@ -75,9 +76,9 @@ planSchema.index({ validityDays: 1 });
 planSchema.index({ couponsIncluded: 1 });
 
 // Virtual for formatted validity display
-planSchema.virtual('formattedValidity').get(function() {
+planSchema.virtual('formattedValidity').get(function () {
     if (this.validityDays === 0) return 'Lifetime';
-    
+
     if (this.validityDays < 30) {
         return `${this.validityDays} day${this.validityDays > 1 ? 's' : ''}`;
     } else if (this.validityDays < 365) {
@@ -90,9 +91,9 @@ planSchema.virtual('formattedValidity').get(function() {
 });
 
 // Method to calculate expiry date
-planSchema.methods.calculateExpiry = function(fromDate = new Date()) {
+planSchema.methods.calculateExpiry = function (fromDate = new Date()) {
     if (this.validityDays === 0) return null; // Never expires
-    
+
     const expiryDate = new Date(fromDate);
     expiryDate.setDate(expiryDate.getDate() + this.validityDays);
     return expiryDate;

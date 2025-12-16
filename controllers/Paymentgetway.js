@@ -3,7 +3,8 @@ import crypto from "crypto";
 import Wallet from "../models/Wallet.js";
 import PaymentLog from "../models/PaymentLog.js";
 import Transaction from "../models/Transaction.js";
-
+import Plan from "../models/Plan.js";
+import UserPlan from "../models/UserPlan.js";
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_API_KEY,
     key_secret: process.env.RAZORPAY_API_SECRET,
@@ -69,150 +70,165 @@ export const createOrder = async (req, res) => {
 /*                            2️⃣ VERIFY PAYMENT                              */
 /* -------------------------------------------------------------------------- */
 export const verifyPayment = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const userId = req.user?._id;
         const {
             razorpay_order_id,
             razorpay_payment_id,
             razorpay_signature,
-            amount,
         } = req.body;
 
-        if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !userId || !amount) {
-            return res.status(400).json({
-                success: false,
-                message: "Missing payment or user details",
-            });
+        if (!userId || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+            return res.status(400).json({ message: "Missing payment details" });
         }
 
-        // ✅ Step 1: Validate Signature
-        const generatedSignature = crypto
+        // 🔐 Signature check
+        const expectedSignature = crypto
             .createHmac("sha256", process.env.RAZORPAY_API_SECRET)
             .update(`${razorpay_order_id}|${razorpay_payment_id}`)
             .digest("hex");
 
-        if (generatedSignature !== razorpay_signature) {
-            await PaymentLog.create({
-                userId,
-                orderId: razorpay_order_id,
-                paymentId: razorpay_payment_id,
-                action: "verify_payment",
-                status: "failed",
-                message: "Invalid signature during verification",
-            });
-
-            return res.status(400).json({
-                success: false,
-                message: "Invalid payment signature.",
-            });
+        if (expectedSignature !== razorpay_signature) {
+            throw new Error("Invalid Razorpay signature");
         }
 
-        // ✅ Step 2: Ensure Wallet Exists
-        const wallet = await Wallet.findOneAndUpdate(
-            { userId },
-            {},
-            { new: true, upsert: true }
-        );
-
-        // ✅ Step 3: Check for duplicate transaction (idempotency)
-        const existingTx = await Transaction.findOne({
-            userId,
+        // 🔁 Idempotency
+        const alreadyDone = await Transaction.findOne({
             "external.paymentId": razorpay_payment_id,
             status: "success",
         });
 
-        if (existingTx) {
-            await PaymentLog.create({
-                userId,
-                orderId: razorpay_order_id,
-                paymentId: razorpay_payment_id,
-                action: "verify_payment",
-                status: "success",
-                message: "Duplicate payment ignored (already credited)",
-            });
-
-            return res.status(409).json({
-                success: false,
-                message: "Payment already processed.",
-            });
+        if (alreadyDone) {
+            return res.status(409).json({ message: "Payment already processed" });
         }
 
-        // ✅ Step 4: Create or Update Pending Transaction
-        let transaction = await Transaction.findOneAndUpdate(
-            {
-                userId,
-                "external.orderId": razorpay_order_id,
-            },
-            {
-                $set: {
+        // 🔎 Fetch order details from Razorpay
+        const order = await razorpay.orders.fetch(razorpay_order_id);
+        const { type, planId } = order.notes;
+        const amount = order.amount; // paise
+
+        // 💼 Wallet
+        const wallet = await Wallet.findOneAndUpdate(
+            { userId },
+            {},
+            { new: true, upsert: true, session }
+        );
+
+        let transaction;
+
+        // ==========================
+        // 🟢 WALLET TOP-UP
+        // ==========================
+        if (type === "wallet_topup") {
+            transaction = await Transaction.create(
+                [{
                     walletId: wallet._id,
+                    userId,
                     type: "topup",
                     direction: "credit",
                     amount,
                     balanceBefore: wallet.balance,
                     balanceAfter: wallet.balance + amount,
-                    currency: wallet.currency || "INR",
-                    status: "pending",
+                    status: "success",
                     external: {
                         provider: "razorpay",
-                        paymentId: razorpay_payment_id,
                         orderId: razorpay_order_id,
+                        paymentId: razorpay_payment_id,
                     },
-                    note: "Wallet top-up via Razorpay",
-                },
-            },
-            { new: true, upsert: true }
+                }],
+                { session }
+            );
+
+            wallet.balance += amount;
+            wallet.lastTransactionAt = new Date();
+            await wallet.save({ session });
+        }
+
+        // ==========================
+        // 🔵 PLAN PURCHASE
+        // ==========================
+        if (type === "plan_purchase") {
+            const plan = await Plan.findById(planId).session(session);
+            if (!plan) throw new Error("Plan not found");
+
+            transaction = await Transaction.create(
+                [{
+                    walletId: wallet._id,
+                    userId,
+                    type: "payment",
+                    direction: "debit",
+                    amount,
+                    balanceBefore: wallet.balance,
+                    balanceAfter: wallet.balance,
+                    status: "success",
+                    external: {
+                        provider: "razorpay",
+                        orderId: razorpay_order_id,
+                        paymentId: razorpay_payment_id,
+                    },
+                    note: `Plan purchased: ${plan.name}`,
+                }],
+                { session }
+            );
+
+            // ⏳ Activate Plan
+            const expiresAt = plan.validityDaysCoupons
+                ? new Date(Date.now() + plan.validityDaysCoupons * 86400000)
+                : null;
+
+            await UserPlan.create(
+                [{
+                    userId,
+                    planId: plan._id,
+                    status: "active",
+                    couponsAllowed: plan.couponsIncluded,
+                    couponsUsed: 0,
+                    startedAt: new Date(),
+                    expiresAt,
+                }],
+                { session }
+            );
+        }
+
+        // 🧾 Log
+        await PaymentLog.create(
+            [{
+                userId,
+                orderId: razorpay_order_id,
+                paymentId: razorpay_payment_id,
+                action: "verify_payment",
+                status: "success",
+            }],
+            { session }
         );
 
-        // ✅ Step 5: Update wallet balance and transaction to success
-        wallet.balance += amount;
-        wallet.lastTransactionAt = new Date();
-        await wallet.save();
+        await session.commitTransaction();
 
-        transaction.status = "success";
-        transaction.balanceAfter = wallet.balance;
-        await transaction.save();
-
-        // ✅ Step 6: Log success
-        await PaymentLog.create({
-            userId,
-            orderId: razorpay_order_id,
-            paymentId: razorpay_payment_id,
-            action: "verify_payment",
-            status: "success",
-            message: "Payment verified and wallet credited successfully",
-            details: { creditedAmount: amount },
-        });
-
-        return res.status(200).json({
+        res.status(200).json({
             success: true,
-            message: "Payment verified successfully. Wallet updated.",
-            wallet,
+            message: "Payment verified successfully",
         });
+
     } catch (error) {
-        console.error("❌ [Verify Payment Error]:", error);
+        await session.abortTransaction();
+
+        console.error("Verify Payment Error:", error);
 
         await PaymentLog.create({
-            userId: req.user?._id || req.body?.userId,
+            userId: req.user?._id,
             orderId: req.body?.razorpay_order_id,
             paymentId: req.body?.razorpay_payment_id,
             action: "rollback",
             status: "failed",
-            message: "Error during verification, transaction rolled back",
-            details: { error: error.message },
+            message: error.message,
         });
 
-        await Transaction.updateOne(
-            {
-                userId: req.user?._id || req.body?.userId,
-                "external.orderId": req.body?.razorpay_order_id,
-            },
-            { $set: { status: "failed", metadata: { error: error.message } } }
-        );
-
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error during payment verification",
-        });
+        res.status(500).json({ message: error.message });
+    } finally {
+        session.endSession();
     }
 };
+
