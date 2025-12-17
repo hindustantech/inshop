@@ -1,10 +1,17 @@
-// const mongoose = require('mongoose');
+
 import mongoose from 'mongoose';
 const couponSchema = new mongoose.Schema({
   title: {
     type: String,
     required: true
   },
+  status: {
+    type: String,
+    enum: ["draft", "published", "expired", "disabled"],
+    default: "draft",
+    index: true,
+  },
+
   shop_name: {
     type: String,
     require: true,
@@ -65,10 +72,20 @@ const couponSchema = new mongoose.Schema({
     ref: 'User', // assuming you have an 'Owner' model or similar
     required: true
   },
+  validFrom: {
+    type: Date,
+  },
+
+  validityDays: {
+    type: Number,
+    default: 15,
+    min: 1,
+  },
+
   validTill: {
     type: Date,
-    required: true
   },
+
   creationDate: {
     type: Date,
     default: Date.now

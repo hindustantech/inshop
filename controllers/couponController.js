@@ -277,6 +277,8 @@ export const updateCouponFromAdmin = async (req, res) => {
 
 
 
+
+
 // export const createCoupon = async (req, res) => {
 //   try {
 //     const {
@@ -289,7 +291,6 @@ export const updateCouponFromAdmin = async (req, res) => {
 //       categoryIds,
 //       discountPercentage,
 //       style,
-//       // maxDistributions = 0,
 //       fromTime,
 //       toTime,
 //       isFullDay = false,
@@ -301,12 +302,13 @@ export const updateCouponFromAdmin = async (req, res) => {
 //     } = req.body;
 
 //     const userId = req.user?._id;
-
 //     if (!userId) {
 //       return res.status(401).json({ message: "Unauthorized: user missing" });
 //     }
 
-//     // 1️⃣ Fetch ACTIVE plan only
+//     // ===============================
+//     // 1️⃣ Fetch ACTIVE User Plan
+//     // ===============================
 //     const userPlan = await UserPlan.findOne({
 //       userId,
 //       status: "active",
@@ -319,36 +321,41 @@ export const updateCouponFromAdmin = async (req, res) => {
 //       });
 //     }
 
-
-
-//     const plan = await Plan.findById(userPlan.planId);
+//     const plan = userPlan.planId;
 //     if (!plan) {
 //       return res.status(500).json({
 //         success: false,
-//         message: "Subscription plan not found. Please contact support.",
+//         message: "Subscription plan data is corrupted. Please contact support.",
 //       });
 //     }
 
-//     const validTill = plan.validityDaysCoupons;
 
-//     const { createdBy, ownerId, partnerId } = req.ownership || {};
 
-//     // ------------------ Validations ------------------
-//     // Parse discountPercentage
-//     const parsedDiscount = parseFloat(discountPercentage);
-//     if (parsedDiscount < 0 || parsedDiscount > 100) {
-//       return res.status(400).json({ message: "discountPercentage must be between 0 and 100" });
+//     // ===============================
+//     // 3️⃣ Calculate Coupon Expiry
+//     // ===============================
+//     let validTill = null;
+//     if (plan.validityDaysCoupons) {
+//       validTill = new Date();
+//       validTill.setDate(validTill.getDate() + plan.validityDaysCoupons);
 //     }
 
-//     // Validate shope_location
+//     const { createdBy, ownerId, partnerId } = req.ownership || {};
+//     const finalOwnerId = ownerId || partnerId || createdBy;
+
+
+
+//     // Location validation
 //     let location = null;
 //     if (!shope_location) {
 //       return res.status(400).json({ message: "shope_location is required" });
 //     }
+
 //     try {
-//       const parsedLocation = typeof shope_location === "string"
-//         ? JSON.parse(shope_location)
-//         : shope_location;
+//       const parsedLocation =
+//         typeof shope_location === "string"
+//           ? JSON.parse(shope_location)
+//           : shope_location;
 
 //       if (
 //         parsedLocation.type !== "Point" ||
@@ -359,103 +366,106 @@ export const updateCouponFromAdmin = async (req, res) => {
 //         !parsedLocation.address?.trim()
 //       ) {
 //         return res.status(400).json({
-//           message: 'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat], address }',
+//           message:
+//             'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat], address }',
 //         });
 //       }
+
 //       location = parsedLocation;
-//     } catch (error) {
-//       return res.status(400).json({ message: "Invalid shope_location JSON", error: error.message });
+//     } catch (err) {
+//       return res.status(400).json({
+//         message: "Invalid shope_location JSON",
+//       });
 //     }
 
-//     // Time check
 //     if (!isFullDay && (!fromTime || !toTime)) {
-//       return res.status(400).json({ message: "fromTime and toTime required when isFullDay is false" });
+//       return res.status(400).json({
+//         message: "fromTime and toTime are required when isFullDay is false",
+//       });
 //     }
 
-//     // Validate tag
 //     if (!tag || !Array.isArray(tag) || tag.length === 0) {
-//       return res.status(400).json({ message: "At least one tag is required" });
+//       return res.status(400).json({
+//         message: "At least one tag is required",
+//       });
 //     }
 
-//     // Validate validTill
-//     if (new Date(validTill) <= new Date() || isNaN(new Date(validTill).getTime())) {
-//       return res.status(400).json({ message: "validTill must be a valid future date" });
-//     }
-
+//     // ===============================
+//     // 5️⃣ Categories
+//     // ===============================
 //     let parsedCategoryIds = categoryIds;
 //     if (typeof categoryIds === "string") {
-//       try {
-//         parsedCategoryIds = JSON.parse(categoryIds);
-//       } catch (error) {
-//         return res.status(400).json({ message: "Invalid categoryIds format" });
-//       }
+//       parsedCategoryIds = JSON.parse(categoryIds);
 //     }
 
 //     if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
-//       return res.status(400).json({ message: "categoryIds must be a non-empty array" });
+//       return res.status(400).json({
+//         message: "categoryIds must be a non-empty array",
+//       });
 //     }
 
-//     const invalidIds = parsedCategoryIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+//     const invalidIds = parsedCategoryIds.filter(
+//       (id) => !mongoose.Types.ObjectId.isValid(id)
+//     );
 //     if (invalidIds.length > 0) {
-//       return res.status(400).json({ message: `Invalid category IDs: ${invalidIds.join(", ")}` });
+//       return res.status(400).json({
+//         message: `Invalid category IDs: ${invalidIds.join(", ")}`,
+//       });
 //     }
 
-//     const categories = await Category.find({ _id: { $in: parsedCategoryIds } });
+//     const categories = await Category.find({
+//       _id: { $in: parsedCategoryIds },
+//     });
+
 //     if (categories.length !== parsedCategoryIds.length) {
-//       return res.status(404).json({ message: "One or more categories not found" });
+//       return res.status(404).json({
+//         message: "One or more categories not found",
+//       });
 //     }
 
-//     // Validate Special Coupon Users
+//     // ===============================
+//     // 6️⃣ Special Coupon Users
+//     // ===============================
 //     let parsedSpecialUsers = is_spacial_copun_user;
-//     if (typeof is_spacial_copun_user === "string") {
-//       try {
-//         parsedSpecialUsers = JSON.parse(is_spacial_copun_user);
-//       } catch (error) {
-//         return res.status(400).json({ message: "Invalid is_spacial_copun_user format" });
-//       }
+//     if (typeof parsedSpecialUsers === "string") {
+//       parsedSpecialUsers = JSON.parse(parsedSpecialUsers);
 //     }
 
 //     if (!Array.isArray(parsedSpecialUsers)) {
-//       return res.status(400).json({ message: "is_spacial_copun_user must be an array" });
+//       return res.status(400).json({
+//         message: "is_spacial_copun_user must be an array",
+//       });
 //     }
 
-//     const invalidUserIds = parsedSpecialUsers.filter(id => !mongoose.Types.ObjectId.isValid(id));
-//     if (invalidUserIds.length > 0) {
-//       return res.status(400).json({ message: `Invalid user IDs: ${invalidUserIds.join(", ")}` });
-//     }
-
-
-
-//     // Handle Images
+//     // ===============================
+//     // 7️⃣ Upload Images
+//     // ===============================
 //     let copuon_image = [];
-//     if (req.files && req.files.length > 0) {
-//       try {
-//         const uploadPromises = req.files.map(file =>
+//     if (req.files?.length) {
+//       const uploads = await Promise.all(
+//         req.files.map((file) =>
 //           uploadToCloudinary(file.buffer, "coupons")
-//         );
-//         const uploadResults = await Promise.all(uploadPromises);
-//         copuon_image = uploadResults.map(result => result.secure_url);
-//       } catch (error) {
-//         return res.status(500).json({ message: "Error uploading images", error: error.message });
-//       }
+//         )
+//       );
+//       copuon_image = uploads.map((u) => u.secure_url);
 //     }
-//     const finalOwnerId = ownerId || partnerId || createdBy;
-//     // console.log("Final Owner ID:", finalOwnerId);
 
-//     // Save Coupon
-//     const newCoupon = new Coupon({
+//     // ===============================
+//     // 8️⃣ Create Coupon
+//     // ===============================
+//     const coupon = await Coupon.create({
 //       planId: plan._id,
 //       title,
 //       shop_name,
 //       coupon_color,
 //       manul_address: manual_address,
 //       copuon_srno,
-//       category: categories.map(c => c._id),
-//       discountPercentage: parsedDiscount,
+//       category: categories.map((c) => c._id),
+//       discountPercentage,
 //       createdBy,
 //       ownerId: finalOwnerId,
 //       createdby: userId,
-//       validTill: new Date(validTill),
+//       validTill,
 //       style,
 //       active: false,
 //       maxDistributions: plan.couponsIncluded,
@@ -473,16 +483,19 @@ export const updateCouponFromAdmin = async (req, res) => {
 //       consumersId: [],
 //     });
 
-//     const savedCoupon = await newCoupon.save();
+//     // ===============================
+//     // 9️⃣ Update UserPlan
+//     // ===============================
+//     // userPlan.couponsUsed += 1;
+//     userPlan.lastUsedAt = new Date();
 
-//       const updateusecoupon=await UserPlan.findOne({
-//        planId:userPlan.planId
-//       })
 
-//       updateusecoupon.status='used'
-//       updateusecoupon.couponsUsed=savedCoupon_id
+//     userPlan.status = "used";
 
-//       await updateusecoupon.save();
+
+//     await userPlan.save();
+
+
 //     // Broadcast notification to users within 50 km
 //     try {
 //       const users = await User.find(
@@ -519,25 +532,31 @@ export const updateCouponFromAdmin = async (req, res) => {
 //       console.error("Error sending notifications:", notificationError);
 //     }
 
+
+//     // ===============================
+//     // ✅ SUCCESS
+//     // ===============================
 //     return res.status(201).json({
 //       success: true,
 //       message: "Coupon created successfully",
-//       coupon: savedCoupon,
+//       coupon,
 //     });
-
 //   } catch (err) {
 //     console.error("Create coupon error:", err);
-//     return res.status(500).json({ message: "Error creating coupon", error: err.message });
+//     return res.status(500).json({
+//       message: "Error creating coupon",
+//       error: err.message,
+//     });
 //   }
 // };
-
 
 export const createCoupon = async (req, res) => {
   try {
     const {
       shop_name,
-      coupon_color,
+      coupon_color = '#FFFFFF',
       title,
+      status = 'draft',
       is_spacial_copun_user = [],
       manual_address,
       copuon_srno,
@@ -552,6 +571,10 @@ export const createCoupon = async (req, res) => {
       isTransferable = false,
       tag,
       shope_location,
+      // User CANNOT provide these - they come from plan
+      // validityDays, // NOT ALLOWED
+      // validTill,    // NOT ALLOWED  
+      // validFrom,    // NOT ALLOWED
     } = req.body;
 
     const userId = req.user?._id;
@@ -559,147 +582,207 @@ export const createCoupon = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized: user missing" });
     }
 
-    // ===============================
-    // 1️⃣ Fetch ACTIVE User Plan
-    // ===============================
-    const userPlan = await UserPlan.findOne({
-      userId,
-      status: "active",
-    }).populate("planId");
+    // Check if user wants to create as published
+    const wantsToPublish = status === 'published';
 
-    if (!userPlan) {
-      return res.status(403).json({
-        success: false,
-        message: "No active subscription found. Please purchase a plan to create coupons.",
-      });
-    }
+    // Fetch ACTIVE User Plan (only if trying to publish)
+    let userPlan = null;
+    let plan = null;
 
-    const plan = userPlan.planId;
-    if (!plan) {
-      return res.status(500).json({
-        success: false,
-        message: "Subscription plan data is corrupted. Please contact support.",
-      });
-    }
+    if (wantsToPublish) {
+      userPlan = await UserPlan.findOne({
+        userId,
+        status: "active",
+      }).populate("planId");
 
+      if (!userPlan) {
+        return res.status(403).json({
+          success: false,
+          message: "No active subscription found. Please purchase a plan to create coupons for publishing.",
+        });
+      }
 
+      plan = userPlan.planId;
+      if (!plan) {
+        return res.status(500).json({
+          success: false,
+          message: "Subscription plan data is corrupted. Please contact support.",
+        });
+      }
 
-    // ===============================
-    // 3️⃣ Calculate Coupon Expiry
-    // ===============================
-    let validTill = null;
-    if (plan.validityDaysCoupons) {
-      validTill = new Date();
-      validTill.setDate(validTill.getDate() + plan.validityDaysCoupons);
+      // Check if plan has validityDaysCoupons
+      if (!plan.validityDaysCoupons || plan.validityDaysCoupons <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Your plan does not specify coupon validity days. Please contact support.",
+        });
+      }
     }
 
     const { createdBy, ownerId, partnerId } = req.ownership || {};
     const finalOwnerId = ownerId || partnerId || createdBy;
 
     // ===============================
-    // 4️⃣ Validations
+    // VALIDITY DATES: USER CANNOT PROVIDE - THEY COME FROM PLAN WHEN PUBLISHED
     // ===============================
-    // const parsedDiscount = parseFloat(discountPercentage);
-    // if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
-    //   return res.status(400).json({
-    //     message: "discountPercentage must be between 0 and 100",
-    //   });
-    // }
+    let planValidityDays = null;
 
-    // Location validation
-    let location = null;
-    if (!shope_location) {
-      return res.status(400).json({ message: "shope_location is required" });
+    if (wantsToPublish && plan) {
+      planValidityDays = plan.validityDaysCoupons;
+      console.log(`Plan provides validity: ${planValidityDays} days`);
     }
 
-    try {
-      const parsedLocation =
-        typeof shope_location === "string"
-          ? JSON.parse(shope_location)
-          : shope_location;
+    // For now, don't set validity dates - they'll be set when admin publishes
+    // Only store the plan's validityDays for reference
+    const couponValidityDays = wantsToPublish ? planValidityDays : null;
 
-      if (
-        parsedLocation.type !== "Point" ||
-        !Array.isArray(parsedLocation.coordinates) ||
-        parsedLocation.coordinates.length !== 2 ||
-        isNaN(parsedLocation.coordinates[0]) ||
-        isNaN(parsedLocation.coordinates[1]) ||
-        !parsedLocation.address?.trim()
-      ) {
+    // ===============================
+    // Location validation (required for publishable coupons)
+    // ===============================
+    let location = null;
+    if (wantsToPublish && !shope_location) {
+      return res.status(400).json({
+        message: "shope_location is required for coupons meant to be published"
+      });
+    }
+
+    if (shope_location) {
+      try {
+        const parsedLocation =
+          typeof shope_location === "string"
+            ? JSON.parse(shope_location)
+            : shope_location;
+
+        if (
+          parsedLocation.type !== "Point" ||
+          !Array.isArray(parsedLocation.coordinates) ||
+          parsedLocation.coordinates.length !== 2 ||
+          isNaN(parsedLocation.coordinates[0]) ||
+          isNaN(parsedLocation.coordinates[1]) ||
+          !parsedLocation.address?.trim()
+        ) {
+          return res.status(400).json({
+            message:
+              'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat], address }',
+          });
+        }
+
+        location = parsedLocation;
+      } catch (err) {
         return res.status(400).json({
-          message:
-            'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat], address }',
+          message: "Invalid shope_location JSON",
         });
       }
-
-      location = parsedLocation;
-    } catch (err) {
-      return res.status(400).json({
-        message: "Invalid shope_location JSON",
-      });
     }
 
-    if (!isFullDay && (!fromTime || !toTime)) {
+    // ===============================
+    // Time validation (required for publishable coupons)
+    // ===============================
+    if (wantsToPublish && !isFullDay && (!fromTime || !toTime)) {
       return res.status(400).json({
-        message: "fromTime and toTime are required when isFullDay is false",
-      });
-    }
-
-    if (!tag || !Array.isArray(tag) || tag.length === 0) {
-      return res.status(400).json({
-        message: "At least one tag is required",
+        message: "fromTime and toTime are required when isFullDay is false for publishable coupons",
       });
     }
 
     // ===============================
-    // 5️⃣ Categories
+    // Required fields validation for publishable coupons
+    // ===============================
+    if (wantsToPublish) {
+      const requiredFields = {
+        shop_name: shop_name,
+        title: title,
+        manual_address: manual_address,
+        discountPercentage: discountPercentage,
+        termsAndConditions: termsAndConditions,
+        tag: tag,
+        categoryIds: categoryIds,
+      };
+
+      const missingFields = Object.entries(requiredFields)
+        .filter(([key, value]) => !value || (Array.isArray(value) && value.length === 0))
+        .map(([key]) => key);
+
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          message: `Missing required fields for publishable coupons: ${missingFields.join(', ')}`,
+        });
+      }
+    }
+
+    // ===============================
+    // Tags validation
+    // ===============================
+    if (tag && (!Array.isArray(tag) || tag.length === 0)) {
+      return res.status(400).json({
+        message: "Tag must be a non-empty array",
+      });
+    }
+
+    // ===============================
+    // Categories validation
     // ===============================
     let parsedCategoryIds = categoryIds;
     if (typeof categoryIds === "string") {
-      parsedCategoryIds = JSON.parse(categoryIds);
+      try {
+        parsedCategoryIds = JSON.parse(categoryIds);
+      } catch (err) {
+        return res.status(400).json({
+          message: "Invalid categoryIds JSON format",
+        });
+      }
     }
 
-    if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
+    if (wantsToPublish && (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0)) {
       return res.status(400).json({
-        message: "categoryIds must be a non-empty array",
+        message: "categoryIds is required and must be a non-empty array for publishable coupons",
       });
     }
 
-    const invalidIds = parsedCategoryIds.filter(
-      (id) => !mongoose.Types.ObjectId.isValid(id)
-    );
-    if (invalidIds.length > 0) {
-      return res.status(400).json({
-        message: `Invalid category IDs: ${invalidIds.join(", ")}`,
-      });
-    }
+    // Validate and fetch categories if provided
+    let categories = [];
+    if (parsedCategoryIds && Array.isArray(parsedCategoryIds)) {
+      const invalidIds = parsedCategoryIds.filter(
+        (id) => !mongoose.Types.ObjectId.isValid(id)
+      );
+      if (invalidIds.length > 0) {
+        return res.status(400).json({
+          message: `Invalid category IDs: ${invalidIds.join(", ")}`,
+        });
+      }
 
-    const categories = await Category.find({
-      _id: { $in: parsedCategoryIds },
-    });
-
-    if (categories.length !== parsedCategoryIds.length) {
-      return res.status(404).json({
-        message: "One or more categories not found",
+      categories = await Category.find({
+        _id: { $in: parsedCategoryIds },
       });
+
+      if (wantsToPublish && categories.length !== parsedCategoryIds.length) {
+        return res.status(404).json({
+          message: "One or more categories not found",
+        });
+      }
     }
 
     // ===============================
-    // 6️⃣ Special Coupon Users
+    // Special Coupon Users validation
     // ===============================
     let parsedSpecialUsers = is_spacial_copun_user;
     if (typeof parsedSpecialUsers === "string") {
-      parsedSpecialUsers = JSON.parse(parsedSpecialUsers);
+      try {
+        parsedSpecialUsers = JSON.parse(parsedSpecialUsers);
+      } catch (err) {
+        return res.status(400).json({
+          message: "Invalid is_spacial_copun_user JSON format",
+        });
+      }
     }
 
-    if (!Array.isArray(parsedSpecialUsers)) {
+    if (parsedSpecialUsers && !Array.isArray(parsedSpecialUsers)) {
       return res.status(400).json({
         message: "is_spacial_copun_user must be an array",
       });
     }
 
     // ===============================
-    // 7️⃣ Upload Images
+    // Upload Images
     // ===============================
     let copuon_image = [];
     if (req.files?.length) {
@@ -712,95 +795,101 @@ export const createCoupon = async (req, res) => {
     }
 
     // ===============================
-    // 8️⃣ Create Coupon
+    // Determine final status
     // ===============================
-    const coupon = await Coupon.create({
-      planId: plan._id,
+    let finalStatus = status;
+
+    if (wantsToPublish) {
+      // If user wants to publish, set as 'disabled' initially (admin will verify)
+      finalStatus = 'disabled';
+    } else if (status !== 'draft') {
+      // If any other status, default to draft
+      finalStatus = 'draft';
+    }
+
+    // ===============================
+    // Create Coupon
+    // ===============================
+    const couponData = {
       title,
       shop_name,
       coupon_color,
       manul_address: manual_address,
       copuon_srno,
-      category: categories.map((c) => c._id),
       discountPercentage,
       createdBy,
       ownerId: finalOwnerId,
       createdby: userId,
-      validTill,
+      // DO NOT set validFrom, validTill, validityDays here
+      // They will be set when admin publishes
       style,
-      active: false,
-      maxDistributions: plan.couponsIncluded,
+      status: finalStatus,
+      active: false, // Always false initially, only true when admin sets to 'published'
       fromTime: isFullDay ? undefined : fromTime,
       toTime: isFullDay ? undefined : toTime,
       isFullDay,
-      is_spacial_copun_user: parsedSpecialUsers,
       termsAndConditions,
       is_spacial_copun,
       isTransferable,
-      tag,
-      shope_location: location,
       copuon_image,
       currentDistributions: 0,
       consumersId: [],
-    });
+    };
 
-    // ===============================
-    // 9️⃣ Update UserPlan
-    // ===============================
-    // userPlan.couponsUsed += 1;
-    userPlan.lastUsedAt = new Date();
-
-
-    userPlan.status = "used";
-
-
-    await userPlan.save();
-
-
-    // Broadcast notification to users within 50 km
-    try {
-      const users = await User.find(
-        {
-          latestLocation: {
-            $near: {
-              $geometry: { type: "Point", coordinates: location.coordinates },
-              $maxDistance: 50 * 1000,
-            },
-          },
-          devicetoken: { $ne: null },
-        },
-        { uid: 1, name: 1, devicetoken: 1, _id: 0 }
-      );
-
-      if (users.length > 0) {
-        const batchSize = 500;
-        const batches = [];
-        for (let i = 0; i < users.length; i += batchSize) {
-          const batchTokens = users.slice(i, i + batchSize).map(u => u.devicetoken);
-          batches.push({
-            notification: {
-              title: `New Coupon: ${title}`,
-              body: `Get ${parsedDiscount}% off near you! Valid until ${new Date(validTill).toLocaleDateString()}.`,
-            },
-            tokens: batchTokens,
-          });
-        }
-
-        await Promise.all(batches.map(batch => admin.messaging().sendEach(batch)));
-      }
-
-    } catch (notificationError) {
-      console.error("Error sending notifications:", notificationError);
+    // Add categories if provided
+    if (categories.length > 0) {
+      couponData.category = categories.map((c) => c._id);
     }
 
+    // Add tags if provided
+    if (tag && Array.isArray(tag) && tag.length > 0) {
+      couponData.tag = tag;
+    }
+
+    // Add special users if provided
+    if (parsedSpecialUsers && Array.isArray(parsedSpecialUsers)) {
+      couponData.is_spacial_copun_user = parsedSpecialUsers;
+    }
+
+    // Add location if provided
+    if (location) {
+      couponData.shope_location = location;
+    }
+
+    // Add planId only if trying to publish
+    if (wantsToPublish && plan?._id) {
+      couponData.planId = plan._id;
+      couponData.maxDistributions = plan.couponsIncluded || 0;
+      // Store plan's validityDays for reference (will be used when admin publishes)
+      couponData.planValidityDays = plan.validityDaysCoupons;
+    } else {
+      couponData.maxDistributions = 0;
+    }
+
+    const coupon = await Coupon.create(couponData);
+
+    // ===============================
+    // Update UserPlan (only if trying to publish)
+    // ===============================
+    if (wantsToPublish && userPlan) {
+      // Mark plan as used for this coupon
+      userPlan.lastUsedAt = new Date();
+      userPlan.status = "used";
+      await userPlan.save();
+    }
 
     // ===============================
     // ✅ SUCCESS
     // ===============================
     return res.status(201).json({
       success: true,
-      message: "Coupon created successfully",
+      message: wantsToPublish
+        ? "Coupon created successfully and submitted for admin verification"
+        : "Coupon saved as draft successfully",
       coupon,
+      note: wantsToPublish
+        ? `Your coupon is now in 'disabled' status. Admin will verify and publish it soon. Validity will be ${plan.validityDaysCoupons} days from publication date.`
+        : "You can complete and submit this draft for publishing later.",
     });
   } catch (err) {
     console.error("Create coupon error:", err);
@@ -810,8 +899,6 @@ export const createCoupon = async (req, res) => {
     });
   }
 };
-
-
 
 export const createCouponAdmin = async (req, res) => {
   try {
