@@ -1699,7 +1699,6 @@ export const getOwnerDraftExpiredCoupon = async (req, res) => {
       ownerId,
       status: { $in: ["draft", "expired", "disabled"] },
     })
-      .populate("createdBy", "name phone")
       .populate("category", "name")
       .populate("ownerId", "name phone")
       .lean()           // ⚡ performance
