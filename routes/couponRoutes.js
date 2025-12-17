@@ -6,6 +6,7 @@ import {
     getall,
     deleteCoupon,
     getById,
+    getOwnerDraftExpiredCoupon,
     toggleActive,
     updateCoupon,
     availCoupon,
@@ -99,6 +100,7 @@ router.get('/:couponId/owner/:ownerId', authMiddleware, getOwnerCouponDetails);
 // Public routes (no authentication required)
 router.get('/getall', authMiddleware, getall);
 router.get('/get/:id', authMiddleware, getById);
+router.get('/getOwnerDraftExpiredCoupon/:id', authMiddleware, getOwnerDraftExpiredCoupon);
 router.get('/get-cities', authMiddleware, getAllCities);
 
 // Protected routes (authentication required)

@@ -1689,6 +1689,44 @@ export const getById = async (req, res) => {
     });
   }
 };
+export const getOwnerDraftExpiredCoupon = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ownerId = req.user.id;
+
+    const coupon = await Coupon.findOne({
+      _id: id,
+      ownerId,
+      status: { $in: ["draft", "expired", "disabled"] },
+    })
+      .populate("createdBy", "name phone")
+      .populate("category", "name")
+      .populate("ownerId", "name phone")
+      .lean()           // ⚡ performance
+      .exec();
+
+    if (!coupon) {
+      return res.status(404).json({
+        success: false,
+        message: "Coupon not found, already published, or access denied",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Coupon fetched successfully",
+      data: coupon,
+    });
+
+  } catch (error) {
+    console.error("Error fetching coupon:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 
 
 
