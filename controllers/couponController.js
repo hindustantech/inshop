@@ -573,7 +573,7 @@ export const createCoupon = async (req, res) => {
       shope_location,
       // User CANNOT provide these - they come from plan
       // validityDays, // NOT ALLOWED
-      // validTill,    // NOT ALLOWED  
+ 
       // validFrom,    // NOT ALLOWED
     } = req.body;
 
@@ -634,7 +634,7 @@ export const createCoupon = async (req, res) => {
 
     // For now, don't set validity dates - they'll be set when admin publishes
     // Only store the plan's validityDays for reference
-    const couponValidityDays = wantsToPublish ? planValidityDays : null;
+    const couponValidityDays = wantsToPublish ? planValidityDays : 15;
 
     // ===============================
     // Location validation (required for publishable coupons)
@@ -794,6 +794,31 @@ export const createCoupon = async (req, res) => {
       copuon_image = uploads.map((u) => u.secure_url);
     }
 
+
+
+    if (req.body.coupon_images) {
+      let imageUrls = req.body.coupon_images;
+
+      // If sent as stringified JSON
+      if (typeof imageUrls === "string") {
+        try {
+          imageUrls = JSON.parse(imageUrls);
+        } catch {
+          imageUrls = [imageUrls]; // single URL case
+        }
+      }
+
+      if (Array.isArray(imageUrls)) {
+        const validUrls = imageUrls.filter(
+          (url) => typeof url === "string" && url.startsWith("http")
+        );
+
+        copuon_image.push(...validUrls);
+      }
+    }
+
+    copuon_image = [...new Set(copuon_image)];
+
     // ===============================
     // Determine final status
     // ===============================
@@ -805,6 +830,23 @@ export const createCoupon = async (req, res) => {
     } else if (status !== 'draft') {
       // If any other status, default to draft
       finalStatus = 'draft';
+    }
+
+
+
+    let validTill;
+
+    // 📝 Draft → 15 days from now
+    if (!wantsToPublish) {
+      validTill = new Date(
+        Date.now() + 15 * 24 * 60 * 60 * 1000
+      );
+    }
+    // 🚀 Publish request → use plan validity
+    else if (planValidityDays) {
+      validTill = new Date(
+        Date.now() + planValidityDays * 24 * 60 * 60 * 1000
+      );
     }
 
     // ===============================
@@ -820,6 +862,7 @@ export const createCoupon = async (req, res) => {
       createdBy,
       ownerId: finalOwnerId,
       createdby: userId,
+      validTill,
       // DO NOT set validFrom, validTill, validityDays here
       // They will be set when admin publishes
       style,
@@ -904,8 +947,9 @@ export const createCouponAdmin = async (req, res) => {
   try {
     const {
       shop_name,
-      coupon_color,
+      coupon_color = "#FFFFFF",
       title,
+      status = "published", // ✅ ADMIN CONTROLS STATUS
       is_spacial_copun_user = [],
       manual_address,
       copuon_srno,
@@ -924,141 +968,140 @@ export const createCouponAdmin = async (req, res) => {
       shope_location,
     } = req.body;
 
-    const userId = req.user?._id;
-
-
-
-
-    if (!userId) {
-      return res.status(401).json({ message: "Unauthorized: user missing" });
+    const adminId = req.user?._id;
+    if (!adminId) {
+      return res.status(401).json({ message: "Unauthorized admin" });
     }
 
-    const { createdBy, ownerId, partnerId } = req.ownership || {};
-
-    // ------------------ Validations ------------------
-    // Parse discountPercentage
-    const parsedDiscount = parseFloat(discountPercentage);
-    if (parsedDiscount < 0 || parsedDiscount > 100) {
-      return res.status(400).json({ message: "discountPercentage must be between 0 and 100" });
+    // ---------------- STATUS VALIDATION ----------------
+    const allowedStatus = ["draft", "published", "disabled", "expired"];
+    if (!allowedStatus.includes(status)) {
+      return res.status(400).json({
+        message: `Invalid status. Allowed: ${allowedStatus.join(", ")}`,
+      });
     }
 
-    // Validate shope_location
+    // ---------------- BASIC VALIDATION ----------------
+    if (!shop_name || !title) {
+      return res.status(400).json({
+        message: "shop_name and title are required",
+      });
+    }
+
+    const parsedDiscount = Number(discountPercentage);
+    if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
+      return res.status(400).json({
+        message: "discountPercentage must be between 0 and 100",
+      });
+    }
+
+    // ---------------- LOCATION ----------------
     let location = null;
     if (!shope_location) {
       return res.status(400).json({ message: "shope_location is required" });
     }
+
     try {
-      const parsedLocation = typeof shope_location === "string"
-        ? JSON.parse(shope_location)
-        : shope_location;
+      const parsed =
+        typeof shope_location === "string"
+          ? JSON.parse(shope_location)
+          : shope_location;
 
       if (
-        parsedLocation.type !== "Point" ||
-        !Array.isArray(parsedLocation.coordinates) ||
-        parsedLocation.coordinates.length !== 2 ||
-        isNaN(parsedLocation.coordinates[0]) ||
-        isNaN(parsedLocation.coordinates[1]) ||
-        !parsedLocation.address?.trim()
+        parsed.type !== "Point" ||
+        !Array.isArray(parsed.coordinates) ||
+        parsed.coordinates.length !== 2 ||
+        !parsed.address
       ) {
-        return res.status(400).json({
-          message: 'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat], address }',
-        });
+        throw new Error();
       }
-      location = parsedLocation;
-    } catch (error) {
-      return res.status(400).json({ message: "Invalid shope_location JSON", error: error.message });
+      location = parsed;
+    } catch {
+      return res.status(400).json({
+        message:
+          'Invalid shope_location. Use { type:"Point", coordinates:[lng,lat], address }',
+      });
     }
 
-    // Time check
+    // ---------------- TIME ----------------
     if (!isFullDay && (!fromTime || !toTime)) {
-      return res.status(400).json({ message: "fromTime and toTime required when isFullDay is false" });
+      return res.status(400).json({
+        message: "fromTime & toTime required when isFullDay is false",
+      });
     }
 
-    // Validate tag
-    if (!tag || !Array.isArray(tag) || tag.length === 0) {
-      return res.status(400).json({ message: "At least one tag is required" });
+    // ---------------- VALID TILL ----------------
+    const expiryDate = new Date(validTill);
+    if (isNaN(expiryDate) || expiryDate <= new Date()) {
+      return res.status(400).json({
+        message: "validTill must be a future date",
+      });
     }
 
-    // Validate validTill
-    if (new Date(validTill) <= new Date() || isNaN(new Date(validTill).getTime())) {
-      return res.status(400).json({ message: "validTill must be a valid future date" });
-    }
-
-    let parsedCategoryIds = categoryIds;
-    if (typeof categoryIds === "string") {
-      try {
-        parsedCategoryIds = JSON.parse(categoryIds);
-      } catch (error) {
-        return res.status(400).json({ message: "Invalid categoryIds format" });
-      }
-    }
+    // ---------------- CATEGORY ----------------
+    let parsedCategoryIds =
+      typeof categoryIds === "string"
+        ? JSON.parse(categoryIds)
+        : categoryIds;
 
     if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
-      return res.status(400).json({ message: "categoryIds must be a non-empty array" });
+      return res.status(400).json({
+        message: "categoryIds must be a non-empty array",
+      });
     }
 
-    const invalidIds = parsedCategoryIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
-    if (invalidIds.length > 0) {
-      return res.status(400).json({ message: `Invalid category IDs: ${invalidIds.join(", ")}` });
-    }
+    const categories = await Category.find({
+      _id: { $in: parsedCategoryIds },
+    });
 
-    const categories = await Category.find({ _id: { $in: parsedCategoryIds } });
     if (categories.length !== parsedCategoryIds.length) {
-      return res.status(404).json({ message: "One or more categories not found" });
+      return res.status(404).json({
+        message: "One or more categories not found",
+      });
     }
 
-    // Validate Special Coupon Users
-    let parsedSpecialUsers = is_spacial_copun_user;
-    if (typeof is_spacial_copun_user === "string") {
-      try {
-        parsedSpecialUsers = JSON.parse(is_spacial_copun_user);
-      } catch (error) {
-        return res.status(400).json({ message: "Invalid is_spacial_copun_user format" });
-      }
-    }
+    // ---------------- SPECIAL USERS ----------------
+    let parsedSpecialUsers =
+      typeof is_spacial_copun_user === "string"
+        ? JSON.parse(is_spacial_copun_user)
+        : is_spacial_copun_user;
 
     if (!Array.isArray(parsedSpecialUsers)) {
-      return res.status(400).json({ message: "is_spacial_copun_user must be an array" });
+      return res.status(400).json({
+        message: "is_spacial_copun_user must be an array",
+      });
     }
 
-    const invalidUserIds = parsedSpecialUsers.filter(id => !mongoose.Types.ObjectId.isValid(id));
-    if (invalidUserIds.length > 0) {
-      return res.status(400).json({ message: `Invalid user IDs: ${invalidUserIds.join(", ")}` });
-    }
-
-
-
-    // Handle Images
+    // ---------------- IMAGES ----------------
     let copuon_image = [];
-    if (req.files && req.files.length > 0) {
-      try {
-        const uploadPromises = req.files.map(file =>
+    if (req.files?.length) {
+      const uploads = await Promise.all(
+        req.files.map((file) =>
           uploadToCloudinary(file.buffer, "coupons")
-        );
-        const uploadResults = await Promise.all(uploadPromises);
-        copuon_image = uploadResults.map(result => result.secure_url);
-      } catch (error) {
-        return res.status(500).json({ message: "Error uploading images", error: error.message });
-      }
+        )
+      );
+      copuon_image = uploads.map((u) => u.secure_url);
     }
-    const finalOwnerId = ownerId || partnerId || createdBy;
-    // console.log("Final Owner ID:", finalOwnerId);
 
-    // Save Coupon
-    const newCoupon = new Coupon({
+    // ---------------- ACTIVE FLAG ----------------
+    const isActive = status === "published";
+
+    // ---------------- SAVE COUPON ----------------
+    const coupon = await Coupon.create({
       title,
       shop_name,
       coupon_color,
       manul_address: manual_address,
       copuon_srno,
-      category: categories.map(c => c._id),
       discountPercentage: parsedDiscount,
-      createdBy,
-      ownerId: finalOwnerId,
-      createdby: userId,
-      validTill: new Date(validTill),
+      category: categories.map((c) => c._id),
+      createdBy: adminId,
+      ownerId: adminId,
+      createdby: adminId,
+      status,                 // ✅ STATUS DRIVES EVERYTHING
+      active: isActive,       // ✅ published → true
+      validTill: expiryDate,
       style,
-      active: false,
       maxDistributions,
       fromTime: isFullDay ? undefined : fromTime,
       toTime: isFullDay ? undefined : toTime,
@@ -1074,54 +1117,21 @@ export const createCouponAdmin = async (req, res) => {
       consumersId: [],
     });
 
-    const savedCoupon = await newCoupon.save();
-
-    // Broadcast notification to users within 50 km
-    try {
-      const users = await User.find(
-        {
-          latestLocation: {
-            $near: {
-              $geometry: { type: "Point", coordinates: location.coordinates },
-              $maxDistance: 50 * 1000,
-            },
-          },
-          devicetoken: { $ne: null },
-        },
-        { uid: 1, name: 1, devicetoken: 1, _id: 0 }
-      );
-
-      if (users.length > 0) {
-        const batchSize = 500;
-        const batches = [];
-        for (let i = 0; i < users.length; i += batchSize) {
-          const batchTokens = users.slice(i, i + batchSize).map(u => u.devicetoken);
-          batches.push({
-            notification: {
-              title: `New Coupon: ${title}`,
-              body: `Get ${parsedDiscount}% off near you! Valid until ${new Date(validTill).toLocaleDateString()}.`,
-            },
-            tokens: batchTokens,
-          });
-        }
-
-        await Promise.all(batches.map(batch => admin.messaging().sendEach(batch)));
-      }
-    } catch (notificationError) {
-      console.error("Error sending notifications:", notificationError);
-    }
-
     return res.status(201).json({
       success: true,
-      message: "Coupon created successfully",
-      coupon: savedCoupon,
+      message: `Coupon created successfully with status '${status}'`,
+      coupon,
     });
 
   } catch (err) {
-    console.error("Create coupon error:", err);
-    return res.status(500).json({ message: "Error creating coupon", error: err.message });
+    console.error("Admin coupon error:", err);
+    return res.status(500).json({
+      message: "Error creating admin coupon",
+      error: err.message,
+    });
   }
 };
+
 
 export const updateCouponDeatils = async (req, res) => {
   try {

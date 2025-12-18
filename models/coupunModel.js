@@ -84,7 +84,11 @@ const couponSchema = new mongoose.Schema({
 
   validTill: {
     type: Date,
+    default: function () {
+      return new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+    },
   },
+
 
   creationDate: {
     type: Date,
