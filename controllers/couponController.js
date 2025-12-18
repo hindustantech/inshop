@@ -826,7 +826,7 @@ export const createCoupon = async (req, res) => {
 
     if (wantsToPublish) {
       // If user wants to publish, set as 'disabled' initially (admin will verify)
-      finalStatus = 'disabled';
+      finalStatus = 'published';
     } else if (status !== 'draft') {
       // If any other status, default to draft
       finalStatus = 'draft';
@@ -931,7 +931,7 @@ export const createCoupon = async (req, res) => {
         : "Coupon saved as draft successfully",
       coupon,
       note: wantsToPublish
-        ? `Your coupon is now in 'disabled' status. Admin will verify and publish it soon. Validity will be ${plan.validityDaysCoupons} days from publication date.`
+        ? `Your coupon is now in 'published' status. Admin will verify and active it soon. Validity will be ${plan.validityDaysCoupons} days from publication date.`
         : "You can complete and submit this draft for publishing later.",
     });
   } catch (err) {
