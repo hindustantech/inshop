@@ -123,41 +123,135 @@ export const generateTheQRCode = async (req, res) => {
 export const updateCouponByAdmin = async (req, res) => {
   try {
     const { couponId } = req.params;
-    const { maxDistributions, fromTime, toTime, active, validTill } = req.body;
+    const { maxDistributions, fromTime, toTime, active, validTill, status } = req.body;
+
+    // Validate couponId
+    if (!mongoose.Types.ObjectId.isValid(couponId)) {
+      return res.status(400).json({ error: "Invalid coupon ID format" });
+    }
 
     // ✅ Allow only these fields
     const allowedUpdates = {};
-    if (maxDistributions !== undefined) allowedUpdates.maxDistributions = maxDistributions;
-    if (fromTime !== undefined) allowedUpdates.fromTime = fromTime;
-    if (toTime !== undefined) allowedUpdates.toTime = toTime;
-    if (active !== undefined) allowedUpdates.active = active;
-    if (validTill !== undefined) {
-      // validate that validTill is a valid future date
-      if (new Date(validTill) <= new Date()) {
-        return res.status(400).json({ error: "validTill must be a future date." });
+
+    // Validate and prepare updates
+    if (maxDistributions !== undefined) {
+      const maxDistNum = parseInt(maxDistributions);
+      if (isNaN(maxDistNum) || maxDistNum < 0) {
+        return res.status(400).json({ error: "maxDistributions must be a non-negative number" });
       }
+      if (maxDistNum < 1) {
+        return res.status(400).json({ error: "maxDistributions must be at least 1" });
+      }
+      allowedUpdates.maxDistributions = maxDistNum;
+    }
+
+    if (fromTime !== undefined) {
+      // Validate time format (HH:MM)
+      const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+      if (!timeRegex.test(fromTime)) {
+        return res.status(400).json({ error: "fromTime must be in HH:MM format (24-hour)" });
+      }
+      allowedUpdates.fromTime = fromTime;
+    }
+
+    if (toTime !== undefined) {
+      // Validate time format (HH:MM)
+      const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+      if (!timeRegex.test(toTime)) {
+        return res.status(400).json({ error: "toTime must be in HH:MM format (24-hour)" });
+      }
+      allowedUpdates.toTime = toTime;
+    }
+
+    if (active !== undefined) {
+      if (typeof active !== 'boolean') {
+        return res.status(400).json({ error: "active must be a boolean" });
+      }
+      allowedUpdates.active = active;
+    }
+
+    if (validTill !== undefined && validTill !== "") {
+      const validTillDate = new Date(validTill);
+      if (isNaN(validTillDate.getTime())) {
+        return res.status(400).json({ error: "validTill must be a valid date" });
+      }
+
+      // Check if date is in the future
+      const currentDate = new Date();
+      currentDate.setHours(0, 0, 0, 0); // Set to start of day for comparison
+      validTillDate.setHours(0, 0, 0, 0);
+
+      if (validTillDate <= currentDate) {
+        return res.status(400).json({ error: "validTill must be a future date" });
+      }
+
       allowedUpdates.validTill = new Date(validTill);
+    }
+
+    if (status !== undefined) {
+      const validStatuses = ["draft", "published", "expired", "disabled"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: `status must be one of: ${validStatuses.join(", ")}` });
+      }
+      allowedUpdates.status = status;
+    }
+
+    // Check if there's anything to update
+    if (Object.keys(allowedUpdates).length === 0) {
+      return res.status(400).json({ error: "No valid fields provided for update" });
     }
 
     // ✅ Update coupon with only allowed fields
     const updatedCoupon = await Coupon.findByIdAndUpdate(
       couponId,
       { $set: allowedUpdates },
-      { new: true, runValidators: true }
-    );
+      {
+        new: true,
+        runValidators: true,
+        context: 'query' // This helps with custom validators
+      }
+    ).populate('createdby', 'name phone')
+      .populate('category', 'name')
+      .populate('ownerId', '_id')
+      .populate('promotion', 'name desc')
+      .populate('consumersId', '_id')
+      .populate('usedCopun', '_id');
 
     if (!updatedCoupon) {
       return res.status(404).json({ error: "Coupon not found" });
     }
 
     res.status(200).json({
+      success: true,
       message: "Coupon updated successfully by admin",
-      coupon: updatedCoupon
+      data: updatedCoupon
     });
 
   } catch (error) {
     console.error("Admin coupon update error:", error);
-    res.status(500).json({ error: "Server error while updating coupon" });
+
+    // Handle Mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        error: "Validation error",
+        details: errors
+      });
+    }
+
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        error: "Duplicate field value entered"
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "Server error while updating coupon"
+    });
   }
 };
 
@@ -573,7 +667,7 @@ export const createCoupon = async (req, res) => {
       shope_location,
       // User CANNOT provide these - they come from plan
       // validityDays, // NOT ALLOWED
- 
+
       // validFrom,    // NOT ALLOWED
     } = req.body;
 
