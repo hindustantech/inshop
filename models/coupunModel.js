@@ -114,6 +114,9 @@ const couponSchema = new mongoose.Schema({
     min: 0,
     required: false
   },
+
+
+  
   fromTime: {
     type: String,
     required: function () {

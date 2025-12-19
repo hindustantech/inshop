@@ -298,7 +298,7 @@ export const updateCouponFromAdmin = async (req, res) => {
       }
     }
 
-    // 3. Handle Images → Cloudinary
+    // 3. Handle Images → Cloudinary (replace all images if new ones uploaded)
     if (req.files && req.files.length > 0) {
       const results = await Promise.all(
         req.files.map(file => uploadToCloudinary(file.buffer, 'coupons'))
@@ -306,7 +306,7 @@ export const updateCouponFromAdmin = async (req, res) => {
       updates.copuon_image = results.map(r => r.secure_url);
     }
 
-    // 4. DISCOUNT: Save exactly what user types
+    // 4. DISCOUNT: Save exactly what user types (as string)
     if (updates.hasOwnProperty('discountPercentage')) {
       let input = updates.discountPercentage;
       if (input === null || input === undefined) input = '';
@@ -329,35 +329,60 @@ export const updateCouponFromAdmin = async (req, res) => {
       delete updates.categoryIds;
     }
 
-    // ==== FIX FOR fromTime / toTime VALIDATION ====
-    if (updates.isFullDay === true || updates.isFullDay === 'true') {
-      // If it's a full-day coupon → time fields are not needed
-      updates.fromTime = '';   // or you can delete them entirely
-      updates.toTime = '';
-      // Optionally: delete updates.fromTime; delete updates.toTime;
+    // 6. STATUS VALIDATION & AUTO ACTIVE FLAG (like in create)
+    if (updates.status) {
+      const allowedStatus = ["draft", "published", "expired", "disabled"];
+      if (!allowedStatus.includes(updates.status)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid status. Allowed: ${allowedStatus.join(", ")}`
+        });
+      }
+      // Auto-set active based on status
+      updates.active = updates.status === "published";
+    }
+
+    // ==== CRITICAL FIX: fromTime / toTime VALIDATION ====
+    const isFullDay = updates.isFullDay === true ||
+      updates.isFullDay === 'true' ||
+      updates.isFullDay === '1';
+
+    if (isFullDay) {
+      // Completely remove time fields → Mongoose skips required validation
+      delete updates.fromTime;
+      delete updates.toTime;
     } else {
-      // Not full day → ensure times are provided (frontend should send them)
+      // Not full day → require and validate times
       if (!updates.fromTime || !updates.toTime) {
         return res.status(400).json({
           success: false,
-          message: 'fromTime and toTime are required when not full day'
+          message: 'fromTime and toTime are required when coupon is not full day'
+        });
+      }
+
+      // Optional: Validate time format HH:MM (24-hour)
+      const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+      if (!timeRegex.test(updates.fromTime) || !timeRegex.test(updates.toTime)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Time must be in HH:MM format (e.g. 09:30, 14:45)'
         });
       }
     }
     // ==============================================
 
-    // 6. PROTECTED FIELDS – Never allow update
+    // 7. PROTECTED FIELDS – Never allow update
     const protectedFields = [
       'currentDistributions', 'consumersId', 'creationDate',
       'createdBy', 'createdby', 'promotion', '__v'
     ];
     protectedFields.forEach(f => delete updates[f]);
 
-    // 7. Final Update with validation
+    // 8. Final Update with validation
     const updatedCoupon = await Coupon.findByIdAndUpdate(
       couponId,
       { $set: updates },
-      { new: true, runValidators: true }  // runValidators is key here
+      { new: true, runValidators: true }
     )
       .select('-consumersId -__v -promotion')
       .populate('category', 'name')
@@ -378,7 +403,6 @@ export const updateCouponFromAdmin = async (req, res) => {
   } catch (error) {
     console.error('Update coupon error:', error);
 
-    // Better error handling for validation errors
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -398,277 +422,6 @@ export const updateCouponFromAdmin = async (req, res) => {
 
 
 
-
-// export const createCoupon = async (req, res) => {
-//   try {
-//     const {
-//       shop_name,
-//       coupon_color,
-//       title,
-//       is_spacial_copun_user = [],
-//       manual_address,
-//       copuon_srno,
-//       categoryIds,
-//       discountPercentage,
-//       style,
-//       fromTime,
-//       toTime,
-//       isFullDay = false,
-//       termsAndConditions,
-//       is_spacial_copun = false,
-//       isTransferable = false,
-//       tag,
-//       shope_location,
-//     } = req.body;
-
-//     const userId = req.user?._id;
-//     if (!userId) {
-//       return res.status(401).json({ message: "Unauthorized: user missing" });
-//     }
-
-//     // ===============================
-//     // 1️⃣ Fetch ACTIVE User Plan
-//     // ===============================
-//     const userPlan = await UserPlan.findOne({
-//       userId,
-//       status: "active",
-//     }).populate("planId");
-
-//     if (!userPlan) {
-//       return res.status(403).json({
-//         success: false,
-//         message: "No active subscription found. Please purchase a plan to create coupons.",
-//       });
-//     }
-
-//     const plan = userPlan.planId;
-//     if (!plan) {
-//       return res.status(500).json({
-//         success: false,
-//         message: "Subscription plan data is corrupted. Please contact support.",
-//       });
-//     }
-
-
-
-//     // ===============================
-//     // 3️⃣ Calculate Coupon Expiry
-//     // ===============================
-//     let validTill = null;
-//     if (plan.validityDaysCoupons) {
-//       validTill = new Date();
-//       validTill.setDate(validTill.getDate() + plan.validityDaysCoupons);
-//     }
-
-//     const { createdBy, ownerId, partnerId } = req.ownership || {};
-//     const finalOwnerId = ownerId || partnerId || createdBy;
-
-
-
-//     // Location validation
-//     let location = null;
-//     if (!shope_location) {
-//       return res.status(400).json({ message: "shope_location is required" });
-//     }
-
-//     try {
-//       const parsedLocation =
-//         typeof shope_location === "string"
-//           ? JSON.parse(shope_location)
-//           : shope_location;
-
-//       if (
-//         parsedLocation.type !== "Point" ||
-//         !Array.isArray(parsedLocation.coordinates) ||
-//         parsedLocation.coordinates.length !== 2 ||
-//         isNaN(parsedLocation.coordinates[0]) ||
-//         isNaN(parsedLocation.coordinates[1]) ||
-//         !parsedLocation.address?.trim()
-//       ) {
-//         return res.status(400).json({
-//           message:
-//             'Invalid shope_location format. Must be { type: "Point", coordinates: [lng, lat], address }',
-//         });
-//       }
-
-//       location = parsedLocation;
-//     } catch (err) {
-//       return res.status(400).json({
-//         message: "Invalid shope_location JSON",
-//       });
-//     }
-
-//     if (!isFullDay && (!fromTime || !toTime)) {
-//       return res.status(400).json({
-//         message: "fromTime and toTime are required when isFullDay is false",
-//       });
-//     }
-
-//     if (!tag || !Array.isArray(tag) || tag.length === 0) {
-//       return res.status(400).json({
-//         message: "At least one tag is required",
-//       });
-//     }
-
-//     // ===============================
-//     // 5️⃣ Categories
-//     // ===============================
-//     let parsedCategoryIds = categoryIds;
-//     if (typeof categoryIds === "string") {
-//       parsedCategoryIds = JSON.parse(categoryIds);
-//     }
-
-//     if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
-//       return res.status(400).json({
-//         message: "categoryIds must be a non-empty array",
-//       });
-//     }
-
-//     const invalidIds = parsedCategoryIds.filter(
-//       (id) => !mongoose.Types.ObjectId.isValid(id)
-//     );
-//     if (invalidIds.length > 0) {
-//       return res.status(400).json({
-//         message: `Invalid category IDs: ${invalidIds.join(", ")}`,
-//       });
-//     }
-
-//     const categories = await Category.find({
-//       _id: { $in: parsedCategoryIds },
-//     });
-
-//     if (categories.length !== parsedCategoryIds.length) {
-//       return res.status(404).json({
-//         message: "One or more categories not found",
-//       });
-//     }
-
-//     // ===============================
-//     // 6️⃣ Special Coupon Users
-//     // ===============================
-//     let parsedSpecialUsers = is_spacial_copun_user;
-//     if (typeof parsedSpecialUsers === "string") {
-//       parsedSpecialUsers = JSON.parse(parsedSpecialUsers);
-//     }
-
-//     if (!Array.isArray(parsedSpecialUsers)) {
-//       return res.status(400).json({
-//         message: "is_spacial_copun_user must be an array",
-//       });
-//     }
-
-//     // ===============================
-//     // 7️⃣ Upload Images
-//     // ===============================
-//     let copuon_image = [];
-//     if (req.files?.length) {
-//       const uploads = await Promise.all(
-//         req.files.map((file) =>
-//           uploadToCloudinary(file.buffer, "coupons")
-//         )
-//       );
-//       copuon_image = uploads.map((u) => u.secure_url);
-//     }
-
-//     // ===============================
-//     // 8️⃣ Create Coupon
-//     // ===============================
-//     const coupon = await Coupon.create({
-//       planId: plan._id,
-//       title,
-//       shop_name,
-//       coupon_color,
-//       manul_address: manual_address,
-//       copuon_srno,
-//       category: categories.map((c) => c._id),
-//       discountPercentage,
-//       createdBy,
-//       ownerId: finalOwnerId,
-//       createdby: userId,
-//       validTill,
-//       style,
-//       active: false,
-//       maxDistributions: plan.couponsIncluded,
-//       fromTime: isFullDay ? undefined : fromTime,
-//       toTime: isFullDay ? undefined : toTime,
-//       isFullDay,
-//       is_spacial_copun_user: parsedSpecialUsers,
-//       termsAndConditions,
-//       is_spacial_copun,
-//       isTransferable,
-//       tag,
-//       shope_location: location,
-//       copuon_image,
-//       currentDistributions: 0,
-//       consumersId: [],
-//     });
-
-//     // ===============================
-//     // 9️⃣ Update UserPlan
-//     // ===============================
-//     // userPlan.couponsUsed += 1;
-//     userPlan.lastUsedAt = new Date();
-
-
-//     userPlan.status = "used";
-
-
-//     await userPlan.save();
-
-
-//     // Broadcast notification to users within 50 km
-//     try {
-//       const users = await User.find(
-//         {
-//           latestLocation: {
-//             $near: {
-//               $geometry: { type: "Point", coordinates: location.coordinates },
-//               $maxDistance: 50 * 1000,
-//             },
-//           },
-//           devicetoken: { $ne: null },
-//         },
-//         { uid: 1, name: 1, devicetoken: 1, _id: 0 }
-//       );
-
-//       if (users.length > 0) {
-//         const batchSize = 500;
-//         const batches = [];
-//         for (let i = 0; i < users.length; i += batchSize) {
-//           const batchTokens = users.slice(i, i + batchSize).map(u => u.devicetoken);
-//           batches.push({
-//             notification: {
-//               title: `New Coupon: ${title}`,
-//               body: `Get ${parsedDiscount}% off near you! Valid until ${new Date(validTill).toLocaleDateString()}.`,
-//             },
-//             tokens: batchTokens,
-//           });
-//         }
-
-//         await Promise.all(batches.map(batch => admin.messaging().sendEach(batch)));
-//       }
-
-//     } catch (notificationError) {
-//       console.error("Error sending notifications:", notificationError);
-//     }
-
-
-//     // ===============================
-//     // ✅ SUCCESS
-//     // ===============================
-//     return res.status(201).json({
-//       success: true,
-//       message: "Coupon created successfully",
-//       coupon,
-//     });
-//   } catch (err) {
-//     console.error("Create coupon error:", err);
-//     return res.status(500).json({
-//       message: "Error creating coupon",
-//       error: err.message,
-//     });
-//   }
-// };
 
 export const createCoupon = async (req, res) => {
   try {
@@ -1881,343 +1634,6 @@ const toggleActive = async (req, res) => {
 
 
 
-// export const getAllCouponsWithStatusTag = async (req, res) => {
-//   try {
-//     // Determine user ID (null for guests)
-//     let userId = null;
-//     if (req.user?.id && mongoose.isValidObjectId(req.user.id)) {
-//       userId = new mongoose.Types.ObjectId(req.user.id);
-//     }
-
-//     // Validate query parameters
-//     const { radius = 100000, search = '', page = 1, limit = 50, manualCode, lat, lng, category } = req.query;
-//     const parsedPage = parseInt(page);
-//     const parsedLimit = parseInt(limit);
-//     const parsedRadius = parseInt(radius);
-
-//     if (isNaN(parsedPage) || parsedPage < 1) {
-//       return res.status(400).json({ success: false, message: 'Invalid page number' });
-//     }
-//     if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
-//       return res.status(400).json({ success: false, message: 'Invalid limit, must be between 1 and 100' });
-//     }
-//     if ((lat && isNaN(Number(lat))) || (lng && isNaN(Number(lng)))) {
-//       return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
-//     }
-//     if (isNaN(parsedRadius) || parsedRadius < 0) {
-//       return res.status(400).json({ success: false, message: 'Invalid radius' });
-//     }
-
-//     // Enhanced category validation (supports single or multiple IDs)
-//     let categoryFilter = null;
-//     if (category) {
-//       const categoryIds = Array.isArray(category) ? category : category.split(',');
-//       const validIds = categoryIds.filter(id => mongoose.isValidObjectId(id));
-//       if (validIds.length !== categoryIds.length) {
-//         return res.status(400).json({ success: false, message: 'One or more invalid category IDs' });
-//       }
-//       const foundCategories = await Category.find({ _id: { $in: validIds } }).select('_id');
-//       if (foundCategories.length !== validIds.length) {
-//         return res.status(400).json({ success: false, message: 'One or more categories not found' });
-//       }
-//       categoryFilter = { $in: validIds.map(id => new mongoose.Types.ObjectId(id)) };
-//     }
-
-//     const skip = (parsedPage - 1) * parsedLimit;
-
-//     let mode = userId ? 'user' : 'guest';
-//     let baseLocation = null;
-//     let effectiveRadius = parsedRadius;
-//     let sortByLatest = false;
-
-//     // 1️⃣ Logged-in user: Get latestLocation
-//     if (userId) {
-//       const user = await User.findById(userId).select('latestLocation');
-//       if (user?.latestLocation?.coordinates && user.latestLocation.coordinates[0] !== 0 && user.latestLocation.coordinates[1] !== 0) {
-//         const [userLng, userLat] = user.latestLocation.coordinates;
-//         baseLocation = { type: 'Point', coordinates: [userLng, userLat] };
-//       }
-//     }
-
-//     // 2️⃣ Manual location (via manualCode)
-//     let manualLocation = null;
-//     if (manualCode) {
-//       manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('city state location');
-//       if (manualLocation?.location?.coordinates) {
-//         if (!baseLocation) {
-//           baseLocation = manualLocation.location;
-//           mode = 'manual';
-//           effectiveRadius = parsedRadius;
-//         } else {
-//           const check = await ManualAddress.aggregate([
-//             {
-//               $geoNear: {
-//                 near: baseLocation,
-//                 distanceField: 'distance',
-//                 spherical: true,
-//                 query: { uniqueCode: manualCode },
-//               },
-//             },
-//             { $project: { distance: 1 } },
-//           ]);
-
-//           const distance = check[0]?.distance || 0;
-//           if (distance > 100000) {
-//             mode = 'manual';
-//             baseLocation = manualLocation.location;
-//             effectiveRadius = parsedRadius;
-//           }
-//         }
-//       }
-//     }
-
-//     // 3️⃣ Custom location from query params (lat, lng)
-//     if (lat && lng) {
-//       baseLocation = { type: 'Point', coordinates: [Number(lng), Number(lat)] };
-//       mode = 'custom';
-//       effectiveRadius = parsedRadius || 100000;
-//     }
-
-//     // 4️⃣ Fallback: Default location (center of India) with no radius for latest coupons
-//     if (!baseLocation) {
-//       baseLocation = { type: 'Point', coordinates: [78.9629, 20.5937] };
-//       mode = 'default';
-//       effectiveRadius = null;
-//       sortByLatest = true;
-//     }
-
-//     // 5️⃣ Build search regex
-//     const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-
-//     // 6️⃣ Build match query for geoNear
-//     const geoQuery = {
-//       ...(categoryFilter ? { category: categoryFilter } : {}),
-//     };
-
-//     // 7️⃣ Build aggregation pipeline
-//     const dataPipeline = [
-//       {
-//         $geoNear: {
-//           near: baseLocation,
-//           distanceField: 'distance',
-//           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-//           spherical: true,
-//           key: 'shope_location',
-//           query: geoQuery,
-//         },
-//       },
-//       ...(search.trim()
-//         ? [
-//           {
-//             $match: {
-//               $or: [
-//                 { manual_address: searchRegex },
-//                 { title: searchRegex },
-//                 { tag: { $elemMatch: { $regex: searchRegex } } },
-//               ],
-//             },
-//           },
-//         ]
-//         : []),
-//       ...(userId
-//         ? [
-//           {
-//             $lookup: {
-//               from: 'usercoupons',
-//               let: { couponId: '$_id' },
-//               pipeline: [
-//                 {
-//                   $match: {
-//                     $expr: {
-//                       $and: [
-//                         { $eq: ['$couponId', '$$couponId'] },
-//                         { $eq: ['$userId', userId] },
-//                       ],
-//                     },
-//                   },
-//                 },
-//                 { $project: { status: 1, count: 1, _id: 0 } },
-//               ],
-//               as: 'userStatus',
-//             },
-//           },
-//           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-//           // Only include active coupons that are not used or transferred and have count > 0
-//           {
-//             $match: {
-//               active: true,
-//               $or: [
-//                 { validTill: { $gt: new Date() } },
-//                 { validTill: null },
-//               ],
-//               $or: [
-//                 { userStatus: { $exists: false } }, // Coupons not claimed by the user
-//                 {
-//                   $and: [
-//                     { 'userStatus.status': { $nin: ['used', 'transferred'] } },
-//                     { 'userStatus.count': { $gte: 1 } },
-//                   ],
-//                 },
-//               ],
-//             },
-//           },
-//           // Add fields for couponCount and formatted displayTag (e.g., "Available coupon: 1")
-//           {
-//             $addFields: {
-//               couponCount: { $ifNull: ['$userStatus.count', 1] },
-//             },
-//           },
-//           {
-//             $addFields: {
-//               displayTag: {
-//                 $cond: {
-//                   if: { $eq: ['$userStatus.status', 'cancelled'] },
-//                   then: { $concat: ['Cancelled: ', { $toString: '$couponCount' }] },
-//                   else: { $concat: ['Available: ', { $toString: '$couponCount' }] },
-//                 },
-//               },
-//             },
-//           },
-//         ]
-//         : [
-//           {
-//             $match: {
-//               active: true,
-//               $or: [
-//                 { validTill: { $gt: new Date() } },
-//                 { validTill: null },
-//               ],
-//             },
-//           },
-//           {
-//             $addFields: {
-//               displayTag: 'Available coupon: 1',
-//             },
-//           },
-//         ]),
-//       {
-//         $project: {
-//           title: 1,
-//           shop_name: 1,
-//           copuon_image: 1,
-//           manual_address: 1,
-//           copuon_srno: 1,
-//           coupon_color: 1,
-//           is_spacial_copun: 1,
-//           isTransferable: 1,
-//           discountPercentage: 1,
-//           validTill: 1,
-//           displayTag: 1,
-//           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
-//         },
-//       },
-//       { $sort: sortByLatest ? { validTill: -1, createdAt: -1 } : { distance: 1, validTill: -1 } },
-//       { $skip: skip },
-//       { $limit: parsedLimit },
-//     ];
-
-//     const coupons = await Coupon.aggregate(dataPipeline);
-
-//     // 8️⃣ Count pipeline (now counts unique coupons, not summed instances)
-//     const countPipeline = [
-//       {
-//         $geoNear: {
-//           near: baseLocation,
-//           distanceField: 'distance',
-//           ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
-//           spherical: true,
-//           key: 'shope_location',
-//           query: geoQuery,
-//         },
-//       },
-//       ...(search.trim()
-//         ? [
-//           {
-//             $match: {
-//               $or: [
-//                 { manual_address: searchRegex },
-//                 { title: searchRegex },
-//                 { tag: { $elemMatch: { $regex: searchRegex } } },
-//               ],
-//             },
-//           },
-//         ]
-//         : []),
-//       ...(userId
-//         ? [
-//           {
-//             $lookup: {
-//               from: 'usercoupons',
-//               let: { couponId: '$_id' },
-//               pipeline: [
-//                 {
-//                   $match: {
-//                     $expr: {
-//                       $and: [
-//                         { $eq: ['$couponId', '$$couponId'] },
-//                         { $eq: ['$userId', userId] },
-//                       ],
-//                     },
-//                   },
-//                 },
-//                 { $project: { status: 1, count: 1, _id: 0 } },
-//               ],
-//               as: 'userStatus',
-//             },
-//           },
-//           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-//           {
-//             $match: {
-//               active: true,
-//               $or: [
-//                 { validTill: { $gt: new Date() } },
-//                 { validTill: null },
-//               ],
-//               $or: [
-//                 { userStatus: { $exists: false } },
-//                 {
-//                   $and: [
-//                     { 'userStatus.status': { $nin: ['used', 'transferred'] } },
-//                     { 'userStatus.count': { $gte: 1 } },
-//                   ],
-//                 },
-//               ],
-//             },
-//           },
-//           { $count: 'total' },
-//         ]
-//         : [
-//           {
-//             $match: {
-//               active: true,
-//               $or: [
-//                 { validTill: { $gt: new Date() } },
-//                 { validTill: null },
-//               ],
-//             },
-//           },
-//           { $count: 'total' },
-//         ]),
-//     ];
-
-//     const totalResult = await Coupon.aggregate(countPipeline);
-//     const total = totalResult[0]?.total || 0;
-
-//     res.status(200).json({
-//       success: true,
-//       mode,
-//       data: coupons,
-//       page: parsedPage,
-//       limit: parsedLimit,
-//       total,
-//       pages: Math.ceil(total / parsedLimit),
-//     });
-//   } catch (error) {
-//     console.error('Error fetching coupons:', error);
-//     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
-//   }
-// };
-
 
 export const getAllCouponsWithStatusTag = async (req, res) => {
   try {
@@ -2798,114 +2214,6 @@ export const transferCoupon = async (req, res) => {
 };
 
 
-// export const claimCoupon = async (req, res) => {
-//   try {
-//     const userId = req.user._id;
-
-//     const { couponId, useCount = 1, owner } = req.body;
-
-//     if (!mongoose.Types.ObjectId.isValid(couponId)) {
-//       return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
-//     }
-//     // if (!mongoose.Types.ObjectId.isValid(ownerId)) {
-//     //   return res.status(400).json({ success: false, message: "Invalid owner ID" });
-//     // }
-//     if (!owner) {
-//       return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
-//     }
-//     const decoded = jwt.verify(owner, JWT_SECRET)
-
-//     if (!decoded || !decoded.userId) {
-//       return res.status(401).json({ message: 'Invalid or expired token' });
-//     }
-
-//     // 3) Fetch user from DB
-//     const user = await User.findById(decoded.userId).select('-password -otp -__v');
-//     if (!user) {
-//       return res.status(401).json({ message: 'User not found, authorization denied' });
-//     }
-
-
-
-
-
-//     const coupon = await Coupon.findOne({ _id: couponId, ownerId: user._id });
-
-//     if (!coupon) return res.status(404).json({ success: false, message: "Coupon not found" });
-
-//     if (new Date() > coupon.validTill) return res.statu(400).json({ success: false, message: "Coupon expired" });
-
-//     if (coupon.maxDistributions > 0 && coupon.currentDistributions >= coupon.maxDistributions) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Coupon limit reached"
-//       });
-//     }
-//     let existingClaim = await UserCoupon.findOne({ couponId, userId });
-
-//     if (existingClaim) {
-//       if (existingClaim.status === "used") return res.status(400).json({ success: false, message: "Coupon already used" });
-//       if (["cancelled", "transferred"].includes(existingClaim.status)) return res.status(400).json({ success: false, message: `Coupon already ${existingClaim.status}` });
-
-//       if (existingClaim.status === "available") {
-//         let totalCount = existingClaim.count - useCount;
-//         if (totalCount < 0) totalCount = 0;
-
-//         existingClaim.count = totalCount;
-//         if (existingClaim.count === 0) {
-//           existingClaim.status = "used";
-//           existingClaim.useDate = new Date();
-//         }
-
-//         await existingClaim.save();
-
-//         // Create ongoing sale (amount will be charged later)
-//         const sale = new Salses({
-//           couponId,
-//           userId,
-
-
-//           status: "ongoing",
-//           usedCount: useCount
-//         });
-//         await sale.save();
-
-//         return res.status(200).json({ success: true, message: "Coupon count reduced and sale record created (pending payment)", data: { userCoupon: existingClaim, sale } });
-//       }
-//     }
-
-//     // New claim
-//     const initialCount = useCount > 2 ? 2 : useCount;
-//     const userCoupon = new UserCoupon({
-//       couponId,
-//       userId,
-//       qrCode: `COUPON-${couponId}-${userId}-${Date.now()}`,
-//       status: "available",
-//       count: initialCount
-//     });
-//     await userCoupon.save();
-
-//     const sale = new Salses({
-//       couponId,
-//       userId,
-//       status: "ongoing",
-//       usedCount: initialCount
-//     });
-//     await sale.save();
-
-
-//     // 6️⃣ Update coupon distributions & consumers
-//     coupon.currentDistributions += 1;
-//     coupon.consumersId.push(userId);
-//     await coupon.save();
-
-//     return res.status(201).json({ success: true, message: "Coupon claimed and sale record created (pending payment)", data: { userCoupon, sale } });
-
-//   } catch (error) {
-//     console.error("Error claiming coupon:", error);
-//     return res.status(500).json({ success: false, message: "Error claiming coupon", error: error.message });
-//   }
-// };
 
 
 
