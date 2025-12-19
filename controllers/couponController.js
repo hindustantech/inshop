@@ -283,9 +283,8 @@ export const updateCouponFromAdmin = async (req, res) => {
         return res.status(404).json({ success: false, message: `User with phone ${phone} not found` });
       }
 
-      // Set ownerId to found user's _id
       updates.ownerId = user._id;
-      delete updates.ownerPhone; // clean up
+      delete updates.ownerPhone;
     }
 
     // 2. Handle shope_location
@@ -295,7 +294,7 @@ export const updateCouponFromAdmin = async (req, res) => {
           ? JSON.parse(updates.shope_location)
           : updates.shope_location;
       } catch (e) {
-        return res.status(400).json({ message: 'Invalid shope_location format' });
+        return res.status(400).json({ success: false, message: 'Invalid shope_location format' });
       }
     }
 
@@ -307,7 +306,7 @@ export const updateCouponFromAdmin = async (req, res) => {
       updates.copuon_image = results.map(r => r.secure_url);
     }
 
-    // 4. DISCOUNT: Save EXACTLY what user types
+    // 4. DISCOUNT: Save exactly what user types
     if (updates.hasOwnProperty('discountPercentage')) {
       let input = updates.discountPercentage;
       if (input === null || input === undefined) input = '';
@@ -330,6 +329,23 @@ export const updateCouponFromAdmin = async (req, res) => {
       delete updates.categoryIds;
     }
 
+    // ==== FIX FOR fromTime / toTime VALIDATION ====
+    if (updates.isFullDay === true || updates.isFullDay === 'true') {
+      // If it's a full-day coupon → time fields are not needed
+      updates.fromTime = '';   // or you can delete them entirely
+      updates.toTime = '';
+      // Optionally: delete updates.fromTime; delete updates.toTime;
+    } else {
+      // Not full day → ensure times are provided (frontend should send them)
+      if (!updates.fromTime || !updates.toTime) {
+        return res.status(400).json({
+          success: false,
+          message: 'fromTime and toTime are required when not full day'
+        });
+      }
+    }
+    // ==============================================
+
     // 6. PROTECTED FIELDS – Never allow update
     const protectedFields = [
       'currentDistributions', 'consumersId', 'creationDate',
@@ -337,15 +353,15 @@ export const updateCouponFromAdmin = async (req, res) => {
     ];
     protectedFields.forEach(f => delete updates[f]);
 
-    // 7. Final Update
+    // 7. Final Update with validation
     const updatedCoupon = await Coupon.findByIdAndUpdate(
       couponId,
       { $set: updates },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true }  // runValidators is key here
     )
       .select('-consumersId -__v -promotion')
       .populate('category', 'name')
-      .populate('ownerId', 'name phone') // Show owner name & phone
+      .populate('ownerId', 'name phone')
       .populate('is_spacial_copun_user', 'name phone referralCode')
       .lean();
 
@@ -361,6 +377,17 @@ export const updateCouponFromAdmin = async (req, res) => {
 
   } catch (error) {
     console.error('Update coupon error:', error);
+
+    // Better error handling for validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        error: messages.join(', ')
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: 'Server error',
@@ -368,7 +395,6 @@ export const updateCouponFromAdmin = async (req, res) => {
     });
   }
 };
-
 
 
 
