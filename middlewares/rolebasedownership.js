@@ -7,7 +7,7 @@ export const roleBasedOwnership = (req, res, next) => {
         const { type, _id } = req.user;
         const ownerId = req.body.ownerId;
 
-        if (type === "agency" || type === "super_admin") {
+        if (type === "agency" || type === "super_admin" || type === "admin") {
             req.ownership = {
                 createdBy: _id,
                 ownerId: ownerId || null, // ✅ only set if provided
