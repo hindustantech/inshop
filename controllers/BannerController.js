@@ -295,7 +295,8 @@ export const createBanneradmin = async (req, res) => {
     /* ======================
        🔹 Role Validation
     ====================== */
-    if (!['partner', 'agency', 'super_admin'].includes(userType)) {
+
+    if (!['partner', 'agency','admin', 'super_admin'].includes(userType)) {
       return res.status(401).json({ success: false, message: 'Unauthorized Access' });
     }
 
