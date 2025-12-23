@@ -273,7 +273,7 @@ export const createBanner = async (req, res) => {
 export const createBanneradmin = async (req, res) => {
   try {
     const userId = req.user?._id;
-    const userType = req.user?.type; // partner | agency | super_admin
+    const userType = req.user?.type; // partner | agency | admin | super_admin
 
     let {
       google_location_url,
@@ -287,17 +287,38 @@ export const createBanneradmin = async (req, res) => {
       website_url,
       search_radius,
       manual_address,
-      expiryDays, // number of days
-      category,   // array of category IDs
-      ownerId,    // only agency/super_admin can pass this
+      expiryDays,
+      category,
+      ownerId,
+      paymentReference, // Payment reference for verification
     } = req.body;
 
     /* ======================
        🔹 Role Validation
     ====================== */
-
-    if (!['partner', 'agency','admin', 'super_admin'].includes(userType)) {
+    if (!['partner', 'agency', 'admin', 'super_admin'].includes(userType)) {
       return res.status(401).json({ success: false, message: 'Unauthorized Access' });
+    }
+
+    /* ======================
+       🔹 Payment Verification for non-admin users
+    ====================== */
+    if (['partner', 'agency'].includes(userType)) {
+      if (!paymentReference) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment reference is required'
+        });
+      }
+
+      // Verify payment was successful
+      const paymentVerification = await verifyBannerPayment(paymentReference, userId);
+      if (!paymentVerification.success) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment verification failed: ' + paymentVerification.message
+        });
+      }
     }
 
     /* ======================
@@ -340,17 +361,6 @@ export const createBanneradmin = async (req, res) => {
         message: 'Invalid banner_type. Must be "Changeable" or "Unchangeable"',
       });
     }
-
-    /* ======================
-       🔹 URL Validation
-    ====================== */
-    // const urlRegex = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?$/;
-    // if (google_location_url && !urlRegex.test(google_location_url)) {
-    //   return res.status(400).json({ success: false, message: 'Invalid Google Location URL format' });
-    // }
-    // if (website_url && !urlRegex.test(website_url)) {
-    //   return res.status(400).json({ success: false, message: 'Invalid Website URL format' });
-    // }
 
     /* ======================
        🔹 Image Validation
@@ -398,7 +408,7 @@ export const createBanneradmin = async (req, res) => {
     if (userType === 'partner') {
       finalCreatedBy = userId;
       finalOwnerId = userId;
-    } else if (['agency', 'super_admin'].includes(userType)) {
+    } else if (['agency', 'admin', 'super_admin'].includes(userType)) {
       finalCreatedBy = userId;
       if (ownerId) {
         if (!mongoose.Types.ObjectId.isValid(ownerId)) {
@@ -444,7 +454,8 @@ export const createBanneradmin = async (req, res) => {
       main_keyword,
       keyword,
       expiryAt,
-      category, // Array of category IDs
+      category,
+      paymentReference: ['partner', 'agency'].includes(userType) ? paymentReference : null,
     });
 
     await banner.save();
@@ -457,6 +468,45 @@ export const createBanneradmin = async (req, res) => {
   } catch (error) {
     console.error('CreateBanner Error:', error);
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Helper function to verify banner payment
+const verifyBannerPayment = async (paymentReference, userId) => {
+  try {
+    // Check if payment exists and is successful
+    const payment = await Topup.findById(paymentReference);
+
+    if (!payment) {
+      return { success: false, message: 'Payment not found' };
+    }
+
+    if (payment.userId.toString() !== userId.toString()) {
+      return { success: false, message: 'Payment does not belong to user' };
+    }
+
+    if (payment.status !== 'success') {
+      return { success: false, message: 'Payment not successful' };
+    }
+
+    // Check if payment was for banner creation
+    if (payment.metadata?.type !== 'banner_creation') {
+      return { success: false, message: 'Invalid payment type' };
+    }
+
+    // Check if payment has already been used
+    if (payment.metadata?.usedForBanner) {
+      return { success: false, message: 'Payment already used for banner creation' };
+    }
+
+    // Mark payment as used
+    payment.metadata.usedForBanner = true;
+    await payment.save();
+
+    return { success: true };
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    return { success: false, message: 'Payment verification failed' };
   }
 };
 

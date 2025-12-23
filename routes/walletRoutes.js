@@ -15,16 +15,19 @@ router.get("/wallet/transactions", authMiddleware, getWalletTransactions);
 
 // Top-up routes
 router.post("/wallet/topup", authMiddleware, validateCouponMiddleware, createTopup);
-
+router.post("/verify", authMiddleware, verifyPaymentController);
 
 // In your router.js - Just add this ONE line:
 router.get("/wallet/topup/status/:orderId", authMiddleware, getPaymentStatus);
 // Coupon routes
 router.post("/coupons/validate", authMiddleware, CouponController.validateCoupon);
+
+
+
 router.get("/coupons/available", authMiddleware, CouponController.getAvailableCoupons);
 router.get("/coupons/history", authMiddleware, CouponController.getCouponHistory);
 router.post("/coupons/apply", authMiddleware, CouponController.applyCoupon);
-router.post("/verify", authMiddleware, verifyPaymentController);
+
 
 // Webhook route — NO authMiddleware, uses rawBody middleware
 
