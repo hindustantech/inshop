@@ -843,7 +843,7 @@ export const createCouponAdmin = async (req, res) => {
     } = req.body;
 
     const adminId = req.user?._id;
-    const adminRole = req.user?.role;
+    const adminRole = req.user?.role ||req.user?.type;
 
     if (!adminId) {
       return res.status(401).json({ message: "Unauthorized admin" });
