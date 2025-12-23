@@ -10,6 +10,8 @@ import User from "../models/userModel.js";
 import Coupon from "../models/coupunModel.js";
 import { uploadToCloudinary } from "../utils/Cloudinary.js";
 
+import mongoose from "mongoose";
+
 export const createOrUpdateMall = async (req, res) => {
     try {
         const data = req.body;
@@ -447,33 +449,98 @@ export const getMallshopBanner = async (req, res) => {
     }
 }
 
-export const addintomall = async (req, res) => {
-    const { mallId, UserId } = req.body;
+
+export const addShopIntoMall = async (req, res) => {
+    const { mallId, userId } = req.body;
+
+    // 1️⃣ Basic validation
+    if (!mongoose.Types.ObjectId.isValid(mallId) ||
+        !mongoose.Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({
+            success: false,
+            message: "Invalid mallId or userId",
+        });
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
     try {
-        // 1️⃣ Find the shop for the current user
-        const shop = await PatnerProfile.findOne({ User_id: UserId });
-        if (!shop) return res.status(404).json({ message: "Shop not found" });
-
-        // 2️⃣ Update the shop to set its mallId
-        shop.mallId = mallId;
-        shop.isIndependent = false; // now it's linked to a mall
-        await shop.save();
-
-        // 3️⃣ Add the shop to the mall's shops array
-        const mall = await Mall.findByIdAndUpdate(
-            mallId,
-            { $addToSet: { shops: shop._id } }, // $addToSet avoids duplicates
-            { new: true }
+        // 2️⃣ Fetch shop
+        const shop = await PatnerProfile.findOne(
+            { User_id: userId },
+            null,
+            { session }
         );
-        if (!mall) return res.status(404).json({ message: "Mall not found" });
 
-        res.status(200).json({ message: "Shop successfully added to mall", mall });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Server error", error: error.message });
+        if (!shop) {
+            throw new Error("SHOP_NOT_FOUND");
+        }
+
+        // 3️⃣ Idempotency check
+        if (shop.mallId?.toString() === mallId) {
+            await session.abortTransaction();
+            return res.status(200).json({
+                success: true,
+                message: "Shop already linked to this mall",
+            });
+        }
+
+        // 4️⃣ Fetch mall
+        const mall = await Mall.findById(mallId, null, { session });
+        if (!mall) {
+            throw new Error("MALL_NOT_FOUND");
+        }
+
+        // 5️⃣ Domain rule: prevent reassignment (optional business rule)
+        if (shop.mallId && shop.mallId.toString() !== mallId) {
+            throw new Error("SHOP_ALREADY_ASSIGNED_TO_ANOTHER_MALL");
+        }
+
+        // 6️⃣ Update shop
+        shop.mallId = mall._id;
+        shop.isIndependent = false;
+        await shop.save({ session });
+
+        // 7️⃣ Update mall (deduplicated)
+        mall.shops.addToSet(shop._id);
+        await mall.save({ session });
+
+        // 8️⃣ Commit
+        await session.commitTransaction();
+
+        return res.status(200).json({
+            success: true,
+            message: "Shop successfully added to mall",
+            data: {
+                mallId: mall._id,
+                shopId: shop._id,
+            },
+        });
+
+    } catch (err) {
+        await session.abortTransaction();
+
+        const errorMap = {
+            SHOP_NOT_FOUND: { status: 404, message: "Shop not found" },
+            MALL_NOT_FOUND: { status: 404, message: "Mall not found" },
+            SHOP_ALREADY_ASSIGNED_TO_ANOTHER_MALL: {
+                status: 409,
+                message: "Shop is already linked to another mall",
+            },
+        };
+
+        const mapped = errorMap[err.message];
+
+        return res.status(mapped?.status || 500).json({
+            success: false,
+            message: mapped?.message || "Internal server error",
+        });
+    } finally {
+        session.endSession();
     }
 };
+
 
 export const getAllMall = async (req, res) => {
     try {
