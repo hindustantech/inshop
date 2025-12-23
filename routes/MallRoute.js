@@ -19,7 +19,7 @@ router.get('/getMalls', authMiddleware1, getMallsWithUserLocation);
 router.post("/createOrUpdateMall", uploadMallFiles, createOrUpdateMall);
 router.get('/getMallshop', getMallshop);
 // router.get('/addintomall', authMiddleware, checkPermission(assing.add), addintomall);
-router.get('/addintomall', authMiddleware, addintomall);
+router.post('/addintomall', authMiddleware, addintomall);
 router.get('/getAllMall', authMiddleware, getAllMall);
 router.get('/getPartnerByPhone', authMiddleware, getPartnerByPhone);
 
