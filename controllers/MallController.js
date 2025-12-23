@@ -450,7 +450,7 @@ export const getMallshopBanner = async (req, res) => {
 }
 
 
-export const addShopIntoMall = async (req, res) => {
+export const addintomall = async (req, res) => {
     const { mallId, userId } = req.body;
 
     // 1️⃣ Basic validation
