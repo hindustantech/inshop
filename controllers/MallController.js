@@ -1,3 +1,4 @@
+// controllers/MallController.js
 import Mall from "../models/MallSchema.js";
 import PatnerProfile from "../models/PatnerProfile.js";
 import Banner from "../models/Banner.js";
@@ -9,6 +10,233 @@ import User from "../models/userModel.js";
 import Coupon from "../models/coupunModel.js";
 import { uploadToCloudinary } from "../utils/Cloudinary.js";
 
+export const createOrUpdateMall = async (req, res) => {
+    try {
+        const data = req.body;
+        const { mallId } = data;
+
+        console.log("Request received:", { mallId, body: data, files: req.files });
+
+        // 1️⃣ Required fields for creation
+        if (!mallId && (!data.name || !data.name.trim())) {
+            return res.status(400).json({ success: false, message: "Mall name is required" });
+        }
+        if (!mallId && (!data.manul_address || !data.manul_address.trim())) {
+            return res.status(400).json({ success: false, message: "Manual address is required" });
+        }
+
+        // 2️⃣ Parse JSON strings from form data
+        let parsedData = { ...data };
+
+        // Parse address if it's a string
+        if (typeof data.address === 'string') {
+            try {
+                parsedData.address = JSON.parse(data.address);
+            } catch (error) {
+                console.error("Error parsing address:", error);
+                parsedData.address = {};
+            }
+        }
+
+        // Parse location if it's a string
+        if (typeof data.location === 'string') {
+            try {
+                parsedData.location = JSON.parse(data.location);
+            } catch (error) {
+                console.error("Error parsing location:", error);
+                parsedData.location = { coordinates: ["", ""] };
+            }
+        }
+
+        // Parse contact if it's a string
+        if (typeof data.contact === 'string') {
+            try {
+                parsedData.contact = JSON.parse(data.contact);
+            } catch (error) {
+                console.error("Error parsing contact:", error);
+                parsedData.contact = {};
+            }
+        }
+
+        // Parse facilities if it's a string
+        if (typeof data.facilities === 'string') {
+            try {
+                parsedData.facilities = JSON.parse(data.facilities);
+            } catch (error) {
+                console.error("Error parsing facilities:", error);
+                parsedData.facilities = {};
+            }
+        }
+
+        // Parse timings if it's a string
+        if (typeof data.timings === 'string') {
+            try {
+                parsedData.timings = JSON.parse(data.timings);
+            } catch (error) {
+                console.error("Error parsing timings:", error);
+                parsedData.timings = {};
+            }
+        }
+
+        // 3️⃣ Location validation
+        if (parsedData.location?.coordinates) {
+            if (
+                !Array.isArray(parsedData.location.coordinates) ||
+                parsedData.location.coordinates.length !== 2 ||
+                isNaN(parsedData.location.coordinates[0]) ||
+                isNaN(parsedData.location.coordinates[1])
+            ) {
+                return res.status(400).json({ success: false, message: "Valid location coordinates [lng, lat] are required" });
+            }
+        }
+
+        // 4️⃣ Contact validation
+        if (parsedData.contact?.email && !validator.isEmail(parsedData.contact.email)) {
+            return res.status(400).json({ success: false, message: "Invalid email address" });
+        }
+        if (parsedData.contact?.phone && !validator.isMobilePhone(parsedData.contact.phone, "any")) {
+            return res.status(400).json({ success: false, message: "Invalid phone number" });
+        }
+        if (parsedData.contact?.website && parsedData.contact.website.trim() !== "" && !validator.isURL(parsedData.contact.website)) {
+            return res.status(400).json({ success: false, message: "Invalid website URL" });
+        }
+
+        // -----------------------------
+        // 5️⃣ IMAGE UPLOAD SECTION
+        // -----------------------------
+
+        let logoUrl = null;
+        let galleryUrls = [];
+
+        // ⭐ Upload LOGO file (only if new file is provided)
+        if (req.files?.logo && req.files.logo[0]) {
+            console.log("Uploading logo...");
+            try {
+                const logoBuffer = req.files.logo[0].buffer;
+                const uploadedLogo = await uploadToCloudinary(logoBuffer, "mall/logo");
+                logoUrl = uploadedLogo.secure_url;
+                console.log("Logo uploaded:", logoUrl);
+            } catch (error) {
+                console.error("Error uploading logo:", error);
+                return res.status(500).json({ success: false, message: "Error uploading logo" });
+            }
+        } else if (mallId) {
+            // Keep existing logo if updating and no new logo provided
+            const existingMall = await Mall.findById(mallId);
+            logoUrl = existingMall?.logo || "";
+        }
+
+        // ⭐ Upload GALLERY images (only if new files are provided)
+        if (req.files?.gallery && req.files.gallery.length > 0) {
+            console.log(`Uploading ${req.files.gallery.length} gallery images...`);
+            try {
+                for (const file of req.files.gallery) {
+                    const uploaded = await uploadToCloudinary(file.buffer, "mall/gallery");
+                    galleryUrls.push({
+                        image: uploaded.secure_url,
+                        caption: ""
+                    });
+                }
+                console.log("Gallery images uploaded:", galleryUrls.length);
+            } catch (error) {
+                console.error("Error uploading gallery:", error);
+                return res.status(500).json({ success: false, message: "Error uploading gallery images" });
+            }
+        } else if (mallId && parsedData.gallery) {
+            // Handle gallery from form data or keep existing
+            if (typeof parsedData.gallery === 'string') {
+                try {
+                    galleryUrls = JSON.parse(parsedData.gallery);
+                } catch (error) {
+                    console.error("Error parsing gallery:", error);
+                }
+            } else if (Array.isArray(parsedData.gallery)) {
+                galleryUrls = parsedData.gallery;
+            }
+        }
+
+        // 6️⃣ Prepare sanitized data
+        const mallData = {
+            name: parsedData.name?.trim() || "",
+            tagline: parsedData.tagline?.trim() || "",
+            description: parsedData.description?.trim() || "",
+            manul_address: parsedData.manul_address?.trim() || "",
+            address: {
+                street: parsedData.address?.street?.trim() || "",
+                area: parsedData.address?.area?.trim() || "",
+                city: parsedData.address?.city?.trim() || "",
+                state: parsedData.address?.state?.trim() || "",
+                country: parsedData.address?.country?.trim() || "India",
+                pincode: parsedData.address?.pincode?.trim() || "",
+            },
+            location: parsedData.location?.coordinates
+                ? {
+                    type: "Point",
+                    coordinates: parsedData.location.coordinates.map(coord =>
+                        typeof coord === 'string' ? parseFloat(coord) || 0 : coord
+                    )
+                }
+                : undefined,
+            contact: {
+                phone: parsedData.contact?.phone || "",
+                email: parsedData.contact?.email || "",
+                website: parsedData.contact?.website || "",
+            },
+            facilities: {
+                parking: parsedData.facilities?.parking || false,
+                foodCourt: parsedData.facilities?.foodCourt || false,
+                kidsZone: parsedData.facilities?.kidsZone || false,
+                wheelchairAccess: parsedData.facilities?.wheelchairAccess || false,
+                cinema: parsedData.facilities?.cinema || false,
+                restrooms: parsedData.facilities?.restrooms !== undefined ? parsedData.facilities.restrooms : true,
+                atm: parsedData.facilities?.atm !== undefined ? parsedData.facilities.atm : true,
+                wifi: parsedData.facilities?.wifi || false,
+            },
+            timings: {
+                open: parsedData.timings?.open || "10:00 AM",
+                close: parsedData.timings?.close || "10:00 PM",
+                closedOn: parsedData.timings?.closedOn || "None",
+            },
+            active: parsedData.active !== undefined ? parsedData.active : true,
+        };
+
+        // Only add logo if it has a value
+        if (logoUrl !== null) {
+            mallData.logo = logoUrl;
+        }
+
+        // Only add gallery if it has values
+        if (galleryUrls.length > 0) {
+            mallData.gallery = galleryUrls;
+        }
+
+        console.log("Prepared mall data:", mallData);
+
+        let mall;
+
+        if (mallId) {
+            // 7️⃣ Update mall
+            mall = await Mall.findByIdAndUpdate(mallId, mallData, { new: true, runValidators: true });
+            if (!mall) {
+                return res.status(404).json({ success: false, message: "Mall not found to update" });
+            }
+            return res.status(200).json({ success: true, message: "Mall updated successfully", mall });
+        } else {
+            // 8️⃣ Create mall - ensure location is provided
+            if (!mallData.location || !mallData.location.coordinates) {
+                return res.status(400).json({ success: false, message: "Location coordinates are required for new mall" });
+            }
+            mall = await Mall.create(mallData);
+            return res.status(201).json({ success: true, message: "Mall created successfully", mall });
+        }
+
+    } catch (error) {
+        console.error("Error in createOrUpdateMall:", error);
+        res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
+    }
+};
+
+// Rest of the controller functions remain the same...
 export const getMallsWithUserLocation = async (req, res) => {
     try {
         // 1️⃣ Parse query
@@ -219,131 +447,8 @@ export const getMallshopBanner = async (req, res) => {
     }
 }
 
-// ==========================
-
-export const createOrUpdateMall = async (req, res) => {
-    try {
-        const data = req.body;
-        const { mallId } = data;
-
-        // 1️⃣ Required fields for creation
-        if (!mallId && (!data.name || !data.name.trim())) {
-            return res.status(400).json({ success: false, message: "Mall name is required" });
-        }
-        if (!mallId && (!data.manul_address || !data.manul_address.trim())) {
-            return res.status(400).json({ success: false, message: "Manual address is required" });
-        }
-
-        // 2️⃣ Location validation
-        if (data.location?.coordinates) {
-            if (
-                !Array.isArray(data.location.coordinates) ||
-                data.location.coordinates.length !== 2 ||
-                isNaN(data.location.coordinates[0]) ||
-                isNaN(data.location.coordinates[1])
-            ) {
-                return res.status(400).json({ success: false, message: "Valid location coordinates [lng, lat] are required" });
-            }
-        }
-
-        // 3️⃣ Contact validation
-        if (data.contact?.email && !validator.isEmail(data.contact.email)) {
-            return res.status(400).json({ success: false, message: "Invalid email address" });
-        }
-        if (data.contact?.phone && !validator.isMobilePhone(data.contact.phone, "any")) {
-            return res.status(400).json({ success: false, message: "Invalid phone number" });
-        }
-        if (data.contact?.website && !validator.isURL(data.contact.website)) {
-            return res.status(400).json({ success: false, message: "Invalid website URL" });
-        }
-
-        // -----------------------------
-        // 4️⃣ IMAGE UPLOAD SECTION
-        // -----------------------------
-
-        let logoUrl = data.logo || "";        // default old logo
-        let galleryUrls = [];                 // new gallery if uploaded
-
-        // ⭐ Upload LOGO file
-        if (req.files?.logo && req.files.logo[0]) {
-            const logoBuffer = req.files.logo[0].buffer;
-            const uploadedLogo = await uploadToCloudinary(logoBuffer, "mall/logo");
-            logoUrl = uploadedLogo.secure_url;
-        }
-
-        // ⭐ Upload GALLERY images
-        if (req.files?.gallery && req.files.gallery.length > 0) {
-            for (const file of req.files.gallery) {
-                const uploaded = await uploadToCloudinary(file.buffer, "mall/gallery");
-                galleryUrls.push(uploaded.secure_url);
-            }
-        }
-
-        // 5️⃣ Prepare sanitized data
-        const mallData = {
-            name: data.name?.trim(),
-            tagline: data.tagline?.trim() || "",
-            description: data.description?.trim() || "",
-            manul_address: data.manul_address?.trim(),
-            address: {
-                street: data.address?.street?.trim() || "",
-                area: data.address?.area?.trim() || "",
-                city: data.address?.city?.trim() || "",
-                state: data.address?.state?.trim() || "",
-                country: data.address?.country?.trim() || "India",
-                pincode: data.address?.pincode?.trim() || "",
-            },
-            location: data.location
-                ? { type: "Point", coordinates: data.location.coordinates.map(Number) }
-                : undefined,
-
-            logo: logoUrl,                   // 🔥 NEW — Updated Logo URL
-            gallery: galleryUrls.length > 0 ? galleryUrls : undefined, // 🔥 NEW Gallery images
-
-            facilities: {
-                parking: data.facilities?.parking || false,
-                foodCourt: data.facilities?.foodCourt || false,
-                kidsZone: data.facilities?.kidsZone || false,
-                wheelchairAccess: data.facilities?.wheelchairAccess || false,
-                cinema: data.facilities?.cinema || false,
-                restrooms: data.facilities?.restrooms !== undefined ? data.facilities.restrooms : true,
-                atm: data.facilities?.atm !== undefined ? data.facilities.atm : true,
-                wifi: data.facilities?.wifi || false,
-            },
-            timings: {
-                open: data.timings?.open || "10:00 AM",
-                close: data.timings?.close || "10:00 PM",
-                closedOn: data.timings?.closedOn || "None",
-            },
-            active: data.active !== undefined ? data.active : true,
-        };
-
-        let mall;
-
-        if (mallId) {
-            // 6️⃣ Update mall
-            mall = await Mall.findByIdAndUpdate(mallId, mallData, { new: true });
-            if (!mall) {
-                return res.status(404).json({ success: false, message: "Mall not found to update" });
-            }
-            return res.status(200).json({ success: true, message: "Mall updated successfully", mall });
-        } else {
-            // 7️⃣ Create mall
-            mall = await Mall.create(mallData);
-            return res.status(201).json({ success: true, message: "Mall created successfully", mall });
-        }
-
-    } catch (error) {
-        console.error("Error in createOrUpdateMall:", error);
-        res.status(500).json({ success: false, message: "Something went wrong", error: error.message });
-    }
-};
-
-
-
 export const addintomall = async (req, res) => {
-
-    const { mallId,UserId } = req.body;
+    const { mallId, UserId } = req.body;
 
     try {
         // 1️⃣ Find the shop for the current user
@@ -369,10 +474,6 @@ export const addintomall = async (req, res) => {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 };
-
-
-
-
 
 export const getAllMall = async (req, res) => {
     try {
@@ -450,8 +551,6 @@ export const getAllMall = async (req, res) => {
     }
 };
 
-
-
 export const getPartnerByPhone = async (req, res) => {
     try {
         const { phone } = req.query;
@@ -494,4 +593,3 @@ export const getPartnerByPhone = async (req, res) => {
         });
     }
 };
-
