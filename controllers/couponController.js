@@ -816,294 +816,294 @@ export const createCoupon = async (req, res) => {
   }
 };
 
-export const createCouponAdmin = async (req, res) => {
-  try {
-    const {
-      shop_name,
-      coupon_color = "#FFFFFF",
-      title,
-      status = "draft",
-      is_spacial_copun_user = [],
-      manual_address,
-      copuon_srno,
-      categoryIds,
-      discountPercentage,
-      validTill,
-      style,
-      maxDistributions = 0,
-      fromTime,
-      toTime,
-      isFullDay = false,
-      termsAndConditions,
-      is_spacial_copun = false,
-      isTransferable = false,
-      tag,
-      shope_location,
-      planId, // Payment plan ID
-    } = req.body;
+// export const createCouponAdmin = async (req, res) => {
+//   try {
+//     const {
+//       shop_name,
+//       coupon_color = "#FFFFFF",
+//       title,
+//       status = "draft",
+//       is_spacial_copun_user = [],
+//       manual_address,
+//       copuon_srno,
+//       categoryIds,
+//       discountPercentage,
+//       validTill,
+//       style,
+//       maxDistributions = 0,
+//       fromTime,
+//       toTime,
+//       isFullDay = false,
+//       termsAndConditions,
+//       is_spacial_copun = false,
+//       isTransferable = false,
+//       tag,
+//       shope_location,
+//       planId, // Payment plan ID
+//     } = req.body;
 
-    const adminId = req.user?._id;
-    const adminRole = req.user?.role ||req.user?.type;
+//     const adminId = req.user?._id;
+//     const adminRole = req.user?.role ||req.user?.type;
 
-    if (!adminId) {
-      return res.status(401).json({ message: "Unauthorized admin" });
-    }
+//     if (!adminId) {
+//       return res.status(401).json({ message: "Unauthorized admin" });
+//     }
 
-    // ================= PAYMENT VALIDATION =================
-    let paymentInfo = null;
+//     // ================= PAYMENT VALIDATION =================
+//     let paymentInfo = null;
 
-    // Check if payment is required (all except super_admin)
-    if (adminRole !== 'super_admin') {
-      if (!planId) {
-        return res.status(400).json({
-          success: false,
-          message: "Payment required: Please select a plan",
-        });
-      }
+//     // Check if payment is required (all except super_admin)
+//     if (adminRole !== 'super_admin') {
+//       if (!planId) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Payment required: Please select a plan",
+//         });
+//       }
 
-      // Verify payment was successful
-      try {
-        paymentInfo = await verifyCouponPayment(adminId, planId);
-        if (!paymentInfo.success) {
-          return res.status(402).json({
-            success: false,
-            message: "Payment verification failed",
-            error: paymentInfo.message,
-          });
-        }
-      } catch (paymentErr) {
-        return res.status(402).json({
-          success: false,
-          message: "Payment verification error",
-          error: paymentErr.message,
-        });
-      }
+//       // Verify payment was successful
+//       try {
+//         paymentInfo = await verifyCouponPayment(adminId, planId);
+//         if (!paymentInfo.success) {
+//           return res.status(402).json({
+//             success: false,
+//             message: "Payment verification failed",
+//             error: paymentInfo.message,
+//           });
+//         }
+//       } catch (paymentErr) {
+//         return res.status(402).json({
+//           success: false,
+//           message: "Payment verification error",
+//           error: paymentErr.message,
+//         });
+//       }
 
-      // Check if user has reached plan limit
-      const plan = await Plan.findById(planId);
-      if (!plan) {
-        return res.status(404).json({
-          success: false,
-          message: "Selected plan not found",
-        });
-      }
+//       // Check if user has reached plan limit
+//       const plan = await Plan.findById(planId);
+//       if (!plan) {
+//         return res.status(404).json({
+//           success: false,
+//           message: "Selected plan not found",
+//         });
+//       }
 
-      // Count coupons created in plan duration
-      const startDate = new Date(Date.now() - plan.durationDays * 24 * 60 * 60 * 1000);
-      const userCouponCount = await Coupon.countDocuments({
-        ownerId: adminId,
-        createdAt: { $gte: startDate },
-        status: { $in: ['published', 'draft'] }
-      });
+//       // Count coupons created in plan duration
+//       const startDate = new Date(Date.now() - plan.durationDays * 24 * 60 * 60 * 1000);
+//       const userCouponCount = await Coupon.countDocuments({
+//         ownerId: adminId,
+//         createdAt: { $gte: startDate },
+//         status: { $in: ['published', 'draft'] }
+//       });
 
-      if (userCouponCount >= plan.maxCoupons) {
-        return res.status(400).json({
-          success: false,
-          message: `Plan limit reached. Maximum ${plan.maxCoupons} coupons allowed for ${plan.durationDays} days.`,
-          currentCount: userCouponCount,
-          maxLimit: plan.maxCoupons,
-        });
-      }
-    }
+//       if (userCouponCount >= plan.maxCoupons) {
+//         return res.status(400).json({
+//           success: false,
+//           message: `Plan limit reached. Maximum ${plan.maxCoupons} coupons allowed for ${plan.durationDays} days.`,
+//           currentCount: userCouponCount,
+//           maxLimit: plan.maxCoupons,
+//         });
+//       }
+//     }
 
-    // ================= BASIC VALIDATION =================
-    if (!shop_name || !title) {
-      return res.status(400).json({
-        success: false,
-        message: "shop_name and title are required",
-      });
-    }
+//     // ================= BASIC VALIDATION =================
+//     if (!shop_name || !title) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "shop_name and title are required",
+//       });
+//     }
 
-    const parsedDiscount = Number(discountPercentage);
-    if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
-      return res.status(400).json({
-        success: false,
-        message: "discountPercentage must be between 0 and 100",
-      });
-    }
+//     const parsedDiscount = Number(discountPercentage);
+//     if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "discountPercentage must be between 0 and 100",
+//       });
+//     }
 
-    // ================= LOCATION VALIDATION =================
-    let location = null;
-    if (!shope_location) {
-      return res.status(400).json({
-        success: false,
-        message: "shope_location is required"
-      });
-    }
+//     // ================= LOCATION VALIDATION =================
+//     let location = null;
+//     if (!shope_location) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "shope_location is required"
+//       });
+//     }
 
-    try {
-      const parsed = typeof shope_location === "string"
-        ? JSON.parse(shope_location)
-        : shope_location;
+//     try {
+//       const parsed = typeof shope_location === "string"
+//         ? JSON.parse(shope_location)
+//         : shope_location;
 
-      if (
-        parsed.type !== "Point" ||
-        !Array.isArray(parsed.coordinates) ||
-        parsed.coordinates.length !== 2 ||
-        !parsed.address
-      ) {
-        throw new Error("Invalid location format");
-      }
-      location = parsed;
-    } catch {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid shope_location. Use { type:"Point", coordinates:[lng,lat], address }',
-      });
-    }
+//       if (
+//         parsed.type !== "Point" ||
+//         !Array.isArray(parsed.coordinates) ||
+//         parsed.coordinates.length !== 2 ||
+//         !parsed.address
+//       ) {
+//         throw new Error("Invalid location format");
+//       }
+//       location = parsed;
+//     } catch {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Invalid shope_location. Use { type:"Point", coordinates:[lng,lat], address }',
+//       });
+//     }
 
-    // ================= TIME VALIDATION =================
-    if (!isFullDay && (!fromTime || !toTime)) {
-      return res.status(400).json({
-        success: false,
-        message: "fromTime & toTime required when isFullDay is false",
-      });
-    }
+//     // ================= TIME VALIDATION =================
+//     if (!isFullDay && (!fromTime || !toTime)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "fromTime & toTime required when isFullDay is false",
+//       });
+//     }
 
-    // ================= VALID TILL VALIDATION =================
-    const expiryDate = new Date(validTill);
-    if (isNaN(expiryDate) || expiryDate <= new Date()) {
-      return res.status(400).json({
-        success: false,
-        message: "validTill must be a future date",
-      });
-    }
+//     // ================= VALID TILL VALIDATION =================
+//     const expiryDate = new Date(validTill);
+//     if (isNaN(expiryDate) || expiryDate <= new Date()) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "validTill must be a future date",
+//       });
+//     }
 
-    // ================= CATEGORY VALIDATION =================
-    let parsedCategoryIds = typeof categoryIds === "string"
-      ? JSON.parse(categoryIds)
-      : categoryIds;
+//     // ================= CATEGORY VALIDATION =================
+//     let parsedCategoryIds = typeof categoryIds === "string"
+//       ? JSON.parse(categoryIds)
+//       : categoryIds;
 
-    if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "categoryIds must be a non-empty array",
-      });
-    }
+//     if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "categoryIds must be a non-empty array",
+//       });
+//     }
 
-    const categories = await Category.find({
-      _id: { $in: parsedCategoryIds },
-    });
+//     const categories = await Category.find({
+//       _id: { $in: parsedCategoryIds },
+//     });
 
-    if (categories.length !== parsedCategoryIds.length) {
-      return res.status(404).json({
-        success: false,
-        message: "One or more categories not found",
-      });
-    }
+//     if (categories.length !== parsedCategoryIds.length) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "One or more categories not found",
+//       });
+//     }
 
-    // ================= SPECIAL USERS VALIDATION =================
-    let parsedSpecialUsers = typeof is_spacial_copun_user === "string"
-      ? JSON.parse(is_spacial_copun_user)
-      : is_spacial_copun_user;
+//     // ================= SPECIAL USERS VALIDATION =================
+//     let parsedSpecialUsers = typeof is_spacial_copun_user === "string"
+//       ? JSON.parse(is_spacial_copun_user)
+//       : is_spacial_copun_user;
 
-    if (!Array.isArray(parsedSpecialUsers)) {
-      return res.status(400).json({
-        success: false,
-        message: "is_spacial_copun_user must be an array",
-      });
-    }
+//     if (!Array.isArray(parsedSpecialUsers)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "is_spacial_copun_user must be an array",
+//       });
+//     }
 
-    // ================= IMAGE UPLOAD =================
-    let copuon_image = [];
-    if (req.files?.length) {
-      try {
-        const uploads = await Promise.all(
-          req.files.map((file) =>
-            uploadToCloudinary(file.buffer, "coupons")
-          )
-        );
-        copuon_image = uploads.map((u) => u.secure_url);
-      } catch (uploadErr) {
-        return res.status(500).json({
-          success: false,
-          message: "Failed to upload images",
-          error: uploadErr.message,
-        });
-      }
-    }
+//     // ================= IMAGE UPLOAD =================
+//     let copuon_image = [];
+//     if (req.files?.length) {
+//       try {
+//         const uploads = await Promise.all(
+//           req.files.map((file) =>
+//             uploadToCloudinary(file.buffer, "coupons")
+//           )
+//         );
+//         copuon_image = uploads.map((u) => u.secure_url);
+//       } catch (uploadErr) {
+//         return res.status(500).json({
+//           success: false,
+//           message: "Failed to upload images",
+//           error: uploadErr.message,
+//         });
+//       }
+//     }
 
-    // ================= ACTIVE FLAG =================
-    const isActive = status === "published";
+//     // ================= ACTIVE FLAG =================
+//     const isActive = status === "published";
 
-    // ================= SAVE COUPON =================
-    const couponData = {
-      title,
-      shop_name,
-      coupon_color,
-      manul_address: manual_address,
-      copuon_srno,
-      discountPercentage: parsedDiscount,
-      category: categories.map((c) => c._id),
-      createdBy: adminId,
-      ownerId: adminId,
-      createdby: adminId,
-      status,
-      active: isActive,
-      validTill: expiryDate,
-      style,
-      maxDistributions,
-      fromTime: isFullDay ? undefined : fromTime,
-      toTime: isFullDay ? undefined : toTime,
-      isFullDay,
-      is_spacial_copun_user: parsedSpecialUsers,
-      termsAndConditions,
-      is_spacial_copun,
-      isTransferable,
-      tag,
-      shope_location: location,
-      copuon_image,
-      currentDistributions: 0,
-      consumersId: [],
-    };
+//     // ================= SAVE COUPON =================
+//     const couponData = {
+//       title,
+//       shop_name,
+//       coupon_color,
+//       manul_address: manual_address,
+//       copuon_srno,
+//       discountPercentage: parsedDiscount,
+//       category: categories.map((c) => c._id),
+//       createdBy: adminId,
+//       ownerId: adminId,
+//       createdby: adminId,
+//       status,
+//       active: isActive,
+//       validTill: expiryDate,
+//       style,
+//       maxDistributions,
+//       fromTime: isFullDay ? undefined : fromTime,
+//       toTime: isFullDay ? undefined : toTime,
+//       isFullDay,
+//       is_spacial_copun_user: parsedSpecialUsers,
+//       termsAndConditions,
+//       is_spacial_copun,
+//       isTransferable,
+//       tag,
+//       shope_location: location,
+//       copuon_image,
+//       currentDistributions: 0,
+//       consumersId: [],
+//     };
 
-    // Add payment info if applicable
-    if (adminRole !== 'super_admin' && planId && paymentInfo) {
-      couponData.planId = planId;
-      couponData.paymentStatus = 'completed';
-      couponData.paymentId = paymentInfo.paymentId;
-      couponData.paymentDate = new Date();
-      couponData.planDetails = {
-        name: paymentInfo.planName,
-        price: paymentInfo.planPrice,
-        durationDays: paymentInfo.planDuration,
-        maxCoupons: paymentInfo.planMaxCoupons,
-      };
-    }
+//     // Add payment info if applicable
+//     if (adminRole !== 'super_admin' && planId && paymentInfo) {
+//       couponData.planId = planId;
+//       couponData.paymentStatus = 'completed';
+//       couponData.paymentId = paymentInfo.paymentId;
+//       couponData.paymentDate = new Date();
+//       couponData.planDetails = {
+//         name: paymentInfo.planName,
+//         price: paymentInfo.planPrice,
+//         durationDays: paymentInfo.planDuration,
+//         maxCoupons: paymentInfo.planMaxCoupons,
+//       };
+//     }
 
-    const coupon = await Coupon.create(couponData);
+//     const coupon = await Coupon.create(couponData);
 
-    // ================= UPDATE PAYMENT RECORD =================
-    if (adminRole !== 'super_admin' && paymentInfo) {
-      await Payment.findByIdAndUpdate(paymentInfo.paymentId, {
-        couponId: coupon._id,
-        status: 'coupon_created',
-      });
-    }
+//     // ================= UPDATE PAYMENT RECORD =================
+//     if (adminRole !== 'super_admin' && paymentInfo) {
+//       await Payment.findByIdAndUpdate(paymentInfo.paymentId, {
+//         couponId: coupon._id,
+//         status: 'coupon_created',
+//       });
+//     }
 
-    return res.status(201).json({
-      success: true,
-      message: `Coupon created successfully with status '${status}'`,
-      coupon: {
-        _id: coupon._id,
-        title: coupon.title,
-        shop_name: coupon.shop_name,
-        status: coupon.status,
-        discountPercentage: coupon.discountPercentage,
-        validTill: coupon.validTill,
-        paymentStatus: adminRole !== 'super_admin' ? 'paid' : 'free',
-      },
-    });
+//     return res.status(201).json({
+//       success: true,
+//       message: `Coupon created successfully with status '${status}'`,
+//       coupon: {
+//         _id: coupon._id,
+//         title: coupon.title,
+//         shop_name: coupon.shop_name,
+//         status: coupon.status,
+//         discountPercentage: coupon.discountPercentage,
+//         validTill: coupon.validTill,
+//         paymentStatus: adminRole !== 'super_admin' ? 'paid' : 'free',
+//       },
+//     });
 
-  } catch (err) {
-    console.error("Admin coupon creation error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Error creating admin coupon",
-      error: process.env.NODE_ENV === 'development' ? err.message : undefined,
-    });
-  }
-};
+//   } catch (err) {
+//     console.error("Admin coupon creation error:", err);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Error creating admin coupon",
+//       error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+//     });
+//   }
+// };
 
 // ================= HELPER FUNCTION =================
 async function verifyCouponPayment(userId, planId) {
@@ -1149,6 +1149,197 @@ async function verifyCouponPayment(userId, planId) {
   }
 }
 
+
+
+export const createBanneradmin = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    const userType = req.user?.type; // partner | agency | super_admin
+
+    let {
+      google_location_url,
+      banner_type,
+      lat,
+      lng,
+      title,
+      main_keyword,
+      keyword,
+      address_notes,
+      website_url,
+      search_radius,
+      manual_address,
+      expiryDays, // number of days
+      category,   // array of category IDs
+      ownerId,    // only agency/super_admin can pass this
+    } = req.body;
+
+    /* ======================
+       🔹 Role Validation
+    ====================== */
+
+    if (!['partner', 'agency', 'admin', 'super_admin'].includes(userType)) {
+      return res.status(401).json({ success: false, message: 'Unauthorized Access' });
+    }
+
+    /* ======================
+       🔹 Required Fields Validation
+    ====================== */
+    if (!title || !manual_address || !banner_type || !lat || !lng || !address_notes) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: title, manual_address, banner_type, lat, lng',
+      });
+    }
+
+    // Ensure category is provided and is an array
+    if (!category || !Array.isArray(category) || category.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one category is required',
+      });
+    }
+
+    /* ======================
+       🔹 Category Validation
+    ====================== */
+    for (const catId of category) {
+      if (!mongoose.Types.ObjectId.isValid(catId)) {
+        return res.status(400).json({ success: false, message: `Invalid category ID: ${catId}` });
+      }
+      const categoryExists = await Category.findById(catId);
+      if (!categoryExists) {
+        return res.status(404).json({ success: false, message: `Category not found: ${catId}` });
+      }
+    }
+
+    /* ======================
+       🔹 Banner Type Validation
+    ====================== */
+    if (!['Changeable', 'Unchangeable'].includes(banner_type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid banner_type. Must be "Changeable" or "Unchangeable"',
+      });
+    }
+
+    /* ======================
+       🔹 URL Validation
+    ====================== */
+    // const urlRegex = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?$/;
+    // if (google_location_url && !urlRegex.test(google_location_url)) {
+    //   return res.status(400).json({ success: false, message: 'Invalid Google Location URL format' });
+    // }
+    // if (website_url && !urlRegex.test(website_url)) {
+    //   return res.status(400).json({ success: false, message: 'Invalid Website URL format' });
+    // }
+
+    /* ======================
+       🔹 Image Validation
+    ====================== */
+    let banner_image = null;
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Banner image is required' });
+    }
+    try {
+      const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
+      banner_image = uploadResult.secure_url;
+    } catch (err) {
+      return res.status(500).json({ success: false, message: 'Error uploading image', error: err.message });
+    }
+
+    /* ======================
+       🔹 Keywords Formatting
+    ====================== */
+    if (typeof main_keyword === 'string') {
+      main_keyword = main_keyword.split(',').map((k) => k.trim()).filter((k) => k);
+    } else {
+      main_keyword = Array.isArray(main_keyword) ? main_keyword : [];
+    }
+
+    if (typeof keyword === 'string') {
+      keyword = keyword.split(',').map((k) => k.trim()).filter((k) => k);
+    } else {
+      keyword = Array.isArray(keyword) ? keyword : [];
+    }
+
+    /* ======================
+       🔹 Expiry Calculation
+    ====================== */
+    let expiryAt = null;
+    if (expiryDays && !isNaN(expiryDays) && expiryDays >= 0) {
+      expiryAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
+    }
+
+    /* ======================
+       🔹 Handle createdBy & ownerId
+    ====================== */
+    let finalCreatedBy = userId;
+    let finalOwnerId = userId;
+
+    if (userType === 'partner') {
+      finalCreatedBy = userId;
+      finalOwnerId = userId;
+    } else if (['agency', 'super_admin', 'admin'].includes(userType)) {
+      finalCreatedBy = userId;
+      if (ownerId) {
+        if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+          return res.status(400).json({ success: false, message: 'Invalid ownerId' });
+        }
+        const ownerExists = await User.findById(ownerId);
+        if (!ownerExists) {
+          return res.status(404).json({ success: false, message: 'Owner user not found' });
+        }
+        finalOwnerId = ownerId;
+      } else {
+        finalOwnerId = userId;
+      }
+    }
+
+    /* ======================
+       🔹 Coordinate Validation
+    ====================== */
+    const parsedLat = parseFloat(lat);
+    const parsedLng = parseFloat(lng);
+    if (isNaN(parsedLat) || isNaN(parsedLng)) {
+      return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
+    }
+
+    /* ======================
+       🔹 Create Banner
+    ====================== */
+    const banner = new Banner({
+      createdby: finalCreatedBy,
+      ownerId: finalOwnerId,
+      banner_image,
+      website_url,
+      address_notes,
+      google_location_url,
+      banner_type,
+      manual_address,
+      search_radius: search_radius ? parseFloat(search_radius) : 100000,
+      location: {
+        type: 'Point',
+        coordinates: [parsedLng, parsedLat],
+      },
+      title,
+      main_keyword,
+      keyword,
+      expiryAt,
+      category, // Array of category IDs
+    });
+
+    await banner.save();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Banner created successfully',
+      data: banner,
+    });
+  } catch (error) {
+    console.error('CreateBanner Error:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 export const updateCouponDeatils = async (req, res) => {
   try {
