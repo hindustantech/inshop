@@ -1194,8 +1194,12 @@ export const getUserNearestBanners = async (req, res) => {
     /* ============================
        STEP 5: COMBINE ALL FILTERS
     ============================ */
+
+    const activeQuery = { active: true };
+
     const mainQuery = {
       $and: [
+        activeQuery,
         expiryQuery,
         categoryFilter,
         searchFilter,
@@ -1271,6 +1275,7 @@ export const getUserNearestBanners = async (req, res) => {
       logger.warn("No results from main query, using fallback");
 
       const fallbackPipeline = [
+        { $match: activeQuery },  // ✅ enforced
         { $match: expiryQuery },
         ...(validCategoryIds.length
           ? [{ $match: { category: { $in: validCategoryIds } } }]
@@ -1341,6 +1346,7 @@ export const getUserNearestBanners = async (req, res) => {
     } else {
       logger.debug("Counting total for fallback query");
       const fallbackCountPipeline = [
+        { $match: activeQuery },   // ✅ enforced
         { $match: expiryQuery },
         ...(validCategoryIds.length
           ? [{ $match: { category: { $in: validCategoryIds } } }]
