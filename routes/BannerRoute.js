@@ -28,6 +28,6 @@ router.get("/banners/my", authMiddleware, getMyBanners);
 router.get("/banners/admin", authMiddleware, getAllBannersForAdmin);
 router.get("/getdeatils/:bannerId", authMiddleware, getBannerById);
 router.patch("/updateBannerExpiry/:id", authMiddleware, checkPermission('banner.update'), updateBannerExpiry);
-router.patch("/toggleBannerActive/:bannerId", authMiddleware, checkPermission('banner.update'), toggleBannerActive);
+router.patch("/toggleBannerActive/:bannerId", authMiddleware, toggleBannerActive);
 
 export default router;
