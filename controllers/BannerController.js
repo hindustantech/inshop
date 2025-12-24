@@ -522,6 +522,7 @@ export const createBanneradmin = async (req, res) => {
       banner_type,
       lat,
       lng,
+      active,
       title,
       main_keyword,
       keyword,
@@ -541,6 +542,15 @@ export const createBanneradmin = async (req, res) => {
     if (!['partner', 'agency', 'admin', 'super_admin'].includes(userType)) {
       return res.status(401).json({ success: false, message: 'Unauthorized Access' });
     }
+
+
+    /* ======================
+   🔹 Resolve Active Status (Server Authority)
+====================== */
+    const isActive =
+      userType === 'super_admin'
+        ? true
+        : false;
 
     /* ======================
        🔹 Required Fields Validation
@@ -684,6 +694,7 @@ export const createBanneradmin = async (req, res) => {
       },
       title,
       main_keyword,
+      active: isActive,
       keyword,
       expiryAt,
       category, // Array of category IDs

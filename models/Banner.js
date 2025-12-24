@@ -23,6 +23,11 @@ const BannerSchema = new mongoose.Schema(
     ],
 
 
+    active: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
 
 
     manual_address: {

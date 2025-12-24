@@ -1291,7 +1291,14 @@ export const createCouponAdmin = async (req, res) => {
     }
 
     // ---------------- ACTIVE FLAG ----------------
-    const isActive = status === "published";
+    /* ======================
+   🔹 Resolve Active State (Server Authority)
+====================== */
+    const isActive =
+      userType === "super_admin" && status === "published"
+        ? true
+        : false;
+
 
     // ---------------- SAVE COUPON ----------------
     const coupon = await Coupon.create({
