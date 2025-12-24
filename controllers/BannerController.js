@@ -1920,66 +1920,91 @@ export const getMyBanners = async (req, res) => {
 =================================================== */
 export const getAllBannersForAdmin = async (req, res) => {
   try {
+    /* ===================== AUTH ===================== */
     if (req.user.type !== "super_admin") {
-      return res.status(403).json({ success: false, message: "Access denied" });
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
     }
 
+    /* ===================== QUERY PARAMS ===================== */
     const {
       page = 1,
       limit = 10,
       search,
       tag,
       category,
-      exportCSV
+      exportCSV,
     } = req.query;
 
-    let filter = {};
+    const pageNumber = Number(page);
+    const limitNumber = Number(limit);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    /* ===================== FILTER ===================== */
+    const filter = {};
+
     if (search) {
       filter.$or = [
-        { title: new RegExp(search, "i") },
+        { title: { $regex: search, $options: "i" } },
         { main_keyword: { $in: [search] } },
         { keyword: { $in: [search] } },
       ];
     }
-    if (tag) filter.keyword = { $in: [tag] };
-    if (category && mongoose.Types.ObjectId.isValid(category)) filter.category = category;
 
-    const skip = (page - 1) * limit;
+    if (tag) {
+      filter.keyword = { $in: [tag] };
+    }
 
-    let query = Banner.find(filter)
+    if (category && mongoose.Types.ObjectId.isValid(category)) {
+      filter.category = category;
+    }
+
+    /* ===================== BASE QUERY ===================== */
+    const baseQuery = Banner.find(filter)
       .populate("category", "name")
       .populate("createdby", "name email type")
-      .populate("ownerId", "name email type");
+      .populate("ownerId", "name email type")
+      .sort({ createdAt: -1 }); // ✅ LATEST FIRST
 
     const total = await Banner.countDocuments(filter);
 
+    /* ===================== NORMAL PAGINATED RESPONSE ===================== */
     if (!exportCSV) {
-      const banners = await query.skip(skip).limit(Number(limit)).lean();
+      const banners = await baseQuery
+        .skip(skip)
+        .limit(limitNumber)
+        .lean();
+
       return res.status(200).json({
         success: true,
-        page: Number(page),
-        limit: Number(limit),
+        page: pageNumber,
+        limit: limitNumber,
         total,
         data: banners,
       });
     }
 
-    const allBanners = await query.lean();
-    const exportData = allBanners.map(b => ({
+    /* ===================== CSV EXPORT ===================== */
+    const allBanners = await baseQuery.lean();
+
+    const exportData = allBanners.map((b) => ({
       Title: b.title,
-      Address: b.manual_address,
+      Address: b.manual_address || "",
       BannerType: b.banner_type,
-      Category: b.category?.name,
-      CreatedBy: b.createdby?.name,
-      OwnerBy: b.ownerId?.name,
+      Category: b.category?.name || "",
+      CreatedBy: b.createdby?.name || "",
+      OwnerBy: b.ownerId?.name || "",
       CreatedAt: b.createdAt,
     }));
+
     return exportToCSV(res, exportData, "all_banners.csv");
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Get all banners error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Internal server error",
+    });
   }
 };
-
-
-
-
