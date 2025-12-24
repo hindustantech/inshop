@@ -1150,196 +1150,197 @@ async function verifyCouponPayment(userId, planId) {
 }
 
 
-
-export const createBanneradmin = async (req, res) => {
+export const createCouponAdmin = async (req, res) => {
   try {
-    const userId = req.user?._id;
-    const userType = req.user?.type; // partner | agency | super_admin
-
-    let {
-      google_location_url,
-      banner_type,
-      lat,
-      lng,
+    const {
+      shop_name,
+      coupon_color = "#FFFFFF",
       title,
-      main_keyword,
-      keyword,
-      address_notes,
-      website_url,
-      search_radius,
+      status = "published", // ✅ ADMIN CONTROLS STATUS
+      is_spacial_copun_user = [],
       manual_address,
-      expiryDays, // number of days
-      category,   // array of category IDs
-      ownerId,    // only agency/super_admin can pass this
+      copuon_srno,
+      categoryIds,
+      discountPercentage,
+      validTill,
+      style,
+      maxDistributions = 0,
+      fromTime,
+      toTime,
+      isFullDay = false,
+      termsAndConditions,
+      is_spacial_copun = false,
+      isTransferable = false,
+      tag,
+      shope_location,
     } = req.body;
 
-    /* ======================
-       🔹 Role Validation
-    ====================== */
-
-    if (!['partner', 'agency', 'admin', 'super_admin'].includes(userType)) {
-      return res.status(401).json({ success: false, message: 'Unauthorized Access' });
+    const adminId = req.user?._id;
+    if (!adminId) {
+      return res.status(401).json({ message: "Unauthorized admin" });
     }
 
-    /* ======================
-       🔹 Required Fields Validation
-    ====================== */
-    if (!title || !manual_address || !banner_type || !lat || !lng || !address_notes) {
+    // ---------------- STATUS VALIDATION ----------------
+    const allowedStatus = ["draft", "published", "disabled", "expired"];
+    if (!allowedStatus.includes(status)) {
       return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: title, manual_address, banner_type, lat, lng',
+        message: `Invalid status. Allowed: ${allowedStatus.join(", ")}`,
       });
     }
 
-    // Ensure category is provided and is an array
-    if (!category || !Array.isArray(category) || category.length === 0) {
+    // ---------------- BASIC VALIDATION ----------------
+    if (!shop_name || !title) {
       return res.status(400).json({
-        success: false,
-        message: 'At least one category is required',
+        message: "shop_name and title are required",
       });
     }
 
-    /* ======================
-       🔹 Category Validation
-    ====================== */
-    for (const catId of category) {
-      if (!mongoose.Types.ObjectId.isValid(catId)) {
-        return res.status(400).json({ success: false, message: `Invalid category ID: ${catId}` });
-      }
-      const categoryExists = await Category.findById(catId);
-      if (!categoryExists) {
-        return res.status(404).json({ success: false, message: `Category not found: ${catId}` });
-      }
-    }
-
-    /* ======================
-       🔹 Banner Type Validation
-    ====================== */
-    if (!['Changeable', 'Unchangeable'].includes(banner_type)) {
+    const parsedDiscount = Number(discountPercentage);
+    if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
       return res.status(400).json({
-        success: false,
-        message: 'Invalid banner_type. Must be "Changeable" or "Unchangeable"',
+        message: "discountPercentage must be between 0 and 100",
       });
     }
 
-    /* ======================
-       🔹 URL Validation
-    ====================== */
-    // const urlRegex = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?$/;
-    // if (google_location_url && !urlRegex.test(google_location_url)) {
-    //   return res.status(400).json({ success: false, message: 'Invalid Google Location URL format' });
-    // }
-    // if (website_url && !urlRegex.test(website_url)) {
-    //   return res.status(400).json({ success: false, message: 'Invalid Website URL format' });
-    // }
-
-    /* ======================
-       🔹 Image Validation
-    ====================== */
-    let banner_image = null;
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Banner image is required' });
+    // ---------------- LOCATION ----------------
+    let location = null;
+    if (!shope_location) {
+      return res.status(400).json({ message: "shope_location is required" });
     }
+
     try {
-      const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
-      banner_image = uploadResult.secure_url;
-    } catch (err) {
-      return res.status(500).json({ success: false, message: 'Error uploading image', error: err.message });
-    }
+      const parsed =
+        typeof shope_location === "string"
+          ? JSON.parse(shope_location)
+          : shope_location;
 
-    /* ======================
-       🔹 Keywords Formatting
-    ====================== */
-    if (typeof main_keyword === 'string') {
-      main_keyword = main_keyword.split(',').map((k) => k.trim()).filter((k) => k);
-    } else {
-      main_keyword = Array.isArray(main_keyword) ? main_keyword : [];
-    }
-
-    if (typeof keyword === 'string') {
-      keyword = keyword.split(',').map((k) => k.trim()).filter((k) => k);
-    } else {
-      keyword = Array.isArray(keyword) ? keyword : [];
-    }
-
-    /* ======================
-       🔹 Expiry Calculation
-    ====================== */
-    let expiryAt = null;
-    if (expiryDays && !isNaN(expiryDays) && expiryDays >= 0) {
-      expiryAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
-    }
-
-    /* ======================
-       🔹 Handle createdBy & ownerId
-    ====================== */
-    let finalCreatedBy = userId;
-    let finalOwnerId = userId;
-
-    if (userType === 'partner') {
-      finalCreatedBy = userId;
-      finalOwnerId = userId;
-    } else if (['agency', 'super_admin', 'admin'].includes(userType)) {
-      finalCreatedBy = userId;
-      if (ownerId) {
-        if (!mongoose.Types.ObjectId.isValid(ownerId)) {
-          return res.status(400).json({ success: false, message: 'Invalid ownerId' });
-        }
-        const ownerExists = await User.findById(ownerId);
-        if (!ownerExists) {
-          return res.status(404).json({ success: false, message: 'Owner user not found' });
-        }
-        finalOwnerId = ownerId;
-      } else {
-        finalOwnerId = userId;
+      if (
+        parsed.type !== "Point" ||
+        !Array.isArray(parsed.coordinates) ||
+        parsed.coordinates.length !== 2 ||
+        !parsed.address
+      ) {
+        throw new Error();
       }
+      location = parsed;
+    } catch {
+      return res.status(400).json({
+        message:
+          'Invalid shope_location. Use { type:"Point", coordinates:[lng,lat], address }',
+      });
     }
 
-    /* ======================
-       🔹 Coordinate Validation
-    ====================== */
-    const parsedLat = parseFloat(lat);
-    const parsedLng = parseFloat(lng);
-    if (isNaN(parsedLat) || isNaN(parsedLng)) {
-      return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
+    // ---------------- TIME ----------------
+    if (!isFullDay && (!fromTime || !toTime)) {
+      return res.status(400).json({
+        message: "fromTime & toTime required when isFullDay is false",
+      });
     }
 
-    /* ======================
-       🔹 Create Banner
-    ====================== */
-    const banner = new Banner({
-      createdby: finalCreatedBy,
-      ownerId: finalOwnerId,
-      banner_image,
-      website_url,
-      address_notes,
-      google_location_url,
-      banner_type,
-      manual_address,
-      search_radius: search_radius ? parseFloat(search_radius) : 100000,
-      location: {
-        type: 'Point',
-        coordinates: [parsedLng, parsedLat],
-      },
-      title,
-      main_keyword,
-      keyword,
-      expiryAt,
-      category, // Array of category IDs
+    // ---------------- VALID TILL ----------------
+    const expiryDate = new Date(validTill);
+    if (isNaN(expiryDate) || expiryDate <= new Date()) {
+      return res.status(400).json({
+        message: "validTill must be a future date",
+      });
+    }
+
+    // ---------------- CATEGORY ----------------
+    let parsedCategoryIds =
+      typeof categoryIds === "string"
+        ? JSON.parse(categoryIds)
+        : categoryIds;
+
+    if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
+      return res.status(400).json({
+        message: "categoryIds must be a non-empty array",
+      });
+    }
+
+    const categories = await Category.find({
+      _id: { $in: parsedCategoryIds },
     });
 
-    await banner.save();
+    if (categories.length !== parsedCategoryIds.length) {
+      return res.status(404).json({
+        message: "One or more categories not found",
+      });
+    }
+
+    // ---------------- SPECIAL USERS ----------------
+    let parsedSpecialUsers =
+      typeof is_spacial_copun_user === "string"
+        ? JSON.parse(is_spacial_copun_user)
+        : is_spacial_copun_user;
+
+    if (!Array.isArray(parsedSpecialUsers)) {
+      return res.status(400).json({
+        message: "is_spacial_copun_user must be an array",
+      });
+    }
+
+    // ---------------- IMAGES ----------------
+    let copuon_image = [];
+    if (req.files?.length) {
+      const uploads = await Promise.all(
+        req.files.map((file) =>
+          uploadToCloudinary(file.buffer, "coupons")
+        )
+      );
+      copuon_image = uploads.map((u) => u.secure_url);
+    }
+
+    // ---------------- ACTIVE FLAG ----------------
+    const isActive = status === "published";
+
+    // ---------------- SAVE COUPON ----------------
+    const coupon = await Coupon.create({
+      title,
+      shop_name,
+      coupon_color,
+      manul_address: manual_address,
+      copuon_srno,
+      discountPercentage: parsedDiscount,
+      category: categories.map((c) => c._id),
+      createdBy: adminId,
+      ownerId: adminId,
+      createdby: adminId,
+      status,                 // ✅ STATUS DRIVES EVERYTHING
+      active: isActive,       // ✅ published → true
+      validTill: expiryDate,
+      style,
+      maxDistributions,
+      fromTime: isFullDay ? undefined : fromTime,
+      toTime: isFullDay ? undefined : toTime,
+      isFullDay,
+      is_spacial_copun_user: parsedSpecialUsers,
+      termsAndConditions,
+      is_spacial_copun,
+      isTransferable,
+      tag,
+      shope_location: location,
+      copuon_image,
+      currentDistributions: 0,
+      consumersId: [],
+    });
 
     return res.status(201).json({
       success: true,
-      message: 'Banner created successfully',
-      data: banner,
+      message: `Coupon created successfully with status '${status}'`,
+      coupon,
     });
-  } catch (error) {
-    console.error('CreateBanner Error:', error);
-    return res.status(500).json({ success: false, message: error.message });
+
+  } catch (err) {
+    console.error("Admin coupon error:", err);
+    return res.status(500).json({
+      message: "Error creating admin coupon",
+      error: err.message,
+    });
   }
 };
+
+
+
 
 export const updateCouponDeatils = async (req, res) => {
   try {

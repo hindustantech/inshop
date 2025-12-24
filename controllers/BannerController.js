@@ -270,10 +270,252 @@ export const createBanner = async (req, res) => {
   }
 };
 
+// export const createBanneradmin = async (req, res) => {
+//   try {
+//     const userId = req.user?._id;
+//     const userType = req.user?.type; // partner | agency | admin | super_admin
+
+//     let {
+//       google_location_url,
+//       banner_type,
+//       lat,
+//       lng,
+//       title,
+//       main_keyword,
+//       keyword,
+//       address_notes,
+//       website_url,
+//       search_radius,
+//       manual_address,
+//       expiryDays,
+//       category,
+//       ownerId,
+//       paymentReference, // Payment reference for verification
+//     } = req.body;
+
+//     /* ======================
+//        🔹 Role Validation
+//     ====================== */
+//     if (!['partner', 'agency', 'admin', 'super_admin'].includes(userType)) {
+//       return res.status(401).json({ success: false, message: 'Unauthorized Access' });
+//     }
+
+//     /* ======================
+//        🔹 Payment Verification for non-admin users
+//     ====================== */
+//     if (['partner', 'agency'].includes(userType)) {
+//       if (!paymentReference) {
+//         return res.status(400).json({
+//           success: false,
+//           message: 'Payment reference is required'
+//         });
+//       }
+
+//       // Verify payment was successful
+//       const paymentVerification = await verifyBannerPayment(paymentReference, userId);
+//       if (!paymentVerification.success) {
+//         return res.status(400).json({
+//           success: false,
+//           message: 'Payment verification failed: ' + paymentVerification.message
+//         });
+//       }
+//     }
+
+//     /* ======================
+//        🔹 Required Fields Validation
+//     ====================== */
+//     if (!title || !manual_address || !banner_type || !lat || !lng || !address_notes) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Missing required fields: title, manual_address, banner_type, lat, lng',
+//       });
+//     }
+
+//     // Ensure category is provided and is an array
+//     if (!category || !Array.isArray(category) || category.length === 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'At least one category is required',
+//       });
+//     }
+
+//     /* ======================
+//        🔹 Category Validation
+//     ====================== */
+//     for (const catId of category) {
+//       if (!mongoose.Types.ObjectId.isValid(catId)) {
+//         return res.status(400).json({ success: false, message: `Invalid category ID: ${catId}` });
+//       }
+//       const categoryExists = await Category.findById(catId);
+//       if (!categoryExists) {
+//         return res.status(404).json({ success: false, message: `Category not found: ${catId}` });
+//       }
+//     }
+
+//     /* ======================
+//        🔹 Banner Type Validation
+//     ====================== */
+//     if (!['Changeable', 'Unchangeable'].includes(banner_type)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Invalid banner_type. Must be "Changeable" or "Unchangeable"',
+//       });
+//     }
+
+//     /* ======================
+//        🔹 Image Validation
+//     ====================== */
+//     let banner_image = null;
+//     if (!req.file) {
+//       return res.status(400).json({ success: false, message: 'Banner image is required' });
+//     }
+//     try {
+//       const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
+//       banner_image = uploadResult.secure_url;
+//     } catch (err) {
+//       return res.status(500).json({ success: false, message: 'Error uploading image', error: err.message });
+//     }
+
+//     /* ======================
+//        🔹 Keywords Formatting
+//     ====================== */
+//     if (typeof main_keyword === 'string') {
+//       main_keyword = main_keyword.split(',').map((k) => k.trim()).filter((k) => k);
+//     } else {
+//       main_keyword = Array.isArray(main_keyword) ? main_keyword : [];
+//     }
+
+//     if (typeof keyword === 'string') {
+//       keyword = keyword.split(',').map((k) => k.trim()).filter((k) => k);
+//     } else {
+//       keyword = Array.isArray(keyword) ? keyword : [];
+//     }
+
+//     /* ======================
+//        🔹 Expiry Calculation
+//     ====================== */
+//     let expiryAt = null;
+//     if (expiryDays && !isNaN(expiryDays) && expiryDays >= 0) {
+//       expiryAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
+//     }
+
+//     /* ======================
+//        🔹 Handle createdBy & ownerId
+//     ====================== */
+//     let finalCreatedBy = userId;
+//     let finalOwnerId = userId;
+
+//     if (userType === 'partner') {
+//       finalCreatedBy = userId;
+//       finalOwnerId = userId;
+//     } else if (['agency', 'admin', 'super_admin'].includes(userType)) {
+//       finalCreatedBy = userId;
+//       if (ownerId) {
+//         if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+//           return res.status(400).json({ success: false, message: 'Invalid ownerId' });
+//         }
+//         const ownerExists = await User.findById(ownerId);
+//         if (!ownerExists) {
+//           return res.status(404).json({ success: false, message: 'Owner user not found' });
+//         }
+//         finalOwnerId = ownerId;
+//       } else {
+//         finalOwnerId = userId;
+//       }
+//     }
+
+//     /* ======================
+//        🔹 Coordinate Validation
+//     ====================== */
+//     const parsedLat = parseFloat(lat);
+//     const parsedLng = parseFloat(lng);
+//     if (isNaN(parsedLat) || isNaN(parsedLng)) {
+//       return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
+//     }
+
+//     /* ======================
+//        🔹 Create Banner
+//     ====================== */
+//     const banner = new Banner({
+//       createdby: finalCreatedBy,
+//       ownerId: finalOwnerId,
+//       banner_image,
+//       website_url,
+//       address_notes,
+//       google_location_url,
+//       banner_type,
+//       manual_address,
+//       search_radius: search_radius ? parseFloat(search_radius) : 100000,
+//       location: {
+//         type: 'Point',
+//         coordinates: [parsedLng, parsedLat],
+//       },
+//       title,
+//       main_keyword,
+//       keyword,
+//       expiryAt,
+//       category,
+//       paymentReference: ['partner', 'agency'].includes(userType) ? paymentReference : null,
+//     });
+
+//     await banner.save();
+
+//     return res.status(201).json({
+//       success: true,
+//       message: 'Banner created successfully',
+//       data: banner,
+//     });
+//   } catch (error) {
+//     console.error('CreateBanner Error:', error);
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+// Helper function to verify banner payment
+const verifyBannerPayment = async (paymentReference, userId) => {
+  try {
+    // Check if payment exists and is successful
+    const payment = await Topup.findById(paymentReference);
+
+    if (!payment) {
+      return { success: false, message: 'Payment not found' };
+    }
+
+    if (payment.userId.toString() !== userId.toString()) {
+      return { success: false, message: 'Payment does not belong to user' };
+    }
+
+    if (payment.status !== 'success') {
+      return { success: false, message: 'Payment not successful' };
+    }
+
+    // Check if payment was for banner creation
+    if (payment.metadata?.type !== 'banner_creation') {
+      return { success: false, message: 'Invalid payment type' };
+    }
+
+    // Check if payment has already been used
+    if (payment.metadata?.usedForBanner) {
+      return { success: false, message: 'Payment already used for banner creation' };
+    }
+
+    // Mark payment as used
+    payment.metadata.usedForBanner = true;
+    await payment.save();
+
+    return { success: true };
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    return { success: false, message: 'Payment verification failed' };
+  }
+};
+
+
+
 export const createBanneradmin = async (req, res) => {
   try {
     const userId = req.user?._id;
-    const userType = req.user?.type; // partner | agency | admin | super_admin
+    const userType = req.user?.type; // partner | agency | super_admin
 
     let {
       google_location_url,
@@ -287,38 +529,17 @@ export const createBanneradmin = async (req, res) => {
       website_url,
       search_radius,
       manual_address,
-      expiryDays,
-      category,
-      ownerId,
-      paymentReference, // Payment reference for verification
+      expiryDays, // number of days
+      category,   // array of category IDs
+      ownerId,    // only agency/super_admin can pass this
     } = req.body;
 
     /* ======================
        🔹 Role Validation
     ====================== */
+
     if (!['partner', 'agency', 'admin', 'super_admin'].includes(userType)) {
       return res.status(401).json({ success: false, message: 'Unauthorized Access' });
-    }
-
-    /* ======================
-       🔹 Payment Verification for non-admin users
-    ====================== */
-    if (['partner', 'agency'].includes(userType)) {
-      if (!paymentReference) {
-        return res.status(400).json({
-          success: false,
-          message: 'Payment reference is required'
-        });
-      }
-
-      // Verify payment was successful
-      const paymentVerification = await verifyBannerPayment(paymentReference, userId);
-      if (!paymentVerification.success) {
-        return res.status(400).json({
-          success: false,
-          message: 'Payment verification failed: ' + paymentVerification.message
-        });
-      }
     }
 
     /* ======================
@@ -361,6 +582,17 @@ export const createBanneradmin = async (req, res) => {
         message: 'Invalid banner_type. Must be "Changeable" or "Unchangeable"',
       });
     }
+
+    /* ======================
+       🔹 URL Validation
+    ====================== */
+    // const urlRegex = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?$/;
+    // if (google_location_url && !urlRegex.test(google_location_url)) {
+    //   return res.status(400).json({ success: false, message: 'Invalid Google Location URL format' });
+    // }
+    // if (website_url && !urlRegex.test(website_url)) {
+    //   return res.status(400).json({ success: false, message: 'Invalid Website URL format' });
+    // }
 
     /* ======================
        🔹 Image Validation
@@ -408,7 +640,7 @@ export const createBanneradmin = async (req, res) => {
     if (userType === 'partner') {
       finalCreatedBy = userId;
       finalOwnerId = userId;
-    } else if (['agency', 'admin', 'super_admin'].includes(userType)) {
+    } else if (['agency', 'super_admin', 'admin'].includes(userType)) {
       finalCreatedBy = userId;
       if (ownerId) {
         if (!mongoose.Types.ObjectId.isValid(ownerId)) {
@@ -454,8 +686,7 @@ export const createBanneradmin = async (req, res) => {
       main_keyword,
       keyword,
       expiryAt,
-      category,
-      paymentReference: ['partner', 'agency'].includes(userType) ? paymentReference : null,
+      category, // Array of category IDs
     });
 
     await banner.save();
@@ -470,46 +701,6 @@ export const createBanneradmin = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
-// Helper function to verify banner payment
-const verifyBannerPayment = async (paymentReference, userId) => {
-  try {
-    // Check if payment exists and is successful
-    const payment = await Topup.findById(paymentReference);
-
-    if (!payment) {
-      return { success: false, message: 'Payment not found' };
-    }
-
-    if (payment.userId.toString() !== userId.toString()) {
-      return { success: false, message: 'Payment does not belong to user' };
-    }
-
-    if (payment.status !== 'success') {
-      return { success: false, message: 'Payment not successful' };
-    }
-
-    // Check if payment was for banner creation
-    if (payment.metadata?.type !== 'banner_creation') {
-      return { success: false, message: 'Invalid payment type' };
-    }
-
-    // Check if payment has already been used
-    if (payment.metadata?.usedForBanner) {
-      return { success: false, message: 'Payment already used for banner creation' };
-    }
-
-    // Mark payment as used
-    payment.metadata.usedForBanner = true;
-    await payment.save();
-
-    return { success: true };
-  } catch (error) {
-    console.error('Payment verification error:', error);
-    return { success: false, message: 'Payment verification failed' };
-  }
-};
-
 /*  */
 
 
