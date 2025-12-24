@@ -1195,7 +1195,13 @@ export const getUserNearestBanners = async (req, res) => {
        STEP 5: COMBINE ALL FILTERS
     ============================ */
 
-    const activeQuery = { active: true };
+    const activeQuery = {
+      $or: [
+        { active: true },
+        { active: { $exists: false } } // old banners
+      ]
+    };
+
 
     const mainQuery = {
       $and: [
@@ -1407,6 +1413,72 @@ export const getUserNearestBanners = async (req, res) => {
       success: false,
       message: "Error fetching nearest banners",
       error: err.message,
+    });
+  }
+};
+
+
+export const toggleBannerActive = async (req, res) => {
+  try {
+    const { bannerId } = req.params;
+    const userType = req.user?.type; // admin | super_admin
+
+    /* ============================
+       ROLE VALIDATION
+    ============================ */
+    if (!["admin", "super_admin"].includes(userType)) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to change banner status",
+      });
+    }
+
+    /* ============================
+       ID VALIDATION
+    ============================ */
+    if (!mongoose.Types.ObjectId.isValid(bannerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid banner ID",
+      });
+    }
+
+    /* ============================
+       FETCH BANNER
+    ============================ */
+    const banner = await Banner.findById(bannerId);
+    if (!banner) {
+      return res.status(404).json({
+        success: false,
+        message: "Banner not found",
+      });
+    }
+
+    /* ============================
+       TOGGLE LOGIC
+    ============================ */
+    banner.active = !banner.active;
+
+    await banner.save();
+
+    /* ============================
+       RESPONSE
+    ============================ */
+    return res.status(200).json({
+      success: true,
+      message: `Banner ${banner.active ? "activated" : "deactivated"} successfully`,
+      data: {
+        bannerId: banner._id,
+        active: banner.active,
+      },
+    });
+
+  } catch (error) {
+    console.error("Toggle Banner Active Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to toggle banner status",
+      error: error.message,
     });
   }
 };
