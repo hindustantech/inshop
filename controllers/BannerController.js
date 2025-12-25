@@ -1057,11 +1057,11 @@ export const getUserNearestBanners = async (req, res) => {
       manualCode,
       lat,
       lng,
-      category,
+      categoryIds,
     } = req.query;
 
     logger.info("=== BANNER SEARCH STARTED ===", {
-      queryParams: { radius, search, page, limit, manualCode, lat, lng, category },
+      queryParams: { radius, search, page, limit, manualCode, lat, lng,   categoryIds },
       user: req.user?.id || 'no-user'
     });
 
@@ -1161,13 +1161,13 @@ export const getUserNearestBanners = async (req, res) => {
     let categoryFilter = {};
     let validCategoryIds = [];
 
-    if (category) {
-      const array = Array.isArray(category) ? category : [category];
+    if (categoryIds) {
+      const array = Array.isArray(categoryIds) ? categoryIds : [categoryIds];
       logger.debug("Processing categories", { inputCategories: array });
 
-      for (const c of array) {
+      for (const c of array) {  
         if (!mongoose.Types.ObjectId.isValid(c)) {
-          logger.error("Invalid category ID", { category: c });
+          logger.error("Invalid category ID", { categoryIds: c });
           return res.status(400).json({ success: false, message: `Invalid category: ${c}` });
         }
         validCategoryIds.push(new mongoose.Types.ObjectId(c));
@@ -1379,7 +1379,7 @@ export const getUserNearestBanners = async (req, res) => {
       data,
       filters: {
         search,
-        category: category || null,
+        category: categoryIds || null,
         radius: effectiveRadius || null,
       },
     };
