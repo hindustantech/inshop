@@ -177,3 +177,41 @@ export const disablePlan = async (req, res) => {
         });
     }
 };
+
+
+// PATCH /api/planRoutes/:id
+export const updatePlan = async (req, res) => {
+    try {
+        const allowedFields = [
+            "name",
+            "description",
+            "price",
+            "type",
+            "tier",
+            "eligibility",
+            "couponsIncluded",
+            "validityDaysCoupons",
+            "tags",
+            "metadata",
+        ];
+
+        const updatePayload = {};
+        allowedFields.forEach((f) => {
+            if (req.body[f] !== undefined) updatePayload[f] = req.body[f];
+        });
+
+        const plan = await Plan.findByIdAndUpdate(
+            req.params.id,
+            { $set: updatePayload },
+            { new: true, runValidators: true }
+        );
+
+        if (!plan) {
+            return res.status(404).json({ success: false, message: "Plan not found" });
+        }
+
+        res.json({ success: true, data: plan });
+    } catch (err) {
+        res.status(500).json({ success: false, message: "Update failed" });
+    }
+};

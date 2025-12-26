@@ -37,6 +37,7 @@ import { razorpayWebhookHandler } from './controllers/webhookController.js';
 import { rawBodyMiddleware } from './middlewares/rawBody.js'
 import comment from './routes/comment.route.js'
 import planRoutes from './routes/plan.routes.js'
+import supports from './routes/supoort.js'
 dotenv.config();
 connectDB();
 
@@ -98,6 +99,7 @@ app.use('/api/planRoutes', planRoutes);
 // payment route
 app.use('/api/paymentroute', paymentroute);
 app.use('/api/comment', comment);
+app.use('/api/support', supports);
 
 app.use('/api/agency', agencyDashboardRoutes);
 app.use('/api/permissionRoutes', permissionRoutes);
