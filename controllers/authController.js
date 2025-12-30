@@ -482,11 +482,11 @@ export const UpdateManualAddress = async (req, res) => {
         message: "User not found",
       });
     }
-      
+
     const updatedUser = await User.findByIdAndUpdate(
       userId, // the user to update
       { manul_address }, // update this field
-      { new: true } // return the updated document
+      { new: true } 
     );
 
     res.status(200).json({
