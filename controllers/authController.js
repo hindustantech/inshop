@@ -9,6 +9,7 @@ import { uploadToCloudinary } from '../utils/Cloudinary.js';
 import admin from '../utils/firebaseadmin.js';
 import notification from '../models/notification.js';
 import ReferralUsage from '../models/ReferralUsage.js'
+import mongoose from "mongoose";
 
 
 // Controller function to get user IDs and names by referral codes
@@ -48,6 +49,71 @@ export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {
 };
 
 
+export const getUserProfile = async (req, res) => {
+  try {
+    /* -------------------- AUTH VALIDATION -------------------- */
+    if (!req.user || (!req.user.id && !req.user._id)) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: user context missing",
+      });
+    } 
+
+
+    const userId = req.user.id || req.user._id;
+    console.log("userId",userId)
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user id",
+      });
+    }
+
+    /* -------------------- DB QUERY -------------------- */
+    const user = await User.findById(userId).select(
+      "name email phone type permissions isVerified suspend createdAt"
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.suspend) {
+      return res.status(403).json({
+        success: false,
+        message: "Account suspended",
+      });
+    }
+
+    /* -------------------- RESPONSE -------------------- */
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone ?? null,
+        role: user.type,
+        permissions: user.permissions ?? [],
+        isVerified: user.isVerified,
+        joinedAt: user.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("getUserProfile::ERROR", {
+      message: error.message,
+      stack: error.stack,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
 
 
 
@@ -407,7 +473,7 @@ export const updateUserLocation = async (req, res) => {
 export const UpdateManualAddress = async (req, res) => {
   try {
     const { manul_address } = req.body;
-    const userId = req.user.id;
+    const userId = req?.user?.id;
 
     const user = await User.findById(userId);
     if (!user) {
@@ -444,7 +510,7 @@ const signup = async (req, res) => {
     const { name, email, phone, type, password, referralCode, deviceId } = req.body;
 
 
-    if (!name  || !phone || !password) {
+    if (!name || !phone || !password) {
       return res.status(400).json({ message: 'Name, phone, and password are required' });
     }
     if (password.length < 6) {

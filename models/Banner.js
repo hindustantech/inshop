@@ -21,7 +21,12 @@ const BannerSchema = new mongoose.Schema(
         ref: 'Ad',
       }
     ],
-
+  
+    planId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Plan',
+    },
+    
 
     active: {
       type: Boolean,

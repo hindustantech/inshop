@@ -107,7 +107,12 @@ router.get('/get-cities', authMiddleware, getAllCities);
 router.get('/coupon-count', authMiddleware, getCouponCount);
 router.get('/availed', authMiddleware, getAvailedCoupon);
 router.get('/store-used-coupon', authMiddleware, storeUsedCoupon);
-router.delete('/delete/:id', authMiddleware, deleteCoupon);
+router.delete(
+    '/delete/:id',
+    authMiddleware,
+    checkPermission('coupon.delete'),
+    deleteCoupon
+);
 router.put('/toggle-active/:id', authMiddleware, toggleActive);
 router.put('/update/:id', authMiddleware, updateCoupon);
 router.put('/avail/:id', authMiddleware, availCoupon);

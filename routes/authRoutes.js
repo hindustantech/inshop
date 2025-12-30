@@ -19,7 +19,8 @@ import {
     getProfileImageUrl,
     getProfile,
     updateProfileImage,
-    getUserIdsAndNamesByReferralCodesController
+    getUserIdsAndNamesByReferralCodesController,
+    getUserProfile
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
@@ -31,7 +32,7 @@ upload.single("images")
 
 router.post('/updateUserLocation', authMiddleware, updateUserLocation);
 
-router.get('/getuserbyreferal',getUserIdsAndNamesByReferralCodesController);
+router.get('/getuserbyreferal', getUserIdsAndNamesByReferralCodesController);
 
 router.post('/UpdateManualAddress', authMiddleware, UpdateManualAddress);
 
@@ -43,6 +44,7 @@ router.get('/updateProfileImage', authMiddleware, upload.single('profileImage'),
 
 router.post('/signup', signup);
 router.post("/find-by-phone", findUserByPhone);
+router.get("/getUserProfile", authMiddleware, getUserProfile);
 
 router.post('/verifyOtp', verifyOtp);
 router.post('/login', login);

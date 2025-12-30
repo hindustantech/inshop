@@ -16,6 +16,7 @@ import Plan from '../models/Plan.js';
 import Wallet from '../models/Wallet.js';
 import UserPlan from '../models/UserPlan.js';
 
+
 const statesAndUTs = [
   'Andhra Pradesh',
   'Arunachal Pradesh',
@@ -816,13 +817,498 @@ export const createCoupon = async (req, res) => {
   }
 };
 
+const PERMISSION_KEYS = {
+  COUPON_FREE_CREATE: "coupon_free.create",
+  COUPON_PAID_CREATE: "coupon_paid.create",
+  // Add other permissions if needed
+};
+
+/**
+ * Returns true if payment is REQUIRED for coupon creation
+ * false = can create for free
+ */
+function isPaymentRequiredForCoupon(user) {
+  if (!user) return true;
+
+  // Super admin always free
+  if (user.role === "super_admin" || user.type === "super_admin") {
+    return false;
+  }
+
+  const permissions = new Set(user.permissions || []);
+
+  if (permissions.has(PERMISSION_KEYS.COUPON_FREE_CREATE)) {
+    return false;
+  }
+
+  if (permissions.has(PERMISSION_KEYS.COUPON_PAID_CREATE)) {
+    return true;
+  }
+
+  // Default: secure by default → payment required
+  return true;
+}
+
+export async function verifyCouponPayment(userId, planId, targetOwnerId = null) {
+  // If targetOwnerId is provided, check payment for that owner
+  const actualUserId = targetOwnerId || userId;
+
+  const userPlan = await UserPlan.findOne({
+    userId: actualUserId,
+    planId,
+    status: "active",
+  }).populate("planId");
+
+  if (!userPlan) {
+    return {
+      success: false,
+      code: "NO_ACTIVE_PLAN",
+      message: "No active plan found for coupon creation",
+    };
+  }
+
+  const plan = userPlan.planId;
+
+  if (!plan || !plan.isActive) {
+    return {
+      success: false,
+      code: "PLAN_INACTIVE",
+      message: "Plan is inactive or removed",
+    };
+  }
+
+  /* ---------- EXPIRY VALIDATION ---------- */
+  if (userPlan.expiresAt && userPlan.expiresAt < new Date()) {
+    await UserPlan.findByIdAndUpdate(userPlan._id, {
+      status: "expired",
+    });
+
+    return {
+      success: false,
+      code: "PLAN_EXPIRED",
+      message: "Plan has expired",
+    };
+  }
+
+  // Check if plan has coupons left
+  const startDate = userPlan.startDate || userPlan.createdAt;
+  const couponCount = await Coupon.countDocuments({
+    ownerId: actualUserId,
+    planId: plan._id,
+    createdAt: { $gte: startDate },
+    status: { $in: ["published", "draft"] },
+  });
+
+  if (plan.couponsIncluded > 0 && couponCount >= plan.couponsIncluded) {
+    return {
+      success: false,
+      code: "COUPON_LIMIT_REACHED",
+      message: `Plan coupon limit reached. Maximum ${plan.couponsIncluded} coupons allowed.`,
+      currentCount: couponCount,
+      maxLimit: plan.couponsIncluded,
+    };
+  }
+
+  return {
+    success: true,
+    userPlan,
+    plan,
+    usedCoupons: couponCount,
+    remainingCoupons: plan.couponsIncluded > 0 ? plan.couponsIncluded - couponCount : null,
+  };
+}
+
+export const createCouponAdmin = async (req, res) => {
+  try {
+    const {
+      shop_name,
+      coupon_color = "#FFFFFF",
+      title,
+      status = "draft",
+      is_spacial_copun_user = [],
+      manual_address,
+      copuon_srno,
+      categoryIds,
+      discountPercentage,
+      validTill, // Optional: can be overridden by plan
+      style,
+      maxDistributions, // Optional: can be overridden by plan
+      fromTime,
+      toTime,
+      isFullDay = false,
+      termsAndConditions,
+      is_spacial_copun = false,
+      isTransferable = false,
+      tag,
+      shope_location,
+      planId, // Optional: only required if payment is required
+    } = req.body;
+
+    const userId = req.user?._id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized: user missing" });
+    }
+
+    // Get ownership from middleware
+    const { createdBy, ownerId, partnerId } = req.ownership || {};
+
+    // Determine final ownerId: body > partnerId > createdBy > userId
+    let finalOwnerId;
+
+    // Priority 1: ownerId from body (if agency/super_admin provided it)
+    if (req.body.ownerId && (req.user.type === "agency" || req.user.type === "super_admin" || req.user.type === "admin")) {
+      finalOwnerId = req.body.ownerId;
+    }
+    // Priority 2: partnerId from ownership (for partners)
+    else if (partnerId) {
+      finalOwnerId = partnerId;
+    }
+    // Priority 3: ownerId from ownership
+    else if (ownerId) {
+      finalOwnerId = ownerId;
+    }
+    // Priority 4: createdBy from ownership
+    else if (createdBy) {
+      finalOwnerId = createdBy;
+    }
+    // Fallback: current user ID
+    else {
+      finalOwnerId = userId;
+    }
+
+    // Determine if payment is required based on permissions of the CREATOR (not owner)
+    const requiresPayment = isPaymentRequiredForCoupon(req.user);
+
+    let paymentInfo = null;
+    let plan = null;
+    let calculatedValidTill = null;
+    let calculatedMaxDistributions = maxDistributions || 0;
+    let isPlanBased = false;
+
+    if (requiresPayment) {
+      if (!planId) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment required: Please select a plan",
+        });
+      }
+
+      // Verify payment for the final owner (not necessarily the creator)
+      paymentInfo = await verifyCouponPayment(userId, planId, finalOwnerId);
+      if (!paymentInfo.success) {
+        return res.status(402).json({
+          success: false,
+          message: paymentInfo.message || "Payment verification failed",
+          code: paymentInfo.code,
+        });
+      }
+
+      plan = paymentInfo.plan;
+      isPlanBased = true;
+
+      // Calculate validTill based on plan's validityDaysCoupons
+      if (plan.validityDaysCoupons && plan.validityDaysCoupons > 0) {
+        calculatedValidTill = new Date();
+        calculatedValidTill.setDate(calculatedValidTill.getDate() + plan.validityDaysCoupons);
+      }
+
+      // Set maxDistributions from plan's couponsIncluded if not provided in body
+      if (plan.couponsIncluded > 0 && (!maxDistributions || maxDistributions === 0)) {
+        calculatedMaxDistributions = plan.couponsIncluded;
+      }
+    } else {
+      // Free coupon (no payment required)
+      // If planId is provided for free user, still validate it but don't require payment
+      if (planId) {
+        plan = await Plan.findById(planId);
+        if (plan && plan.isActive) {
+          isPlanBased = true;
+
+          // Use plan's validity if provided
+          if (plan.validityDaysCoupons && plan.validityDaysCoupons > 0) {
+            calculatedValidTill = new Date();
+            calculatedValidTill.setDate(calculatedValidTill.getDate() + plan.validityDaysCoupons);
+          }
+
+          // Use plan's couponsIncluded for maxDistributions if not provided
+          if (plan.couponsIncluded > 0 && (!maxDistributions || maxDistributions === 0)) {
+            calculatedMaxDistributions = plan.couponsIncluded;
+          }
+        }
+      }
+    }
+
+    // Basic validation
+    if (!shop_name?.trim() || !title?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "shop_name and title are required",
+      });
+    }
+
+    const parsedDiscount = Number(discountPercentage);
+    if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "discountPercentage must be between 0 and 100",
+      });
+    }
+
+    // Location validation
+    let location = null;
+    if (!shope_location) {
+      return res.status(400).json({
+        success: false,
+        message: "shope_location is required",
+      });
+    }
+
+    try {
+      const parsed = typeof shope_location === "string" ? JSON.parse(shope_location) : shope_location;
+      if (
+        parsed.type !== "Point" ||
+        !Array.isArray(parsed.coordinates) ||
+        parsed.coordinates.length !== 2 ||
+        !parsed.address
+      ) {
+        throw new Error("Invalid location format");
+      }
+      location = parsed;
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid shope_location format. Use { type:"Point", coordinates:[lng,lat], address }',
+      });
+    }
+
+    // Time validation
+    if (!isFullDay && (!fromTime || !toTime)) {
+      return res.status(400).json({
+        success: false,
+        message: "fromTime & toTime required when isFullDay is false",
+      });
+    }
+
+    // Valid till validation and calculation
+    let finalValidTill;
+
+    if (validTill) {
+      // Use provided validTill from request body
+      const expiryDate = new Date(validTill);
+      if (isNaN(expiryDate.getTime()) || expiryDate <= new Date()) {
+        return res.status(400).json({
+          success: false,
+          message: "validTill must be a future date",
+        });
+      }
+      finalValidTill = expiryDate;
+    } else if (calculatedValidTill) {
+      // Use calculated validTill from plan
+      finalValidTill = calculatedValidTill;
+    } else {
+      // Default to 30 days from now if neither provided nor calculated
+      finalValidTill = new Date();
+      finalValidTill.setDate(finalValidTill.getDate() + 30);
+    }
+
+    // Max distributions validation
+    const parsedMaxDistributions = Number(calculatedMaxDistributions);
+    if (isNaN(parsedMaxDistributions) || parsedMaxDistributions < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "maxDistributions must be a non-negative number",
+      });
+    }
+
+    // Category validation
+    let parsedCategoryIds = typeof categoryIds === "string" ? JSON.parse(categoryIds) : categoryIds;
+    if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "categoryIds must be a non-empty array",
+      });
+    }
+
+    const categories = await Category.find({ _id: { $in: parsedCategoryIds } });
+    if (categories.length !== parsedCategoryIds.length) {
+      return res.status(404).json({
+        success: false,
+        message: "One or more categories not found",
+      });
+    }
+
+    // Special users validation
+    let parsedSpecialUsers =
+      typeof is_spacial_copun_user === "string" ? JSON.parse(is_spacial_copun_user) : is_spacial_copun_user;
+    if (!Array.isArray(parsedSpecialUsers)) {
+      return res.status(400).json({
+        success: false,
+        message: "is_spacial_copun_user must be an array",
+      });
+    }
+
+    // Validate tag
+    if (!tag || !Array.isArray(tag) || tag.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one tag is required"
+      });
+    }
+
+    // Image upload
+    let copuon_image = [];
+    if (req.files?.length) {
+      try {
+        const uploads = await Promise.all(req.files.map((file) => uploadToCloudinary(file.buffer, "coupons")));
+        copuon_image = uploads.map((u) => u.secure_url);
+      } catch (uploadErr) {
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload images",
+          error: uploadErr.message,
+        });
+      }
+    }
+
+    // Active flag
+    const isActive = status === "published";
+
+    // Prepare coupon data
+    const couponData = {
+      title,
+      shop_name,
+      coupon_color,
+      manul_address: manual_address,
+      copuon_srno,
+      discountPercentage: parsedDiscount,
+      category: categories.map((c) => c._id),
+      createdBy: createdBy || userId, // Who created it
+      ownerId: finalOwnerId, // Who owns it (could be different from creator)
+      createdby: userId, // The actual user performing the action
+      status,
+      active: isActive,
+      validTill: finalValidTill,
+      style,
+      maxDistributions: parsedMaxDistributions,
+      fromTime: isFullDay ? undefined : fromTime,
+      toTime: isFullDay ? undefined : toTime,
+      isFullDay,
+      is_spacial_copun_user: parsedSpecialUsers,
+      termsAndConditions,
+      is_spacial_copun,
+      isTransferable,
+      tag,
+      shope_location: location,
+      copuon_image,
+      currentDistributions: 0,
+      consumersId: [],
+    };
+
+    // Add plan information if plan-based
+    if (isPlanBased && plan) {
+      couponData.planId = plan._id;
+      couponData.planType = plan.type;
+      couponData.planName = plan.name;
+      couponData.planValidityDays = plan.validityDaysCoupons;
+      couponData.paymentStatus = requiresPayment ? "paid" : "free";
+      couponData.paymentDate = requiresPayment ? new Date() : undefined;
+
+      // Add payment reference if payment was made
+      if (requiresPayment && paymentInfo?.userPlan) {
+        couponData.paymentId = paymentInfo.userPlan._id;
+        couponData.userPlanId = paymentInfo.userPlan._id;
+      }
+    }
+
+    // Add partnerId if creator is a partner
+    if (partnerId) {
+      couponData.partnerId = partnerId;
+    }
+
+    const coupon = await Coupon.create(couponData);
+
+    // Update payment/user plan record if payment was required
+    if (requiresPayment && paymentInfo?.userPlan) {
+      await UserPlan.findByIdAndUpdate(paymentInfo.userPlan._id, {
+        $push: { createdCoupons: coupon._id },
+        lastCouponCreatedAt: new Date(),
+      });
+    }
+
+    // Broadcast notification to users within 50 km (only for published coupons)
+    // if (status === "published") {
+    //   try {
+    //     const users = await User.find(
+    //       {
+    //         latestLocation: {
+    //           $near: {
+    //             $geometry: { type: "Point", coordinates: location.coordinates },
+    //             $maxDistance: 50 * 1000,
+    //           },
+    //         },
+    //         devicetoken: { $ne: null },
+    //       },
+    //       { uid: 1, name: 1, devicetoken: 1, _id: 0 }
+    //     );
+
+    //     if (users.length > 0) {
+    //       const batchSize = 500;
+    //       const batches = [];
+    //       for (let i = 0; i < users.length; i += batchSize) {
+    //         const batchTokens = users.slice(i, i + batchSize).map(u => u.devicetoken);
+    //         batches.push({
+    //           notification: {
+    //             title: `New Coupon: ${title}`,
+    //             body: `Get ${parsedDiscount}% off near you! Valid until ${new Date(validTill).toLocaleDateString()}.`,
+    //           },
+    //           tokens: batchTokens,
+    //         });
+    //       }
+
+    //       await Promise.all(batches.map(batch => admin.messaging().sendEach(batch)));
+    //     }
+    //   } catch (notificationError) {
+    //     console.error("Error sending notifications:", notificationError);
+    //   }
+    // }
+
+    return res.status(201).json({
+      success: true,
+      message: `Coupon created successfully with status '${status}'`,
+      coupon: {
+        _id: coupon._id,
+        title: coupon.title,
+        shop_name: coupon.shop_name,
+        status: coupon.status,
+        discountPercentage: coupon.discountPercentage,
+        validTill: coupon.validTill,
+        maxDistributions: coupon.maxDistributions,
+        ownerId: coupon.ownerId,
+        createdBy: coupon.createdBy,
+        planBased: isPlanBased,
+        planName: plan?.name,
+        paymentStatus: requiresPayment ? "paid" : "free",
+        remainingDistributions: coupon.maxDistributions,
+      },
+    });
+  } catch (err) {
+    console.error("Admin coupon creation error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Error creating admin coupon",
+      error: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+};
+
 // export const createCouponAdmin = async (req, res) => {
 //   try {
 //     const {
 //       shop_name,
 //       coupon_color = "#FFFFFF",
 //       title,
-//       status = "draft",
+//       status = "published", // ✅ ADMIN CONTROLS STATUS
 //       is_spacial_copun_user = [],
 //       manual_address,
 //       copuon_srno,
@@ -839,77 +1325,25 @@ export const createCoupon = async (req, res) => {
 //       isTransferable = false,
 //       tag,
 //       shope_location,
-//       planId, // Payment plan ID
 //     } = req.body;
 
 //     const adminId = req.user?._id;
-//     const adminRole = req.user?.role ||req.user?.type;
-
+//     const userType = req.user?.type;
 //     if (!adminId) {
 //       return res.status(401).json({ message: "Unauthorized admin" });
 //     }
 
-//     // ================= PAYMENT VALIDATION =================
-//     let paymentInfo = null;
-
-//     // Check if payment is required (all except super_admin)
-//     if (adminRole !== 'super_admin') {
-//       if (!planId) {
-//         return res.status(400).json({
-//           success: false,
-//           message: "Payment required: Please select a plan",
-//         });
-//       }
-
-//       // Verify payment was successful
-//       try {
-//         paymentInfo = await verifyCouponPayment(adminId, planId);
-//         if (!paymentInfo.success) {
-//           return res.status(402).json({
-//             success: false,
-//             message: "Payment verification failed",
-//             error: paymentInfo.message,
-//           });
-//         }
-//       } catch (paymentErr) {
-//         return res.status(402).json({
-//           success: false,
-//           message: "Payment verification error",
-//           error: paymentErr.message,
-//         });
-//       }
-
-//       // Check if user has reached plan limit
-//       const plan = await Plan.findById(planId);
-//       if (!plan) {
-//         return res.status(404).json({
-//           success: false,
-//           message: "Selected plan not found",
-//         });
-//       }
-
-//       // Count coupons created in plan duration
-//       const startDate = new Date(Date.now() - plan.durationDays * 24 * 60 * 60 * 1000);
-//       const userCouponCount = await Coupon.countDocuments({
-//         ownerId: adminId,
-//         createdAt: { $gte: startDate },
-//         status: { $in: ['published', 'draft'] }
+//     // ---------------- STATUS VALIDATION ----------------
+//     const allowedStatus = ["draft", "published", "disabled", "expired"];
+//     if (!allowedStatus.includes(status)) {
+//       return res.status(400).json({
+//         message: `Invalid status. Allowed: ${allowedStatus.join(", ")}`,
 //       });
-
-//       if (userCouponCount >= plan.maxCoupons) {
-//         return res.status(400).json({
-//           success: false,
-//           message: `Plan limit reached. Maximum ${plan.maxCoupons} coupons allowed for ${plan.durationDays} days.`,
-//           currentCount: userCouponCount,
-//           maxLimit: plan.maxCoupons,
-//         });
-//       }
 //     }
 
-//     // ================= BASIC VALIDATION =================
+//     // ---------------- BASIC VALIDATION ----------------
 //     if (!shop_name || !title) {
 //       return res.status(400).json({
-//         success: false,
 //         message: "shop_name and title are required",
 //       });
 //     }
@@ -917,24 +1351,21 @@ export const createCoupon = async (req, res) => {
 //     const parsedDiscount = Number(discountPercentage);
 //     if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
 //       return res.status(400).json({
-//         success: false,
 //         message: "discountPercentage must be between 0 and 100",
 //       });
 //     }
 
-//     // ================= LOCATION VALIDATION =================
+//     // ---------------- LOCATION ----------------
 //     let location = null;
 //     if (!shope_location) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "shope_location is required"
-//       });
+//       return res.status(400).json({ message: "shope_location is required" });
 //     }
 
 //     try {
-//       const parsed = typeof shope_location === "string"
-//         ? JSON.parse(shope_location)
-//         : shope_location;
+//       const parsed =
+//         typeof shope_location === "string"
+//           ? JSON.parse(shope_location)
+//           : shope_location;
 
 //       if (
 //         parsed.type !== "Point" ||
@@ -942,41 +1373,39 @@ export const createCoupon = async (req, res) => {
 //         parsed.coordinates.length !== 2 ||
 //         !parsed.address
 //       ) {
-//         throw new Error("Invalid location format");
+//         throw new Error();
 //       }
 //       location = parsed;
 //     } catch {
 //       return res.status(400).json({
-//         success: false,
-//         message: 'Invalid shope_location. Use { type:"Point", coordinates:[lng,lat], address }',
+//         message:
+//           'Invalid shope_location. Use { type:"Point", coordinates:[lng,lat], address }',
 //       });
 //     }
 
-//     // ================= TIME VALIDATION =================
+//     // ---------------- TIME ----------------
 //     if (!isFullDay && (!fromTime || !toTime)) {
 //       return res.status(400).json({
-//         success: false,
 //         message: "fromTime & toTime required when isFullDay is false",
 //       });
 //     }
 
-//     // ================= VALID TILL VALIDATION =================
+//     // ---------------- VALID TILL ----------------
 //     const expiryDate = new Date(validTill);
 //     if (isNaN(expiryDate) || expiryDate <= new Date()) {
 //       return res.status(400).json({
-//         success: false,
 //         message: "validTill must be a future date",
 //       });
 //     }
 
-//     // ================= CATEGORY VALIDATION =================
-//     let parsedCategoryIds = typeof categoryIds === "string"
-//       ? JSON.parse(categoryIds)
-//       : categoryIds;
+//     // ---------------- CATEGORY ----------------
+//     let parsedCategoryIds =
+//       typeof categoryIds === "string"
+//         ? JSON.parse(categoryIds)
+//         : categoryIds;
 
 //     if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
 //       return res.status(400).json({
-//         success: false,
 //         message: "categoryIds must be a non-empty array",
 //       });
 //     }
@@ -987,47 +1416,45 @@ export const createCoupon = async (req, res) => {
 
 //     if (categories.length !== parsedCategoryIds.length) {
 //       return res.status(404).json({
-//         success: false,
 //         message: "One or more categories not found",
 //       });
 //     }
 
-//     // ================= SPECIAL USERS VALIDATION =================
-//     let parsedSpecialUsers = typeof is_spacial_copun_user === "string"
-//       ? JSON.parse(is_spacial_copun_user)
-//       : is_spacial_copun_user;
+//     // ---------------- SPECIAL USERS ----------------
+//     let parsedSpecialUsers =
+//       typeof is_spacial_copun_user === "string"
+//         ? JSON.parse(is_spacial_copun_user)
+//         : is_spacial_copun_user;
 
 //     if (!Array.isArray(parsedSpecialUsers)) {
 //       return res.status(400).json({
-//         success: false,
 //         message: "is_spacial_copun_user must be an array",
 //       });
 //     }
 
-//     // ================= IMAGE UPLOAD =================
+//     // ---------------- IMAGES ----------------
 //     let copuon_image = [];
 //     if (req.files?.length) {
-//       try {
-//         const uploads = await Promise.all(
-//           req.files.map((file) =>
-//             uploadToCloudinary(file.buffer, "coupons")
-//           )
-//         );
-//         copuon_image = uploads.map((u) => u.secure_url);
-//       } catch (uploadErr) {
-//         return res.status(500).json({
-//           success: false,
-//           message: "Failed to upload images",
-//           error: uploadErr.message,
-//         });
-//       }
+//       const uploads = await Promise.all(
+//         req.files.map((file) =>
+//           uploadToCloudinary(file.buffer, "coupons")
+//         )
+//       );
+//       copuon_image = uploads.map((u) => u.secure_url);
 //     }
 
-//     // ================= ACTIVE FLAG =================
-//     const isActive = status === "published";
+//     // ---------------- ACTIVE FLAG ----------------
+//     /* ======================
+//    🔹 Resolve Active State (Server Authority)
+// ====================== */
+//     const isActive =
+//       userType === "super_admin" && status === "published"
+//         ? true
+//         : false;
 
-//     // ================= SAVE COUPON =================
-//     const couponData = {
+
+//     // ---------------- SAVE COUPON ----------------
+//     const coupon = await Coupon.create({
 //       title,
 //       shop_name,
 //       coupon_color,
@@ -1038,8 +1465,8 @@ export const createCoupon = async (req, res) => {
 //       createdBy: adminId,
 //       ownerId: adminId,
 //       createdby: adminId,
-//       status,
-//       active: isActive,
+//       status,                 // ✅ STATUS DRIVES EVERYTHING
+//       active: isActive,       // ✅ published → true
 //       validTill: expiryDate,
 //       style,
 //       maxDistributions,
@@ -1055,299 +1482,22 @@ export const createCoupon = async (req, res) => {
 //       copuon_image,
 //       currentDistributions: 0,
 //       consumersId: [],
-//     };
-
-//     // Add payment info if applicable
-//     if (adminRole !== 'super_admin' && planId && paymentInfo) {
-//       couponData.planId = planId;
-//       couponData.paymentStatus = 'completed';
-//       couponData.paymentId = paymentInfo.paymentId;
-//       couponData.paymentDate = new Date();
-//       couponData.planDetails = {
-//         name: paymentInfo.planName,
-//         price: paymentInfo.planPrice,
-//         durationDays: paymentInfo.planDuration,
-//         maxCoupons: paymentInfo.planMaxCoupons,
-//       };
-//     }
-
-//     const coupon = await Coupon.create(couponData);
-
-//     // ================= UPDATE PAYMENT RECORD =================
-//     if (adminRole !== 'super_admin' && paymentInfo) {
-//       await Payment.findByIdAndUpdate(paymentInfo.paymentId, {
-//         couponId: coupon._id,
-//         status: 'coupon_created',
-//       });
-//     }
+//     });
 
 //     return res.status(201).json({
 //       success: true,
 //       message: `Coupon created successfully with status '${status}'`,
-//       coupon: {
-//         _id: coupon._id,
-//         title: coupon.title,
-//         shop_name: coupon.shop_name,
-//         status: coupon.status,
-//         discountPercentage: coupon.discountPercentage,
-//         validTill: coupon.validTill,
-//         paymentStatus: adminRole !== 'super_admin' ? 'paid' : 'free',
-//       },
+//       coupon,
 //     });
 
 //   } catch (err) {
-//     console.error("Admin coupon creation error:", err);
+//     console.error("Admin coupon error:", err);
 //     return res.status(500).json({
-//       success: false,
 //       message: "Error creating admin coupon",
-//       error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+//       error: err.message,
 //     });
 //   }
 // };
-
-// ================= HELPER FUNCTION =================
-async function verifyCouponPayment(userId, planId) {
-  try {
-    // Check for successful payment in the last 15 minutes
-    const recentPayment = await Payment.findOne({
-      userId,
-      planId,
-      status: 'completed',
-      createdAt: { $gte: new Date(Date.now() - 15 * 60 * 1000) }
-    }).populate('planId');
-
-    if (!recentPayment) {
-      return {
-        success: false,
-        message: 'No valid payment found. Please complete payment first.'
-      };
-    }
-
-    // Get plan details
-    const plan = await Plan.findById(planId);
-    if (!plan) {
-      return {
-        success: false,
-        message: 'Plan not found'
-      };
-    }
-
-    return {
-      success: true,
-      paymentId: recentPayment._id,
-      planName: plan.name,
-      planPrice: plan.price,
-      planDuration: plan.durationDays,
-      planMaxCoupons: plan.maxCoupons,
-    };
-  } catch (error) {
-    console.error('Payment verification error:', error);
-    return {
-      success: false,
-      message: 'Payment verification failed'
-    };
-  }
-}
-
-
-export const createCouponAdmin = async (req, res) => {
-  try {
-    const {
-      shop_name,
-      coupon_color = "#FFFFFF",
-      title,
-      status = "published", // ✅ ADMIN CONTROLS STATUS
-      is_spacial_copun_user = [],
-      manual_address,
-      copuon_srno,
-      categoryIds,
-      discountPercentage,
-      validTill,
-      style,
-      maxDistributions = 0,
-      fromTime,
-      toTime,
-      isFullDay = false,
-      termsAndConditions,
-      is_spacial_copun = false,
-      isTransferable = false,
-      tag,
-      shope_location,
-    } = req.body;
-
-    const adminId = req.user?._id;
-    const userType = req.user?.type;
-    if (!adminId) {
-      return res.status(401).json({ message: "Unauthorized admin" });
-    }
-
-    // ---------------- STATUS VALIDATION ----------------
-    const allowedStatus = ["draft", "published", "disabled", "expired"];
-    if (!allowedStatus.includes(status)) {
-      return res.status(400).json({
-        message: `Invalid status. Allowed: ${allowedStatus.join(", ")}`,
-      });
-    }
-
-    // ---------------- BASIC VALIDATION ----------------
-    if (!shop_name || !title) {
-      return res.status(400).json({
-        message: "shop_name and title are required",
-      });
-    }
-
-    const parsedDiscount = Number(discountPercentage);
-    if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
-      return res.status(400).json({
-        message: "discountPercentage must be between 0 and 100",
-      });
-    }
-
-    // ---------------- LOCATION ----------------
-    let location = null;
-    if (!shope_location) {
-      return res.status(400).json({ message: "shope_location is required" });
-    }
-
-    try {
-      const parsed =
-        typeof shope_location === "string"
-          ? JSON.parse(shope_location)
-          : shope_location;
-
-      if (
-        parsed.type !== "Point" ||
-        !Array.isArray(parsed.coordinates) ||
-        parsed.coordinates.length !== 2 ||
-        !parsed.address
-      ) {
-        throw new Error();
-      }
-      location = parsed;
-    } catch {
-      return res.status(400).json({
-        message:
-          'Invalid shope_location. Use { type:"Point", coordinates:[lng,lat], address }',
-      });
-    }
-
-    // ---------------- TIME ----------------
-    if (!isFullDay && (!fromTime || !toTime)) {
-      return res.status(400).json({
-        message: "fromTime & toTime required when isFullDay is false",
-      });
-    }
-
-    // ---------------- VALID TILL ----------------
-    const expiryDate = new Date(validTill);
-    if (isNaN(expiryDate) || expiryDate <= new Date()) {
-      return res.status(400).json({
-        message: "validTill must be a future date",
-      });
-    }
-
-    // ---------------- CATEGORY ----------------
-    let parsedCategoryIds =
-      typeof categoryIds === "string"
-        ? JSON.parse(categoryIds)
-        : categoryIds;
-
-    if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
-      return res.status(400).json({
-        message: "categoryIds must be a non-empty array",
-      });
-    }
-
-    const categories = await Category.find({
-      _id: { $in: parsedCategoryIds },
-    });
-
-    if (categories.length !== parsedCategoryIds.length) {
-      return res.status(404).json({
-        message: "One or more categories not found",
-      });
-    }
-
-    // ---------------- SPECIAL USERS ----------------
-    let parsedSpecialUsers =
-      typeof is_spacial_copun_user === "string"
-        ? JSON.parse(is_spacial_copun_user)
-        : is_spacial_copun_user;
-
-    if (!Array.isArray(parsedSpecialUsers)) {
-      return res.status(400).json({
-        message: "is_spacial_copun_user must be an array",
-      });
-    }
-
-    // ---------------- IMAGES ----------------
-    let copuon_image = [];
-    if (req.files?.length) {
-      const uploads = await Promise.all(
-        req.files.map((file) =>
-          uploadToCloudinary(file.buffer, "coupons")
-        )
-      );
-      copuon_image = uploads.map((u) => u.secure_url);
-    }
-
-    // ---------------- ACTIVE FLAG ----------------
-    /* ======================
-   🔹 Resolve Active State (Server Authority)
-====================== */
-    const isActive =
-      userType === "super_admin" && status === "published"
-        ? true
-        : false;
-
-
-    // ---------------- SAVE COUPON ----------------
-    const coupon = await Coupon.create({
-      title,
-      shop_name,
-      coupon_color,
-      manul_address: manual_address,
-      copuon_srno,
-      discountPercentage: parsedDiscount,
-      category: categories.map((c) => c._id),
-      createdBy: adminId,
-      ownerId: adminId,
-      createdby: adminId,
-      status,                 // ✅ STATUS DRIVES EVERYTHING
-      active: isActive,       // ✅ published → true
-      validTill: expiryDate,
-      style,
-      maxDistributions,
-      fromTime: isFullDay ? undefined : fromTime,
-      toTime: isFullDay ? undefined : toTime,
-      isFullDay,
-      is_spacial_copun_user: parsedSpecialUsers,
-      termsAndConditions,
-      is_spacial_copun,
-      isTransferable,
-      tag,
-      shope_location: location,
-      copuon_image,
-      currentDistributions: 0,
-      consumersId: [],
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: `Coupon created successfully with status '${status}'`,
-      coupon,
-    });
-
-  } catch (err) {
-    console.error("Admin coupon error:", err);
-    return res.status(500).json({
-      message: "Error creating admin coupon",
-      error: err.message,
-    });
-  }
-};
-
-
 
 
 export const updateCouponDeatils = async (req, res) => {
@@ -3130,6 +3280,7 @@ const getall = async (req, res) => {
 
 const deleteCoupon = async (req, res) => {
   try {
+    const userId = req.user.id;
     const { id } = req.params;
 
     // Find and delete the coupon by ID

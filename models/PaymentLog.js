@@ -5,11 +5,12 @@ const paymentLogSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
     },
+ 
     orderId: {
         type: String,
         required: true,
         index: true,
-    },
+    },  
     paymentId: {
         type: String,
         default: null,

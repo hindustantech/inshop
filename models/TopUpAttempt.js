@@ -12,6 +12,7 @@ const topUpAttemptSchema = new Schema(
     
     // Coupon details
     couponId: { type: Schema.Types.ObjectId, ref: "Coupon" },
+    couponId: { type: Schema.Types.ObjectId, ref: "Banner" },
     couponCode: { type: String },
     couponUsageId: { type: Schema.Types.ObjectId, ref: "CouponShopUsage" },
     
