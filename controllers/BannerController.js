@@ -339,6 +339,11 @@ export async function verifyBannerPayment(userId, planId, targetOwnerId = null) 
     remainingCoupons: plan.couponsIncluded > 0 ? plan.couponsIncluded - couponCount : null,
   };
 }
+const PERMISSION_KEYS = {
+  COUPON_FREE_CREATE: "banner_free.create",
+  COUPON_PAID_CREATE: "banner_paid.create",
+  // Add other permissions if needed
+};
 
 function isPaymentRequiredForCoupon(user) {
   if (!user) return true;
