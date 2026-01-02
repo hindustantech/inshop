@@ -1444,7 +1444,6 @@ export const getUserNearestBanners = async (req, res) => {
       logger.debug("Counting total for fallback query");
       const fallbackCountPipeline = [
         { $match: activeQuery },   // ✅ enforced
-        ownerApprovalQuery, // ✅ REQUIRED
         { $match: expiryQuery },
         ...(validCategoryIds.length
           ? [{ $match: { category: { $in: validCategoryIds } } }]
