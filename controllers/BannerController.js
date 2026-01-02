@@ -388,7 +388,7 @@ export const createBanneradmin = async (req, res) => {
       expiryDays,
       category,
       ownerId,
-      paymentReference, 
+      paymentReference,
     } = req.body;
 
     /* ======================
@@ -1557,6 +1557,114 @@ export const toggleBannerActive = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Owner approves their own banner
+ * @route   PATCH /api/v1/banners/:bannerId/approve
+ * @access  Private (Owner only)
+ */
+export const approveMyBanner = async (req, res) => {
+  try {
+    const { bannerId } = req.params;
+    const ownerId = req.user.id;
+
+    /* ============================
+       ID VALIDATION
+    ============================ */
+    if (!mongoose.Types.ObjectId.isValid(bannerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid banner ID",
+      });
+    }
+
+    /* ============================
+       FETCH (OWNER SCOPED)
+    ============================ */
+    const banner = await Banner.findOne({
+      _id: bannerId,
+      ownerId: ownerId,
+      active: true,
+    });
+
+    if (!banner) {
+      return res.status(404).json({
+        success: false,
+        message: "Banner not found or access denied",
+      });
+    }
+
+    /* ============================
+       IDEMPOTENCY CHECK
+    ============================ */
+    if (banner.approveowner === true) {
+      return res.status(200).json({
+        success: true,
+        message: "Banner already approved",
+        data: {
+          bannerId: banner._id,
+          approveowner: true,
+        },
+      });
+    }
+
+    /* ============================
+       APPROVAL
+    ============================ */
+    banner.approveowner = true;
+    await banner.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Banner approved successfully",
+      data: {
+        bannerId: banner._id,
+        approveowner: true,
+      },
+    });
+  } catch (error) {
+    console.error("Approve Banner Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to approve banner",
+    });
+  }
+};
+
+
+
+export const revokeMyBannerApproval = async (req, res) => {
+  try {
+    const { bannerId } = req.params;
+    const ownerId = req.user.id;
+
+    const banner = await Banner.findOne({
+      _id: bannerId,
+      ownerId,
+      approveowner: true,
+    });
+
+    if (!banner) {
+      return res.status(404).json({
+        success: false,
+        message: "Banner not found or not approved",
+      });
+    }
+
+    banner.approveowner = false;
+    await banner.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Banner approval revoked",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to revoke approval",
+    });
+  }
+};
+
 
 
 
@@ -1661,6 +1769,11 @@ export const updateBannerExpiry = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+
+
+
 
 
 

@@ -27,7 +27,10 @@ const BannerSchema = new mongoose.Schema(
       ref: 'Plan',
     },
     
-
+    approveowner:{
+      type:Boolean,
+      default:false,
+    },
     active: {
       type: Boolean,
       default: true,
