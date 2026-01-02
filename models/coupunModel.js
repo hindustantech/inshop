@@ -135,6 +135,10 @@ const couponSchema = new mongoose.Schema({
       return !this.isFullDay; // required only if full day is NOT checked
     }
   },
+  approveowner:{
+    type:Boolean,
+    default:false
+  },
   shope_location: {
     address: {
       type: String

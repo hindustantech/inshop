@@ -2251,6 +2251,11 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     // 7️⃣ Build match query for geoNear
     const geoQuery = {
+      active: true,
+      $or: [
+        { approveowner: true },
+        { approveowner: { $exists: false } }
+      ],
       ...(categoryFilter ? { category: categoryFilter } : {}),
     };
 
