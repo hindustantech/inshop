@@ -1264,6 +1264,20 @@ export const getUserNearestBanners = async (req, res) => {
     };
 
     logger.debug("Expiry query", { expiryQuery: JSON.stringify(expiryQuery), currentTime: new Date() });
+    /* ============================
+       STEP 4.5: OWNER APPROVAL FILTER
+    ============================ */
+
+    const ownerApprovalQuery = {
+      $or: [
+        { approveowner: true },              // new approved banners
+        { approveowner: { $exists: false } } // old banners
+      ]
+    };
+
+    logger.debug("Owner approval filter applied", {
+      ownerApprovalQuery: JSON.stringify(ownerApprovalQuery),
+    });
 
     /* ============================
        STEP 5: COMBINE ALL FILTERS
@@ -1281,6 +1295,7 @@ export const getUserNearestBanners = async (req, res) => {
       $and: [
         activeQuery,
         expiryQuery,
+        ownerApprovalQuery,
         categoryFilter,
         searchFilter,
       ].filter((x) => Object.keys(x).length > 0),
@@ -1357,6 +1372,8 @@ export const getUserNearestBanners = async (req, res) => {
       const fallbackPipeline = [
         { $match: activeQuery },  // ✅ enforced
         { $match: expiryQuery },
+        { $match: ownerApprovalQuery }, // ✅ ADD THIS
+
         ...(validCategoryIds.length
           ? [{ $match: { category: { $in: validCategoryIds } } }]
           : []),
@@ -1427,6 +1444,7 @@ export const getUserNearestBanners = async (req, res) => {
       logger.debug("Counting total for fallback query");
       const fallbackCountPipeline = [
         { $match: activeQuery },   // ✅ enforced
+        ownerApprovalQuery, // ✅ REQUIRED
         { $match: expiryQuery },
         ...(validCategoryIds.length
           ? [{ $match: { category: { $in: validCategoryIds } } }]
