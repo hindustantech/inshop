@@ -422,6 +422,65 @@ export const updateCouponFromAdmin = async (req, res) => {
 };
 
 
+export const ownerApproveCoupon = async (req, res) => {
+  try {
+    const { couponId } = req.params;
+    const ownerId = req.user.id;
+
+    if (!mongoose.isValidObjectId(couponId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coupon ID",
+      });
+    }
+
+    const coupon = await Coupon.findOne({
+      _id: couponId,
+      ownerId: ownerId, // 🔒 owner-only
+    });
+
+    if (!coupon) {
+      return res.status(404).json({
+        success: false,
+        message: "Coupon not found or access denied",
+      });
+    }
+
+    // 🚫 CRITICAL VALIDATION
+    if (coupon.status !== "published" || coupon.active !== true) {
+      return res.status(400).json({
+        success: false,
+        message: "Coupon must be published and active by admin before owner approval",
+      });
+    }
+
+    // Idempotent approval
+    if (coupon.approveowner === true) {
+      return res.status(200).json({
+        success: true,
+        message: "Coupon already approved by owner",
+      });
+    }
+
+    coupon.approveowner = true;
+    await coupon.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Coupon approved by owner successfully",
+      data: {
+        id: coupon._id,
+        approveowner: coupon.approveowner,
+      },
+    });
+  } catch (error) {
+    console.error("Owner approve coupon error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Owner approval failed",
+    });
+  }
+};
 
 
 export const createCoupon = async (req, res) => {
