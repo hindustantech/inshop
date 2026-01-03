@@ -2227,6 +2227,15 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 { title: searchRegex },
                 { tag: { $elemMatch: { $regex: searchRegex } } },
               ],
+              $or: [
+                // 1️⃣ User never interacted → show coupon
+                { userStatus: { $exists: false } },
+
+                // 2️⃣ Explicitly allowed states → show coupon
+                {
+                  'userStatus.status': { $in: ['available', 'cancelled'] },
+                },
+              ],
             },
           },
         ]
