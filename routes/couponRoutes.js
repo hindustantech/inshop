@@ -29,6 +29,7 @@ import {
     createCouponAdmin,
     updateCouponFromAdmin,
     ownerApproveCoupon,
+    ownerRevokeCoupon,
 } from '../controllers/couponController.js';
 import { checkPermission } from '../middlewares/checkPermission.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
@@ -121,5 +122,6 @@ router.put('/update-amount/:id', authMiddleware, updateAmount);
 router.put('/transfer-coupon', authMiddleware, transferCoupon);
 router.put('/transfer-coupon-by-number', authMiddleware, transferCouponByPhone);
 router.patch('/ownerApproveCoupon/:couponId', authMiddleware, ownerApproveCoupon);
+router.patch('/ownerRevokeCoupon/:couponId', authMiddleware, ownerRevokeCoupon);
 
 export default router;

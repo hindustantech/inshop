@@ -482,6 +482,90 @@ export const ownerApproveCoupon = async (req, res) => {
   }
 };
 
+export const ownerRevokeCoupon = async (req, res) => {
+  try {
+    const { couponId } = req.params;
+    const ownerId = req.user.id;
+
+    /* ---------------------------------
+       1. Validate coupon ID
+    ---------------------------------- */
+    if (!mongoose.Types.ObjectId.isValid(couponId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coupon ID",
+      });
+    }
+
+    /* ---------------------------------
+       2. Fetch coupon (owner-scoped)
+    ---------------------------------- */
+    const coupon = await Coupon.findOne({
+      _id: couponId,
+      ownerId,
+    });
+
+    if (!coupon) {
+      return res.status(404).json({
+        success: false,
+        message: "Coupon not found or access denied",
+      });
+    }
+
+    /* ---------------------------------
+       3. Admin-side validation
+       Owner can revoke ONLY if admin
+       has published and activated it
+    ---------------------------------- */
+    if (coupon.status !== "published" || coupon.active !== true) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Coupon must be published and active by admin before owner actions",
+      });
+    }
+
+    /* ---------------------------------
+       4. Idempotent revoke
+    ---------------------------------- */
+    if (coupon.approveowner === false) {
+      return res.status(200).json({
+        success: true,
+        message: "Coupon already revoked by owner",
+        data: {
+          id: coupon._id,
+          approveowner: false,
+        },
+      });
+    }
+
+    /* ---------------------------------
+       5. Revoke owner approval
+    ---------------------------------- */
+    coupon.approveowner = false;
+    await coupon.save();
+
+    /* ---------------------------------
+       6. Response
+    ---------------------------------- */
+    return res.status(200).json({
+      success: true,
+      message: "Owner approval revoked successfully",
+      data: {
+        id: coupon._id,
+        approveowner: coupon.approveowner,
+      },
+    });
+  } catch (error) {
+    console.error("Owner revoke coupon error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to revoke owner approval",
+    });
+  }
+};
+
+
 
 export const createCoupon = async (req, res) => {
   try {
@@ -1361,202 +1445,6 @@ export const createCouponAdmin = async (req, res) => {
   }
 };
 
-// export const createCouponAdmin = async (req, res) => {
-//   try {
-//     const {
-//       shop_name,
-//       coupon_color = "#FFFFFF",
-//       title,
-//       status = "published", // ✅ ADMIN CONTROLS STATUS
-//       is_spacial_copun_user = [],
-//       manual_address,
-//       copuon_srno,
-//       categoryIds,
-//       discountPercentage,
-//       validTill,
-//       style,
-//       maxDistributions = 0,
-//       fromTime,
-//       toTime,
-//       isFullDay = false,
-//       termsAndConditions,
-//       is_spacial_copun = false,
-//       isTransferable = false,
-//       tag,
-//       shope_location,
-//     } = req.body;
-
-//     const adminId = req.user?._id;
-//     const userType = req.user?.type;
-//     if (!adminId) {
-//       return res.status(401).json({ message: "Unauthorized admin" });
-//     }
-
-//     // ---------------- STATUS VALIDATION ----------------
-//     const allowedStatus = ["draft", "published", "disabled", "expired"];
-//     if (!allowedStatus.includes(status)) {
-//       return res.status(400).json({
-//         message: `Invalid status. Allowed: ${allowedStatus.join(", ")}`,
-//       });
-//     }
-
-//     // ---------------- BASIC VALIDATION ----------------
-//     if (!shop_name || !title) {
-//       return res.status(400).json({
-//         message: "shop_name and title are required",
-//       });
-//     }
-
-//     const parsedDiscount = Number(discountPercentage);
-//     if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
-//       return res.status(400).json({
-//         message: "discountPercentage must be between 0 and 100",
-//       });
-//     }
-
-//     // ---------------- LOCATION ----------------
-//     let location = null;
-//     if (!shope_location) {
-//       return res.status(400).json({ message: "shope_location is required" });
-//     }
-
-//     try {
-//       const parsed =
-//         typeof shope_location === "string"
-//           ? JSON.parse(shope_location)
-//           : shope_location;
-
-//       if (
-//         parsed.type !== "Point" ||
-//         !Array.isArray(parsed.coordinates) ||
-//         parsed.coordinates.length !== 2 ||
-//         !parsed.address
-//       ) {
-//         throw new Error();
-//       }
-//       location = parsed;
-//     } catch {
-//       return res.status(400).json({
-//         message:
-//           'Invalid shope_location. Use { type:"Point", coordinates:[lng,lat], address }',
-//       });
-//     }
-
-//     // ---------------- TIME ----------------
-//     if (!isFullDay && (!fromTime || !toTime)) {
-//       return res.status(400).json({
-//         message: "fromTime & toTime required when isFullDay is false",
-//       });
-//     }
-
-//     // ---------------- VALID TILL ----------------
-//     const expiryDate = new Date(validTill);
-//     if (isNaN(expiryDate) || expiryDate <= new Date()) {
-//       return res.status(400).json({
-//         message: "validTill must be a future date",
-//       });
-//     }
-
-//     // ---------------- CATEGORY ----------------
-//     let parsedCategoryIds =
-//       typeof categoryIds === "string"
-//         ? JSON.parse(categoryIds)
-//         : categoryIds;
-
-//     if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
-//       return res.status(400).json({
-//         message: "categoryIds must be a non-empty array",
-//       });
-//     }
-
-//     const categories = await Category.find({
-//       _id: { $in: parsedCategoryIds },
-//     });
-
-//     if (categories.length !== parsedCategoryIds.length) {
-//       return res.status(404).json({
-//         message: "One or more categories not found",
-//       });
-//     }
-
-//     // ---------------- SPECIAL USERS ----------------
-//     let parsedSpecialUsers =
-//       typeof is_spacial_copun_user === "string"
-//         ? JSON.parse(is_spacial_copun_user)
-//         : is_spacial_copun_user;
-
-//     if (!Array.isArray(parsedSpecialUsers)) {
-//       return res.status(400).json({
-//         message: "is_spacial_copun_user must be an array",
-//       });
-//     }
-
-//     // ---------------- IMAGES ----------------
-//     let copuon_image = [];
-//     if (req.files?.length) {
-//       const uploads = await Promise.all(
-//         req.files.map((file) =>
-//           uploadToCloudinary(file.buffer, "coupons")
-//         )
-//       );
-//       copuon_image = uploads.map((u) => u.secure_url);
-//     }
-
-//     // ---------------- ACTIVE FLAG ----------------
-//     /* ======================
-//    🔹 Resolve Active State (Server Authority)
-// ====================== */
-//     const isActive =
-//       userType === "super_admin" && status === "published"
-//         ? true
-//         : false;
-
-
-//     // ---------------- SAVE COUPON ----------------
-//     const coupon = await Coupon.create({
-//       title,
-//       shop_name,
-//       coupon_color,
-//       manul_address: manual_address,
-//       copuon_srno,
-//       discountPercentage: parsedDiscount,
-//       category: categories.map((c) => c._id),
-//       createdBy: adminId,
-//       ownerId: adminId,
-//       createdby: adminId,
-//       status,                 // ✅ STATUS DRIVES EVERYTHING
-//       active: isActive,       // ✅ published → true
-//       validTill: expiryDate,
-//       style,
-//       maxDistributions,
-//       fromTime: isFullDay ? undefined : fromTime,
-//       toTime: isFullDay ? undefined : toTime,
-//       isFullDay,
-//       is_spacial_copun_user: parsedSpecialUsers,
-//       termsAndConditions,
-//       is_spacial_copun,
-//       isTransferable,
-//       tag,
-//       shope_location: location,
-//       copuon_image,
-//       currentDistributions: 0,
-//       consumersId: [],
-//     });
-
-//     return res.status(201).json({
-//       success: true,
-//       message: `Coupon created successfully with status '${status}'`,
-//       coupon,
-//     });
-
-//   } catch (err) {
-//     console.error("Admin coupon error:", err);
-//     return res.status(500).json({
-//       message: "Error creating admin coupon",
-//       error: err.message,
-//     });
-//   }
-// };
 
 
 export const updateCouponDeatils = async (req, res) => {
@@ -3578,33 +3466,6 @@ const storeUsedCoupon = async (req, res) => {
   }
 }
 
-// const transferCoupon = async (req, res) => {
-//   try {
-//     const senderId = req.user._id;
-//     const { reciverId, transferCount } = req.body;
-
-//     // Fetch the sender and receiver by their IDs
-//     const sender = await User.findById(senderId);
-//     const reciver = await User.findById(reciverId);
-
-//     // Ensure sender has enough coupons and prevent couponCount from going below 1
-//     if (sender.couponCount < transferCount + 1) {
-//       return res.status(400).json({ message: 'Insufficient coupons to transfer' });
-//     }
-
-//     // Update coupon counts
-//     sender.couponCount -= transferCount;
-//     reciver.couponCount += transferCount;
-
-//     // Save the updated users
-//     await sender.save();
-//     await reciver.save();
-
-//     res.status(200).json({ message: 'Coupon(s) transferred successfully' });
-//   } catch (error) {
-//     res.status(500).json({ message: 'Error transferring coupons', error });
-//   }
-// };
 
 const transferCouponByPhone = async (req, res) => {
   try {
