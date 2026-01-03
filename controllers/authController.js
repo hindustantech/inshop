@@ -526,14 +526,14 @@ const signup = async (req, res) => {
 
     // Find user by email, phone, or deviceId
     const existingUser = await User.findOne({
-      $or: [{ email }, { phone }, { deviceId }]
+      $or: [ { phone }, { deviceId }]
     });
 
     if (existingUser) {
       // ✅ If device is already registered with another phone/email
       if (
         existingUser.deviceId === deviceId &&
-        (existingUser.phone !== phone || existingUser.email !== email)
+        (existingUser.phone !== phone )
       ) {
         return res.status(400).json({
           message: 'This device is already registered with another account.'
@@ -543,8 +543,7 @@ const signup = async (req, res) => {
       // ✅ If same user tries again (same device + same email/phone)
       if (
         existingUser.deviceId === deviceId &&
-        existingUser.phone === phone &&
-        existingUser.email === email
+        existingUser.phone === phone 
       ) {
         return res.status(200).json({
           message: 'You are already registered. Please log in instead.'
@@ -552,9 +551,7 @@ const signup = async (req, res) => {
       }
 
       // ✅ If email or phone already exists for another device
-      if (existingUser.email === email) {
-        return res.status(400).json({ message: 'Email is already registered.' });
-      }
+    
       if (existingUser.phone === phone) {
         return res.status(400).json({ message: 'Phone number is already registered.' });
       }

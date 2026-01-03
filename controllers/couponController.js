@@ -2198,11 +2198,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     // 7️⃣ Build match query for geoNear
     const geoQuery = {
-      active: true,
-      $or: [
-        { approveowner: true },
-        { approveowner: { $exists: false } }
-      ],
       ...(categoryFilter ? { category: categoryFilter } : {}),
     };
 
@@ -2277,13 +2272,10 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
                 { validTill: null },
               ],
               $or: [
-                // User has never interacted with the coupon
                 { userStatus: { $exists: false } },
-
-                // Explicitly allowed states ONLY
                 {
                   $and: [
-                    { 'userStatus.status': { $in: ['available', 'cancelled'] } },
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
                     { 'userStatus.count': { $gte: 1 } },
                   ],
                 },
@@ -2316,16 +2308,6 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               $or: [
                 { validTill: { $gt: new Date() } },
                 { validTill: null },
-              ],
-
-              $or: [
-                // 1️⃣ User never interacted → show coupon
-                { userStatus: { $exists: false } },
-
-                // 2️⃣ Explicitly allowed states → show coupon
-                {
-                  'userStatus.status': { $in: ['available', 'cancelled'] },
-                },
               ],
             },
           },
