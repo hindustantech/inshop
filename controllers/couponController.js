@@ -385,7 +385,6 @@ export const updateCouponFromAdmin = async (req, res) => {
       { $set: updates },
       { new: true, runValidators: true }
     )
-      .select('-consumersId -__v -promotion')
       .populate('category', 'name')
       .populate('ownerId', 'name phone')
       .populate('is_spacial_copun_user', 'name phone referralCode')
