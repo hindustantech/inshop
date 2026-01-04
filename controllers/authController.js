@@ -533,7 +533,14 @@ const signup = async (req, res) => {
       ].filter(Boolean)
     });
 
-
+    if (email) {
+      const emailExists = await User.findOne({ email: email.toLowerCase().trim() });
+      if (emailExists) {
+        return res.status(400).json({
+          message: 'Email already registered. Please login.'
+        });
+      }
+    }
     if (existingUser) {
       // ✅ If device is already registered with another phone/email
       if (
