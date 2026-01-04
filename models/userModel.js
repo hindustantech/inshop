@@ -10,9 +10,13 @@ const userSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: true,
-    unique: true
-  },
+    unique: true,
+    sparse: true,
+    lowercase: true,
+    trim: true
+  }
+
+  ,
   whatsapp_uid: {
     type: String,
     maxlength: 500 // Increased length to handle long UIDs
@@ -53,8 +57,8 @@ const userSchema = new mongoose.Schema({
     default: null
   },
   referaluseCount: {
-    type: String,
-    default: false
+    type: Number,
+    default: 0
   },
   isProfileCompleted: {
     type: Boolean,

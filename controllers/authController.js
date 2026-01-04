@@ -57,11 +57,11 @@ export const getUserProfile = async (req, res) => {
         success: false,
         message: "Unauthorized: user context missing",
       });
-    } 
+    }
 
 
     const userId = req.user.id || req.user._id;
-    console.log("userId",userId)
+    console.log("userId", userId)
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({
         success: false,
@@ -486,7 +486,7 @@ export const UpdateManualAddress = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       userId, // the user to update
       { manul_address }, // update this field
-      { new: true } 
+      { new: true }
     );
 
     res.status(200).json({
@@ -507,7 +507,8 @@ export const UpdateManualAddress = async (req, res) => {
 const signup = async (req, res) => {
   try {
     // deviceId,
-    const { name, email, phone, type, password, referralCode, deviceId } = req.body;
+    const { name, phone, email, type, password, referralCode, deviceId
+    } = req.body;
 
 
     if (!name || !phone || !password) {
@@ -526,14 +527,18 @@ const signup = async (req, res) => {
 
     // Find user by email, phone, or deviceId
     const existingUser = await User.findOne({
-      $or: [ { phone }, { deviceId }]
+      $or: [
+        phone ? { phone } : null,
+        deviceId ? { deviceId } : null
+      ].filter(Boolean)
     });
+
 
     if (existingUser) {
       // ✅ If device is already registered with another phone/email
       if (
         existingUser.deviceId === deviceId &&
-        (existingUser.phone !== phone )
+        (existingUser.phone !== phone)
       ) {
         return res.status(400).json({
           message: 'This device is already registered with another account.'
@@ -543,7 +548,7 @@ const signup = async (req, res) => {
       // ✅ If same user tries again (same device + same email/phone)
       if (
         existingUser.deviceId === deviceId &&
-        existingUser.phone === phone 
+        existingUser.phone === phone
       ) {
         return res.status(200).json({
           message: 'You are already registered. Please log in instead.'
@@ -551,7 +556,7 @@ const signup = async (req, res) => {
       }
 
       // ✅ If email or phone already exists for another device
-    
+
       if (existingUser.phone === phone) {
         return res.status(400).json({ message: 'Phone number is already registered.' });
       }
@@ -582,21 +587,24 @@ const signup = async (req, res) => {
     // Create new user
     const newUser = new User({
       name,
-      email,
       deviceId,                              // deviceId,
       type,
       phone,
+      email: email ? email.toLowerCase().trim() : undefined,
       password: hashedPassword,
-      type,
       referalCode: uniqueReferralCode,
       referredBy: referralCode || null,
     });
 
 
+    await newUser.save(); // SAVE FIRST
 
     // Send WhatsApp OTP
     const otpResponse = await sendWhatsAppOtp(phone);
+
     if (!otpResponse.success) {
+      await User.findByIdAndDelete(newUser._id); // rollback
+
       return res.status(500).json({ message: 'Failed to send OTP', error: otpResponse.error });
     }
 
