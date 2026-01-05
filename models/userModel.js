@@ -56,18 +56,16 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  
+
   // referaluseCount: {
   //   type: Number,
   //   default: 0
   // },
 
   referaluseCount: {
-  type: Number,
-  default: 0,
-  set: v => (typeof v === 'number' ? v : 0)
-}
-,
+    type: String,
+    default: false
+  },
   isProfileCompleted: {
     type: Boolean,
     default: false
