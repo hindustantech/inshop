@@ -180,6 +180,11 @@ export const createOrUpdateProfile = async (req, res) => {
             return res.status(400).json({ success: false, message: "User ID missing" });
         }
 
+        if (idNumber === "" || idNumber === undefined) {
+            idNumber = null;
+        }
+
+
         let profile = await PatnerProfile.findOne({ User_id: userId }).session(session);
 
         if (!profile) {
@@ -188,7 +193,7 @@ export const createOrUpdateProfile = async (req, res) => {
                 email,
                 firm_name: firm_name || "New Firm",
                 idType: idType || "PAN",     // Default PAN
-                idNumber,
+                idNumber: idNumber ?? null,
                 mallId: mallId || null,
                 address: { city: "", state: "" }
             });
@@ -219,8 +224,9 @@ export const createOrUpdateProfile = async (req, res) => {
 
         // 🔥 Correct ID Update According to Schema
         if (idType) profile.idType = idType;      // Change PAN/GST
-        if (idNumber) profile.idNumber = idNumber; // Validate via Schema regex
-
+        if ("idNumber" in req.body) {
+            profile.idNumber = idNumber; // string OR null
+        }
         // Mall Logic
         if (mallId) {
             profile.mallId = mallId;

@@ -51,7 +51,9 @@ const PatnerProfileSchema = new mongoose.Schema({
 
     idNumber: {
         type: String,
-        required: true,
+        required: false, // ✅ optional
+        default: null,
+
         validate: {
             validator: function (value) {
                 const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
