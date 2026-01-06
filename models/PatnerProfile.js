@@ -46,7 +46,7 @@ const PatnerProfileSchema = new mongoose.Schema({
         type: String,
         enum: ["PAN", "GST"],
         default: "PAN",   // ✅ Default selected PAN
-        required: true
+        required: false, // ✅ optional
     },
 
     idNumber: {
