@@ -517,7 +517,7 @@ const signup = async (req, res) => {
     if (password.length < 6) {
       return res.status(400).json({ message: 'Password must be at least 6 characters long' });
     }
-    if (referralCode && !/^(IN\d{6})$/.test(referralCode)) {
+    if (referralCode && !/^(IND\d{6})$/.test(referralCode)) {
       return res.status(400).json({ message: 'Invalid referral code format' });
     }
 
