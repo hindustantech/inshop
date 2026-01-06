@@ -10,6 +10,7 @@ import admin from '../utils/firebaseadmin.js';
 import notification from '../models/notification.js';
 import ReferralUsage from '../models/ReferralUsage.js'
 import mongoose from "mongoose";
+import logger from '../utils/logger.js';
 
 
 // Controller function to get user IDs and names by referral codes
@@ -627,6 +628,8 @@ const signup = async (req, res) => {
       whatsapp_uid: newUser.whatsapp_uid
     });
   } catch (error) {
+    console.log(error)
+    logger.info("error",error);
     res.status(500).json({ message: 'Signup failed', error: error.message });
   }
 };
