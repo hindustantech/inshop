@@ -610,6 +610,7 @@ const signup = async (req, res) => {
     // Send WhatsApp OTP
     const otpResponse = await sendWhatsAppOtp(phone);
 
+    
     if (!otpResponse.success) {
       await User.findByIdAndDelete(newUser._id); // rollback
 
