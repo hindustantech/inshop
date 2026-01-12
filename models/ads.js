@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const adSchema = new mongoose.Schema({
     name: {
         type: String,
-        required: true,  // Ye field required hai
+        required: true,  
         trim: true
     },
     desc: {

@@ -605,7 +605,7 @@ const signup = async (req, res) => {
       referredBy: referralCode || null,
     });
 
-
+    
     await newUser.save(); // SAVE FIRST
 
     // Send WhatsApp OTP

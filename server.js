@@ -38,6 +38,8 @@ import { rawBodyMiddleware } from './middlewares/rawBody.js'
 import comment from './routes/comment.route.js'
 import planRoutes from './routes/plan.routes.js'
 import supports from './routes/supoort.js'
+import scanTounluck from './routes/unlockRoute.js'
+// import './cron/referralSummary.cron.js'
 dotenv.config();
 connectDB();
 
@@ -95,6 +97,7 @@ app.use('/api/mall', mall);
 app.use('/api/dashroute', dashroute);
 app.use('/api/wallet', wallet);
 app.use('/api/planRoutes', planRoutes);
+app.use('/api/scanTounluck', scanTounluck);
 
 // payment route
 app.use('/api/paymentroute', paymentroute);
