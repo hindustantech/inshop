@@ -1,5 +1,5 @@
 import express from "express";
-import { clickCouponController } from "../controllers/unlockCuopns.js";
+import { clickCouponController, getScanStatusController } from "../controllers/unlockCuopns.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
 const router = express.Router();
 
@@ -15,6 +15,11 @@ router.post(
     "/scan/:qrid",
     authMiddleware,
     clickCouponController
+);
+router.get(
+    "/getScanStatusController",
+    authMiddleware,
+    getScanStatusController
 );
 
 /* ================================
