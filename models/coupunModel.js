@@ -75,7 +75,13 @@ const couponSchema = new mongoose.Schema({
   validFrom: {
     type: Date,
   },
+  lockCoupon: {
+    type: Boolean,
+    default: true,
+    index: true
+  }
 
+  ,
   validityDays: {
     type: Number,
     default: 15,
@@ -116,7 +122,7 @@ const couponSchema = new mongoose.Schema({
   },
 
 
-  
+
   fromTime: {
     type: String,
     required: function () {
@@ -135,9 +141,9 @@ const couponSchema = new mongoose.Schema({
       return !this.isFullDay; // required only if full day is NOT checked
     }
   },
-  approveowner:{
-    type:Boolean,
-    default:false
+  approveowner: {
+    type: Boolean,
+    default: false
   },
   shope_location: {
     address: {

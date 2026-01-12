@@ -2,10 +2,11 @@ import mongoose from "mongoose";
 import { CouponClick } from "../models/unlock.js";
 import { CouponUnlock } from "../models/couponUnlock.js";
 import User from "../models/userModel.js";
-
+import jwt from "jsonwebtoken";
 /* ================= CONFIG ================= */
 
 const UNLOCK_VALIDITY_HOURS = 24;
+const JWT_SECRET = process.env.JWT_SECRET || "your_super_secret_key"; // keep this secret in env
 
 
 const MAX_CLICKS = 3;
@@ -36,7 +37,15 @@ export const clickCouponController = async (req, res) => {
         const now = new Date();
 
         /* 1. Validate QR owner */
-        const qrOwner = await User.findById(qrid).session(session);
+
+        // ✅ Verify owner token
+        const decoded = jwt.verify(qrid, JWT_SECRET);
+        if (!decoded || !decoded.userId) {
+            return res.status(401).json({ message: "Invalid or expired owner token" });
+        }
+
+
+        const qrOwner = await User.findById(decoded.userId).session(session);
         if (!qrOwner) return bad(res, "Invalid QR code", 404);
 
         if (String(userId) === String(qrid)) {
