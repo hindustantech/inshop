@@ -15,7 +15,7 @@ import { sendNotification } from '../utils/SendNotificaion.js';
 import Plan from '../models/Plan.js';
 import Wallet from '../models/Wallet.js';
 import UserPlan from '../models/UserPlan.js';
-
+import cron from 'node-cron';
 
 const statesAndUTs = [
   'Andhra Pradesh',

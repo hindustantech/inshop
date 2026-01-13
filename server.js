@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+
 import connectDB from './config/db.js';
 import path from 'path';
 import authRoutes from './routes/authRoutes.js';
@@ -41,7 +42,7 @@ import supports from './routes/supoort.js'
 import scanTounluck from './routes/unlockRoute.js'
 // import './cron/referralSummary.cron.js'
 dotenv.config();
-connectDB();
+await connectDB();
 
 const app = express();
 
@@ -63,7 +64,6 @@ app.use(express.urlencoded({ limit: "50mb", extended: true })); // For
 app.get('/', (req, res) => {
   res.send('inshop is Running Smoothly!');
 });
-
 
 
 app.use('/admin', adminRouter);

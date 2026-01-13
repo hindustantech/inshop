@@ -77,7 +77,7 @@ const couponSchema = new mongoose.Schema({
   },
   lockCoupon: {
     type: Boolean,
-    default: true,
+    default: false,
     index: true
   }
 
