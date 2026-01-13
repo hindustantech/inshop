@@ -44,13 +44,6 @@ const couponUnlockSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-/* Only one ACTIVE coupon per user */
-couponUnlockSchema.index(
-  { userId: 1, status: 1 },
-  { unique: true, partialFilterExpression: { status: "ACTIVE" } }
-);
 
-/* TTL cleanup */
-couponUnlockSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export const CouponUnlock = mongoose.model("CouponUnlock", couponUnlockSchema);

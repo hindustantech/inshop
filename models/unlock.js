@@ -60,6 +60,5 @@ const couponClickSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 /* TTL cleanup */
-couponClickSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export const CouponClick = mongoose.model("CouponClick", couponClickSchema);
