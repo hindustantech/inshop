@@ -596,6 +596,7 @@ const signup = async (req, res) => {
     // Create new user
     const newUser = new User({
       name,
+      deviceId,                              // deviceId,
       type,
       phone,
       email: email ? email.toLowerCase().trim() : undefined,
@@ -604,13 +605,13 @@ const signup = async (req, res) => {
       referredBy: referralCode || null,
     });
 
-
+    
     await newUser.save(); // SAVE FIRST
 
     // Send WhatsApp OTP
     const otpResponse = await sendWhatsAppOtp(phone);
 
-
+    
     if (!otpResponse.success) {
       await User.findByIdAndDelete(newUser._id); // rollback
 
@@ -628,125 +629,56 @@ const signup = async (req, res) => {
     });
   } catch (error) {
     console.log(error)
-    logger.info("error", error);
+    logger.info("error",error);
     res.status(500).json({ message: 'Signup failed', error: error.message });
   }
 };
 
 const verifyOtp = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
-    const { userId, otp, deviceId } = req.body;
+    const { userId, otp } = req.body;
 
-    // -----------------------------
-    // 1. Strict validation
-    // -----------------------------
-    if (!userId || !otp || !deviceId) {
-      return res.status(400).json({
-        message: "userId, otp and deviceId are required"
-      });
-    }
-
-    const normalizedDeviceId = deviceId.trim();
-
-    // -----------------------------
-    // 2. Fetch user
-    // -----------------------------
-    const user = await User.findById(userId).session(session);
+    const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    if (user.isVerified) {
-      return res.status(409).json({
-        message: "User already verified"
-      });
-    }
-
-    // -----------------------------
-    // 3. Verify OTP
-    // -----------------------------
+    // Verify WhatsApp OTP
     const verifyResponse = await verifyWhatsAppOtp(user.whatsapp_uid, otp);
-
     if (!verifyResponse.success) {
-      return res.status(400).json({
-        message: "Invalid OTP"
-      });
+      return res.status(400).json({ message: 'Invalid OTP', error: verifyResponse.error });
     }
 
-    // -----------------------------
-    // 4. Enforce one-device-per-user
-    // -----------------------------
-    const existingDeviceUser = await User.findOne({
-      deviceId: normalizedDeviceId,
-      _id: { $ne: user._id }
-    }).session(session);
-
-    if (existingDeviceUser) {
-      return res.status(409).json({
-        message: "This device is already registered with another account"
-      });
-    }
-
-    // -----------------------------
-    // 5. Atomic update
-    // -----------------------------
+    // Update user verification status
     user.isVerified = true;
-    user.deviceId = normalizedDeviceId;
     user.otp = null;
+    await user.save();
 
-    await user.save({ session });
 
-    // -----------------------------
-    // 6. Referral tracking (safe)
-    // -----------------------------
+    // ✅ Store referral usage (only if referral code was used)
     if (user.referredBy) {
-      const referrer = await User.findOne({
-        referalCode: user.referredBy
-      }).session(session);
-
+      const referrer = await User.findOne({ referalCode: user.referredBy });
       if (referrer) {
-        await ReferralUsage.create(
-          [{
-            referralCode: user.referredBy,
-            referrerId: referrer._id,
-            referredUserId: user._id
-          }],
-          { session }
-        );
+        await ReferralUsage.create({
+          referralCode: user.referredBy,
+          referrerId: referrer._id,
+          referredUserId: user._id,
+        });
       }
     }
 
-    // -----------------------------
-    // 7. Commit
-    // -----------------------------
-    await session.commitTransaction();
-    session.endSession();
-
-    return res.status(200).json({
-      message: "OTP verified successfully",
+    res.json({
+      message: 'OTP verified successfully',
       token: generateToken(user._id, user.type),
       name: user.name,
       type: user.type,
-      isVerified: true,
+      isVerified: user.isVerified,
       isProfileCompleted: user.isProfileCompleted
     });
-
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-
-    console.error("OTP verify error:", error);
-
-    return res.status(500).json({
-      message: "OTP verification failed",
-      error: error.message
-    });
+    res.status(500).json({ message: 'OTP verification failed', error: error.message });
   }
 };
-
 
 
 
