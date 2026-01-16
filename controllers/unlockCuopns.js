@@ -160,7 +160,6 @@ export const getScanStatusController = async (req, res) => {
         let activeCoupon = await CouponUnlock.findOne({
             userId,
             status: "ACTIVE",
-            expiresAt: { $gt: now }
         }).lean();
 
         if (!clickSession) {
