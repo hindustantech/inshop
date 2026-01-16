@@ -197,7 +197,6 @@ export const getScanStatusController = async (req, res) => {
                 remaining: Math.max(0, MAX_CLICKS - clickSession.clickCount),
                 nextAllowedAt,
                 unlocked: !!activeCoupon,
-                couponExpiresAt: activeCoupon?.expiresAt || null
             }
         });
 
