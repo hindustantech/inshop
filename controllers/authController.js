@@ -595,8 +595,7 @@ const signup = async (req, res) => {
 
     // Create new user
     const newUser = new User({
-      name,
-      deviceId,                              // deviceId,
+      name,                              // deviceId,
       type,
       phone,
       email: email ? email.toLowerCase().trim() : undefined,
@@ -605,13 +604,13 @@ const signup = async (req, res) => {
       referredBy: referralCode || null,
     });
 
-    
+
     await newUser.save(); // SAVE FIRST
 
     // Send WhatsApp OTP
     const otpResponse = await sendWhatsAppOtp(phone);
 
-    
+
     if (!otpResponse.success) {
       await User.findByIdAndDelete(newUser._id); // rollback
 
@@ -629,33 +628,50 @@ const signup = async (req, res) => {
     });
   } catch (error) {
     console.log(error)
-    logger.info("error",error);
+    logger.info("error", error);
     res.status(500).json({ message: 'Signup failed', error: error.message });
   }
 };
 
 const verifyOtp = async (req, res) => {
   try {
-    const { userId, otp } = req.body;
+    const { userId, otp, deviceId } = req.body;
+
+    if (!userId || !otp || !deviceId) {
+      return res.status(400).json({ message: "userId, otp and deviceId are required" });
+    }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
-    // Verify WhatsApp OTP
+    // 1. Verify WhatsApp OTP
     const verifyResponse = await verifyWhatsAppOtp(user.whatsapp_uid, otp);
     if (!verifyResponse.success) {
-      return res.status(400).json({ message: 'Invalid OTP', error: verifyResponse.error });
+      return res.status(400).json({ message: "Invalid OTP", error: verifyResponse.error });
     }
 
-    // Update user verification status
+    // 2. Check if deviceId already belongs to another user
+    const existingDeviceUser = await User.findOne({
+      deviceId,
+      _id: { $ne: user._id }
+    }).select("_id");
+
+    if (existingDeviceUser) {
+      return res.status(409).json({
+        message: "This device is already registered with another account"
+      });
+    }
+
+    // 3. Atomic update (prevents race conditions)
     user.isVerified = true;
+    user.deviceId = deviceId;
     user.otp = null;
+
     await user.save();
 
-
-    // ✅ Store referral usage (only if referral code was used)
+    // 4. Referral usage tracking
     if (user.referredBy) {
       const referrer = await User.findOne({ referalCode: user.referredBy });
       if (referrer) {
@@ -667,18 +683,32 @@ const verifyOtp = async (req, res) => {
       }
     }
 
+    // 5. Token response
     res.json({
-      message: 'OTP verified successfully',
+      message: "OTP verified successfully",
       token: generateToken(user._id, user.type),
       name: user.name,
       type: user.type,
-      isVerified: user.isVerified,
+      isVerified: true,
       isProfileCompleted: user.isProfileCompleted
     });
+
   } catch (error) {
-    res.status(500).json({ message: 'OTP verification failed', error: error.message });
+
+    // Handle Mongo duplicate key error safely
+    if (error.code === 11000 && error.keyPattern?.deviceId) {
+      return res.status(409).json({
+        message: "Device already registered with another account"
+      });
+    }
+
+    res.status(500).json({
+      message: "OTP verification failed",
+      error: error.message
+    });
   }
 };
+
 
 
 

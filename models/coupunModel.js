@@ -1,5 +1,39 @@
 
 import mongoose from 'mongoose';
+
+const { Schema } = mongoose;
+/**
+ * Subdocument: User Lock Record
+ */
+const userLockSchema = new Schema(
+  {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true
+    },
+
+    lockedAt: {
+      type: Date,
+      required: true,
+      default: Date.now
+    },
+
+    lockDurationDays: {
+      type: Number,
+      required: true,
+      min: 1
+    },
+
+    lockExpiresAt: {
+      type: Date,
+      required: true,
+      index: true
+    }
+  },
+  { _id: false }
+);
 const couponSchema = new mongoose.Schema({
   title: {
     type: String,
@@ -59,6 +93,10 @@ const couponSchema = new mongoose.Schema({
     required: true,
   }],
 
+  activeLocks: {
+    type: [userLockSchema],
+    default: []
+  },
   copuon_type: {
     type: Boolean,
     default: false, // if False then  not Transfarel
@@ -120,6 +158,7 @@ const couponSchema = new mongoose.Schema({
     min: 0,
     required: false
   },
+
 
 
 
@@ -191,6 +230,19 @@ const couponSchema = new mongoose.Schema({
     type: Boolean,
     default: false // Default: not transferable
   },
+  isGiftHamper: {
+    type: Boolean,
+    default: false // Default: not GiftHamper
+  },
+
+  worthGift: {
+    type: Number,
+    min: 0,
+    required: function () {
+      return this.isGiftHamper === true;
+    }
+  },
+
 
   tag: {
     type: [String],
@@ -201,6 +253,21 @@ const couponSchema = new mongoose.Schema({
 });
 
 couponSchema.index({ shope_location: '2dsphere' });
+couponSchema.pre("validate", function (next) {
+  if (this.isGiftHamper) {
+    this.lockCoupon = true;
+
+    if (!this.worthGift || this.worthGift <= 0) {
+      return next(new Error("worthGift is required and must be > 0 for Gift Hampers"));
+    }
+  }
+  next();
+});
+couponSchema.index({
+  isGiftHamper: 1,
+  active: 1,
+  validTill: 1
+});
 
 couponSchema.index({ promotion: 1 });
 

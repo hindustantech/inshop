@@ -420,6 +420,531 @@ export const updateCouponFromAdmin = async (req, res) => {
   }
 };
 
+export const updateGiftHamperAdmin = async (req, res) => {
+  try {
+    const couponId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(couponId)) {
+      return res.status(400).json({ success: false, message: "Invalid coupon ID" });
+    }
+
+    const updates = { ...req.body };
+
+    /* ---------------- FETCH EXISTING ---------------- */
+
+    const existingCoupon = await Coupon.findById(couponId).lean();
+    if (!existingCoupon) {
+      return res.status(404).json({ success: false, message: "Gift Hamper not found" });
+    }
+
+    if (!existingCoupon.isGiftHamper) {
+      return res.status(400).json({
+        success: false,
+        message: "This API only updates Gift Hampers"
+      });
+    }
+
+    /* ---------------- BASIC FIELD VALIDATION ---------------- */
+
+    if (updates.title !== undefined && !String(updates.title).trim()) {
+      return res.status(400).json({ success: false, message: "title cannot be empty" });
+    }
+
+    if (updates.shop_name !== undefined && !String(updates.shop_name).trim()) {
+      return res.status(400).json({ success: false, message: "shop_name cannot be empty" });
+    }
+
+    /* ---------------- worthGift ---------------- */
+
+    if (updates.worthGift !== undefined) {
+      const worth = Number(updates.worthGift);
+      if (!worth || worth <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "worthGift must be > 0 for Gift Hamper"
+        });
+      }
+      updates.worthGift = worth;
+    }
+
+    /* ---------------- TAG ---------------- */
+
+    if (updates.tag !== undefined) {
+      if (typeof updates.tag === "string") {
+        try { updates.tag = JSON.parse(updates.tag); } catch { }
+      }
+      if (!Array.isArray(updates.tag) || updates.tag.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one tag is required"
+        });
+      }
+    }
+
+    /* ---------------- CATEGORY ---------------- */
+
+    if (updates.categoryIds !== undefined) {
+      let parsed =
+        typeof updates.categoryIds === "string"
+          ? JSON.parse(updates.categoryIds)
+          : updates.categoryIds;
+
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "categoryIds must be non-empty array"
+        });
+      }
+
+      const categories = await Category.find({ _id: { $in: parsed } });
+      if (categories.length !== parsed.length) {
+        return res.status(404).json({
+          success: false,
+          message: "Invalid categoryId found"
+        });
+      }
+
+      updates.category = parsed;
+      delete updates.categoryIds;
+    }
+
+    /* ---------------- LOCATION ---------------- */
+
+    if (updates.shope_location !== undefined) {
+      try {
+        const parsed =
+          typeof updates.shope_location === "string"
+            ? JSON.parse(updates.shope_location)
+            : updates.shope_location;
+
+        if (
+          parsed.type !== "Point" ||
+          !Array.isArray(parsed.coordinates) ||
+          parsed.coordinates.length !== 2 ||
+          !parsed.address
+        ) {
+          throw new Error("Invalid geo format");
+        }
+
+        updates.shope_location = parsed;
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid shope_location. Use { type:"Point", coordinates:[lng,lat], address }'
+        });
+      }
+    }
+
+    /* ---------------- TIME VALIDATION ---------------- */
+
+    const isFullDay =
+      updates.isFullDay === true ||
+      updates.isFullDay === "true" ||
+      updates.isFullDay === "1";
+
+    if (isFullDay) {
+      updates.isFullDay = true;
+      delete updates.fromTime;
+      delete updates.toTime;
+    } else if (updates.fromTime || updates.toTime) {
+      if (!updates.fromTime || !updates.toTime) {
+        return res.status(400).json({
+          success: false,
+          message: "fromTime and toTime required when not full day"
+        });
+      }
+
+      const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+      if (!timeRegex.test(updates.fromTime) || !timeRegex.test(updates.toTime)) {
+        return res.status(400).json({
+          success: false,
+          message: "Time must be HH:MM format"
+        });
+      }
+    }
+
+    /* ---------------- VALIDITY ---------------- */
+
+    if (updates.validTill !== undefined) {
+      const dt = new Date(updates.validTill);
+      if (isNaN(dt.getTime()) || dt <= new Date()) {
+        return res.status(400).json({
+          success: false,
+          message: "validTill must be future date"
+        });
+      }
+      updates.validTill = dt;
+    }
+
+    /* ---------------- IMAGE UPLOAD ---------------- */
+
+    if (req.files?.length) {
+      const uploads = await Promise.all(
+        req.files.map(file => uploadToCloudinary(file.buffer, "gift_hampers"))
+      );
+      updates.copuon_image = uploads.map(u => u.secure_url);
+    }
+
+    /* ---------------- ENFORCE GIFT RULES ---------------- */
+
+    updates.isGiftHamper = true;
+    updates.lockCoupon = true;
+    updates.paymentStatus = "free";
+
+    updates.planId = undefined;
+    updates.paymentId = undefined;
+    updates.userPlanId = undefined;
+    updates.planType = undefined;
+    updates.planName = undefined;
+
+    /* ---------------- PROTECTED FIELDS ---------------- */
+
+    const protectedFields = [
+      "currentDistributions",
+      "consumersId",
+      "creationDate",
+      "createdBy",
+      "createdby",
+      "promotion",
+      "__v"
+    ];
+
+    protectedFields.forEach(f => delete updates[f]);
+
+    /* ---------------- UPDATE ---------------- */
+
+    const updatedCoupon = await Coupon.findByIdAndUpdate(
+      couponId,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).lean();
+
+    return res.json({
+      success: true,
+      message: "Gift Hamper updated successfully",
+      coupon: {
+        id: updatedCoupon._id,
+        title: updatedCoupon.title,
+        worthGift: updatedCoupon.worthGift,
+        validTill: updatedCoupon.validTill,
+        maxDistributions: updatedCoupon.maxDistributions,
+        ownerId: updatedCoupon.ownerId
+      }
+    });
+  } catch (err) {
+    console.error("Gift hamper update failed:", err);
+
+    if (err.name === "ValidationError") {
+      const msgs = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        error: msgs.join(", ")
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update gift hamper",
+      error: process.env.NODE_ENV === "development" ? err.message : undefined
+    });
+  }
+};
+
+
+export const createGiftHamperAdmin = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const {
+      shop_name,
+      title,
+      manul_address,
+      worthGift,
+      coupon_color = "#FFFFFF",
+      categoryIds,
+      validTill,
+      maxDistributions = 1,
+      fromTime,
+      toTime,
+      isFullDay = false,
+      termsAndConditions,
+      tag, // This might be coming as string from form-data
+      shope_location,
+      style,
+      coupon_images // Handle both cases: from files or from body
+    } = req.body;
+
+    /* ===============================
+       BASIC VALIDATION
+    =============================== */
+
+    if (!shop_name?.trim() || !title?.trim()) {
+      return res.status(400).json({ success: false, message: "shop_name and title are required" });
+    }
+
+    if (!worthGift || Number(worthGift) <= 0) {
+      return res.status(400).json({ success: false, message: "worthGift must be greater than 0" });
+    }
+
+    if (!termsAndConditions?.trim()) {
+      return res.status(400).json({ success: false, message: "termsAndConditions is required" });
+    }
+
+    // FIX: Handle tag parsing properly
+    let tagsArray = [];
+
+    if (tag) {
+      try {
+        // If tag is a string that looks like an array, parse it
+        if (typeof tag === 'string' && tag.startsWith('[')) {
+          tagsArray = JSON.parse(tag);
+        } else if (typeof tag === 'string') {
+          // If it's a comma-separated string, split it
+          tagsArray = tag.split(',').map(t => t.trim()).filter(t => t.length > 0);
+        } else if (Array.isArray(tag)) {
+          tagsArray = tag;
+        }
+      } catch (error) {
+        // If JSON parsing fails, try as comma-separated
+        if (typeof tag === 'string') {
+          tagsArray = tag.split(',').map(t => t.trim()).filter(t => t.length > 0);
+        }
+      }
+    }
+
+    // FIX: Proper tag validation
+    if (!Array.isArray(tagsArray) || tagsArray.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "tag must be a non-empty array"
+      });
+    }
+
+    // Filter out empty strings from tags
+    tagsArray = tagsArray.filter(tag => tag && tag.trim().length > 0);
+
+    if (tagsArray.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one valid tag is required"
+      });
+    }
+
+    if (!isFullDay && (!fromTime || !toTime)) {
+      return res.status(400).json({
+        success: false,
+        message: "fromTime and toTime required when isFullDay is false"
+      });
+    }
+
+    /* ===============================
+       CATEGORY VALIDATION
+    =============================== */
+
+    let parsedCategoryIds = categoryIds;
+    if (typeof parsedCategoryIds === "string") {
+      try {
+        parsedCategoryIds = JSON.parse(parsedCategoryIds);
+      } catch {
+        return res.status(400).json({ success: false, message: "Invalid categoryIds JSON" });
+      }
+    }
+
+    if (!Array.isArray(parsedCategoryIds) || parsedCategoryIds.length === 0) {
+      return res.status(400).json({ success: false, message: "categoryIds must be non-empty array" });
+    }
+
+    const validCategoryIds = parsedCategoryIds.filter(id =>
+      mongoose.Types.ObjectId.isValid(id)
+    );
+
+    if (validCategoryIds.length !== parsedCategoryIds.length) {
+      return res.status(400).json({ success: false, message: "Invalid categoryId detected" });
+    }
+
+    const categories = await Category.find({ _id: { $in: validCategoryIds } });
+    if (categories.length !== validCategoryIds.length) {
+      return res.status(404).json({ success: false, message: "One or more categories not found" });
+    }
+
+    /* ===============================
+       LOCATION VALIDATION
+    =============================== */
+
+    let location;
+
+    try {
+      const parsed =
+        typeof shope_location === "string"
+          ? JSON.parse(shope_location)
+          : shope_location;
+
+      if (
+        parsed?.type !== "Point" ||
+        !Array.isArray(parsed.coordinates) ||
+        parsed.coordinates.length !== 2 ||
+        isNaN(parsed.coordinates[0]) ||
+        isNaN(parsed.coordinates[1]) ||
+        !parsed.address?.trim()
+      ) {
+        throw new Error("Invalid location");
+      }
+
+      location = parsed;
+    } catch {
+      return res.status(400).json({
+        success: false,
+        message: 'shope_location must be { type:"Point", coordinates:[lng,lat], address }'
+      });
+    }
+
+    /* ===============================
+       VALIDITY
+    =============================== */
+
+    let finalValidTill;
+
+    if (validTill) {
+      const dt = new Date(validTill);
+      if (isNaN(dt.getTime()) || dt <= new Date()) {
+        return res.status(400).json({ success: false, message: "validTill must be future date" });
+      }
+      finalValidTill = dt;
+    } else {
+      finalValidTill = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    }
+
+    /* ===============================
+       IMAGE UPLOAD
+    =============================== */
+
+    let copuon_image = [];
+
+    // Handle file uploads from multer
+    if (req.files?.length) {
+      const uploads = await Promise.all(
+        req.files.map(file => uploadToCloudinary(file.buffer, "gift_hampers"))
+      );
+      copuon_image = uploads.map(u => u.secure_url);
+    }
+
+    // Handle image URLs from body (including form-data)
+    if (coupon_images) {
+      let imageUrls = coupon_images;
+
+      if (typeof imageUrls === "string") {
+        try {
+          imageUrls = JSON.parse(imageUrls);
+        } catch {
+          // If it's not JSON, it might be a single URL string
+          imageUrls = [imageUrls];
+        }
+      }
+
+      if (Array.isArray(imageUrls)) {
+        const validUrls = imageUrls.filter(u =>
+          typeof u === "string" &&
+          (u.startsWith("http") || u.startsWith("https") || u.startsWith("/"))
+        );
+        copuon_image.push(...validUrls);
+      }
+    }
+
+    // Remove duplicates
+    copuon_image = [...new Set(copuon_image)];
+
+    // If no images were provided, you might want to return an error or use a default
+    if (copuon_image.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one image is required"
+      });
+    }
+
+    /* ===============================
+       OWNERSHIP
+    =============================== */
+
+    const { createdBy, ownerId, partnerId } = req.ownership || {};
+    const finalOwnerId = ownerId || partnerId || createdBy || userId;
+
+    /* ===============================
+       CREATE DOCUMENT
+    =============================== */
+
+    const coupon = await Coupon.create({
+      title,
+      shop_name,
+      coupon_color,
+      discountPercentage: "0",
+
+      category: categories.map(c => c._id),
+
+      createdBy: createdBy || userId,
+      createdby: userId,
+      ownerId: finalOwnerId,
+
+      status: "published",
+      active: true,
+
+      validTill: finalValidTill,
+      style,
+
+      maxDistributions: Number(maxDistributions),
+      currentDistributions: 0,
+
+      fromTime: isFullDay ? undefined : fromTime,
+      toTime: isFullDay ? undefined : toTime,
+      isFullDay,
+
+      termsAndConditions,
+      tag: tagsArray, // Use the processed tags array
+      shope_location: location,
+
+      copuon_image,
+      manul_address,
+      /* Gift Hamper Flags */
+
+      isGiftHamper: true,
+      worthGift: Number(worthGift),
+      lockCoupon: true,
+      paymentStatus: "free"
+    });
+
+    /* ===============================
+       RESPONSE
+    =============================== */
+
+    return res.status(201).json({
+      success: true,
+      message: "Gift Hamper created successfully",
+      giftHamper: {
+        id: coupon._id,
+        title: coupon.title,
+        shop_name: coupon.shop_name,
+        worthGift: coupon.worthGift,
+        validTill: coupon.validTill,
+        maxDistributions: coupon.maxDistributions,
+        ownerId: coupon.ownerId,
+        tags: coupon.tag,
+        images: coupon.copuon_image
+      }
+    });
+
+  } catch (err) {
+    console.error("Gift Hamper creation failed:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create gift hamper",
+      error: process.env.NODE_ENV === "development" ? err.message : undefined
+    });
+  }
+};
+
 
 export const ownerApproveCoupon = async (req, res) => {
   try {
@@ -1446,6 +1971,7 @@ export const createCouponAdmin = async (req, res) => {
 
 
 
+
 export const updateCouponDeatils = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -2012,6 +2538,7 @@ export const getById = async (req, res) => {
     });
   }
 };
+
 export const getOwnerDraftExpiredCoupon = async (req, res) => {
   try {
     const { id } = req.params;
@@ -2049,6 +2576,202 @@ export const getOwnerDraftExpiredCoupon = async (req, res) => {
   }
 };
 
+
+export const getAllGiftForAdmin = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      tag,
+      category,
+      exportCSV,
+      status,   // active | inactive
+      fromDate,
+      toDate
+    } = req.query;
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    /* ---------------- BASE FILTER ---------------- */
+
+    let filter = {
+      isGiftHamper: true // 🔒 only gift hampers
+    };
+
+    /* ---------------- ROLE BASED ACCESS ---------------- */
+
+    if (req.user.type === "agency") {
+      filter.createdby = new mongoose.Types.ObjectId(req.user.id);
+    }
+    else if (req.user.type === "super_admin" || req.user.type === "admin") {
+      // full access
+    }
+    else {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied"
+      });
+    }
+
+    /* ---------------- SEARCH ---------------- */
+
+    if (search) {
+      const regex = new RegExp(search, "i");
+      filter.$or = [
+        { title: regex },
+        { tag: { $in: [regex] } }
+      ];
+    }
+
+    /* ---------------- TAG ---------------- */
+
+    if (tag) {
+      filter.tag = { $in: [tag] };
+    }
+
+    /* ---------------- CATEGORY ---------------- */
+
+    if (category && mongoose.Types.ObjectId.isValid(category)) {
+      filter.category = category;
+    }
+
+    /* ---------------- STATUS ---------------- */
+
+    if (status === "active") filter.active = true;
+    else if (status === "inactive") filter.active = false;
+
+    /* ---------------- DATE RANGE ---------------- */
+
+    if (fromDate || toDate) {
+      filter.creationDate = {};
+      if (fromDate) filter.creationDate.$gte = new Date(fromDate);
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        filter.creationDate.$lte = end;
+      }
+    }
+
+    /* ---------------- QUERY ---------------- */
+
+    let query = Coupon.find(filter)
+      .populate("category", "name")
+      .populate("createdby", "name phone type")
+      .populate("ownerId", "name phone type")
+      .sort({ creationDate: -1 });
+
+    /* ---------------- SUMMARY ---------------- */
+
+    const now = new Date();
+    const expiringSoonDate = new Date();
+    expiringSoonDate.setDate(now.getDate() + 7);
+
+    const [total, activeCount, inactiveCount, expiringSoonCount] = await Promise.all([
+      Coupon.countDocuments(filter),
+      Coupon.countDocuments({ ...filter, active: true }),
+      Coupon.countDocuments({ ...filter, active: false }),
+      Coupon.countDocuments({
+        ...filter,
+        active: true,
+        validTill: { $gte: now, $lte: expiringSoonDate }
+      })
+    ]);
+
+    /* ---------------- CSV EXPORT ---------------- */
+
+    if (exportCSV) {
+      const allCoupons = await query.lean();
+
+      const exportData = allCoupons.map(c => ({
+        Title: c.title,
+        WorthGift: c.worthGift,
+        Category: c.category?.name,
+        CreatedBy: c.createdby?.name,
+        OwnerBy: c.ownerId?.name,
+        CreatedAt: c.creationDate,
+        ValidTill: c.validTill,
+        Status: c.active ? "Active" : "Inactive"
+      }));
+
+      return exportToCSV(res, exportData, "gift_hampers.csv");
+    }
+
+    /* ---------------- PAGINATION ---------------- */
+
+    const coupons = await query
+      .skip(skip)
+      .limit(Number(limit))
+      .lean();
+
+    /* ---------------- USED COUNT ---------------- */
+
+    for (const coupon of coupons) {
+      coupon.used = await UserCoupon.countDocuments({
+        couponId: coupon._id,
+        status: "used"
+      });
+    }
+
+    /* ---------------- RESPONSE ---------------- */
+
+    return res.status(200).json({
+      success: true,
+      page: Number(page),
+      limit: Number(limit),
+      total,
+      summary: {
+        active: activeCount,
+        inactive: inactiveCount,
+        expiringSoon: expiringSoonCount
+      },
+      data: coupons
+    });
+
+  } catch (error) {
+    console.error("Error in getAllGiftForAdmin:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+
+
+
+
+export const getGiftById = async (req, res) => {
+  try {
+    const { id } = req.params; // 👈 FIXED here
+
+    // Fetch coupon with details, only phone + name for users
+    const coupon = await Coupon.findById(id)
+      .populate("createdby", "name phone")
+      .populate("category", "name")
+      .populate("ownerId", "name phone")
+
+    if (!coupon) {
+      return res.status(404).json({
+        success: false,
+        message: "Coupon not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Coupon fetched successfully",
+      data: coupon,
+    });
+  } catch (error) {
+    console.error("Error fetching coupon:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching coupon",
+      error: error.message,
+    });
+  }
+};
 
 
 
@@ -2197,6 +2920,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     // 7️⃣ Build match query for geoNear
     const geoQuery = {
+      isGiftHamper: false, // ❌ exclude gift hampers
       ...(categoryFilter ? { category: categoryFilter } : {}),
     };
 
@@ -2304,6 +3028,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
             $match: {
               is_spacial_copun: false,
               active: true,
+              isGiftHamper: false,
               $or: [
                 { validTill: { $gt: new Date() } },
                 { validTill: null },
@@ -2455,185 +3180,390 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
   }
 };
 
-// export const transferCoupon = async (req, res) => {
-//   const session = await mongoose.startSession();
-//   try {
-//     session.startTransaction();
 
-//     const senderId = req.user._id;
-//     const { receiverId, couponId } = req.body;
+export const getAllGiftWithStatusTag = async (req, res) => {
+  try {
+    // Determine user ID (null for guests)
+    let userId = null;
+    if (req.user?.id && mongoose.isValidObjectId(req.user.id)) {
+      userId = new mongoose.Types.ObjectId(req.user.id);
+    }
 
-//     if (!mongoose.Types.ObjectId.isValid(receiverId) || !mongoose.Types.ObjectId.isValid(couponId)) {
-//       throw new Error("Invalid receiver or coupon ID");
-//     }
+    // Validate query parameters
+    const { radius = 100000, search = '', page = 1, limit = 50, manualCode, lat, lng, category } = req.query;
+    const parsedPage = parseInt(page);
+    const parsedLimit = parseInt(limit);
+    const parsedRadius = parseInt(radius);
 
-//     if (senderId.toString() === receiverId) {
-//       throw new Error("Cannot transfer coupon to yourself");
-//     }
+    if (isNaN(parsedPage) || parsedPage < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid page number' });
+    }
+    if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+      return res.status(400).json({ success: false, message: 'Invalid limit, must be between 1 and 100' });
+    }
+    if ((lat && isNaN(Number(lat))) || (lng && isNaN(Number(lng)))) {
+      return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
+    }
+    if (isNaN(parsedRadius) || parsedRadius < 0) {
+      return res.status(400).json({ success: false, message: 'Invalid radius' });
+    }
 
-//     // Fetch sequentially with session
-//     const sender = await User.findById(senderId).session(session);
-//     const receiver = await User.findById(receiverId).session(session);
-//     const coupon = await Coupon.findById(couponId).session(session);
+    // Enhanced category validation
+    let categoryFilter = null;
+    if (category) {
+      const categoryIds = Array.isArray(category) ? category : category.split(',');
+      const validIds = categoryIds.filter(id => mongoose.isValidObjectId(id));
+      if (validIds.length !== categoryIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more invalid category IDs' });
+      }
+      const foundCategories = await Category.find({ _id: { $in: validIds } }).select('_id');
+      if (foundCategories.length !== validIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more categories not found' });
+      }
+      categoryFilter = { $in: validIds.map(id => new mongoose.Types.ObjectId(id)) };
+    }
 
-//     if (!sender || !receiver || !coupon) {
-//       throw new Error("Sender, receiver, or coupon not found");
-//     }
+    const skip = (parsedPage - 1) * parsedLimit;
 
-//     if (!coupon.active || (coupon.validTill && new Date(coupon.validTill) < new Date())) {
-//       throw new Error("Coupon is inactive or expired");
-//     }
+    let mode = userId ? 'user' : 'guest';
+    let baseLocation = null;
+    let effectiveRadius = parsedRadius;
+    let sortByLatest = false;
 
-//     if (coupon.is_spacial_copun || !coupon.isTransferable) {
-//       throw new Error("spacial coupon is not Transferable");
-//     }
+    // 1️⃣ Logged-in user: Get latestLocation
+    if (userId) {
+      const user = await User.findById(userId).select('latestLocation');
+      if (user?.latestLocation?.coordinates && user.latestLocation.coordinates[0] !== 0 && user.latestLocation.coordinates[1] !== 0) {
+        const [userLng, userLat] = user.latestLocation.coordinates;
+        baseLocation = { type: 'Point', coordinates: [userLng, userLat] };
+      }
+    }
 
-//     if (coupon.maxDistributions > 0 && coupon.currentDistributions >= coupon.maxDistributions) {
-//       throw new Error("Max distributions reached");
-//     }
+    // 2️⃣ Manual location (via manualCode)
+    let manualLocation = null;
+    if (manualCode) {
+      manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode }).select('city state location');
+      if (manualLocation?.location?.coordinates) {
+        if (!baseLocation) {
+          baseLocation = manualLocation.location;
+          mode = 'manual';
+          effectiveRadius = parsedRadius;
+        } else {
+          const check = await ManualAddress.aggregate([
+            {
+              $geoNear: {
+                near: baseLocation,
+                distanceField: 'distance',
+                spherical: true,
+                query: { uniqueCode: manualCode },
+              },
+            },
+            { $project: { distance: 1 } },
+          ]);
 
-//     if (sender.couponCount < 1) {
-//       throw new Error("Sender has insufficient coupon count");
-//     }
+          const distance = check[0]?.distance || 0;
+          if (distance > 100000) {
+            mode = 'manual';
+            baseLocation = manualLocation.location;
+            effectiveRadius = parsedRadius;
+          }
+        }
+      }
+    }
 
+    // 3️⃣ Custom location from query params (lat, lng)
+    if (lat && lng) {
+      baseLocation = { type: 'Point', coordinates: [Number(lng), Number(lat)] };
+      mode = 'custom';
+      effectiveRadius = parsedRadius || 100000;
+    }
 
-//     // Check receiver coupon usage
-//     const usedCount = await Salses.countDocuments({
-//       couponId,
-//       userId: receiverId,
-//       status: 'completed'
-//     }).session(session);
+    // 4️⃣ Fallback: Default location (center of India) with no radius for latest coupons
+    if (!baseLocation) {
+      baseLocation = { type: 'Point', coordinates: [78.9629, 20.5937] };
+      mode = 'default';
+      effectiveRadius = null;
+      sortByLatest = true;
+    }
 
-//     if (usedCount >= 2) {
-//       throw new Error("Receiver already used coupon twice");
-//     }
+    // 5️⃣ Build search regex
+    const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
-//     let receiverAvailableCoupon = await UserCoupon.findOne({
-//       userId: receiverId,
-//       couponId,
-//       status: 'available'
-//     }).session(session);
+    // 6️⃣ Get referred users for the logged-in user (if applicable)
+    let referredUserIds = [];
+    if (userId) {
+      // Find users who were referred by special coupon users
+      const specialCouponUsers = await Coupon.find({ is_spacial_copun: true })
+        .distinct('is_spacial_copun_user');
+      const referralUsages = await ReferralUsage.find({
+        referrerId: { $in: specialCouponUsers },
+      }).distinct('referredUserId');
+      referredUserIds = referralUsages.map(id => new mongoose.Types.ObjectId(id));
+    }
 
-//     let reciverTranferCoupon = await UserCoupon.findOne({
-//       userId: receiverId,
-//       couponId,
-//       status: 'transferred'
-//     }).session(session);
+    // 7️⃣ Build match query for geoNear
+    const geoQuery = {
+      isGiftHamper: true,
+      ...(categoryFilter ? { category: categoryFilter } : {}),
+    };
 
+    // 8️⃣ Build aggregation pipeline
+    const dataPipeline = [
+      {
+        $geoNear: {
+          near: baseLocation,
+          distanceField: 'distance',
+          ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+          spherical: true,
+          key: 'shope_location',
+          query: geoQuery,
+        },
+      },
+      ...(search.trim()
+        ? [
+          {
+            $match: {
+              $or: [
+                { manual_address: searchRegex },
+                { title: searchRegex },
+                { tag: { $elemMatch: { $regex: searchRegex } } },
+              ],
+            },
+          },
+        ]
+        : []),
+      ...(userId
+        ? [
+          // Filter for special coupons
+          {
+            $match: {
+              $or: [
+                { is_spacial_copun: false }, // Non-special coupons are visible to all
+                {
+                  is_spacial_copun: true,
+                  $or: [
+                    { is_spacial_copun_user: userId }, // User is in special coupon user list
+                    { is_spacial_copun_user: { $in: referredUserIds } }, // User was referred by a special coupon user
+                  ],
+                },
+              ],
+            },
+          },
+          {
+            $lookup: {
+              from: 'usercoupons',
+              let: { couponId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$couponId', '$$couponId'] },
+                        { $eq: ['$userId', userId] },
+                      ],
+                    },
+                  },
+                },
+                { $project: { status: 1, count: 1, _id: 0 } },
+              ],
+              as: 'userStatus',
+            },
+          },
+          { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+          {
+            $match: {
+              active: true,
 
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+              $or: [
+                { userStatus: { $exists: false } },
+                {
+                  $and: [
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                    { 'userStatus.count': { $gte: 1 } },
+                  ],
+                },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              couponCount: { $ifNull: ['$userStatus.count', 1] },
+            },
+          },
+          {
+            $addFields: {
+              displayTag: {
+                $cond: {
+                  if: { $eq: ['$userStatus.status', 'cancelled'] },
+                  then: { $concat: ['Cancelled: ', { $toString: '$couponCount' }] },
+                  else: { $concat: ['Available: ', { $toString: '$couponCount' }] },
+                },
+              },
+            },
+          },
+        ]
+        : [
+          // For guest users, only show non-special coupons
+          {
+            $match: {
+              is_spacial_copun: false,
+              active: true,
+              isGiftHamper: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+            },
+          },
+          {
+            $addFields: {
+              displayTag: 'Available coupon: 1',
+            },
+          },
+        ]),
+      {
+        $project: {
+          title: 1,
+          worthGift: 1,
+          shop_name: 1,
+          copuon_image: 1,
+          manual_address: 1,
+          copuon_srno: 1,
+          coupon_color: 1,
+          is_spacial_copun: 1,
+          isTransferable: 1,
+          discountPercentage: 1,
+          validTill: 1,
+          displayTag: 1,
+          distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
+        },
+      },
+      { $sort: sortByLatest ? { validTill: -1, createdAt: -1 } : { distance: 1, validTill: -1 } },
+      { $skip: skip },
+      { $limit: parsedLimit },
+    ];
 
-//     let senderCoupon = await UserCoupon.findOne({ userId: senderId, couponId }).session(session);
-//     let senderTranferCoupon = await UserCoupon.findOne({
-//       userId: receiverId,
-//       couponId,
-//       senders: { $elemMatch: { senderId: senderId } }
-//     }).session(session)
+    const coupons = await Coupon.aggregate(dataPipeline);
 
-//     if (senderTranferCoupon) {
+    // 9️⃣ Count pipeline
+    const countPipeline = [
+      {
+        $geoNear: {
+          near: baseLocation,
+          distanceField: 'distance',
+          ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+          spherical: true,
+          key: 'shope_location',
+          query: geoQuery,
+        },
+      },
+      ...(search.trim()
+        ? [
+          {
+            $match: {
+              $or: [
+                { manual_address: searchRegex },
+                { title: searchRegex },
+                { tag: { $elemMatch: { $regex: searchRegex } } },
+              ],
+            },
+          },
+        ]
+        : []),
+      ...(userId
+        ? [
+          // Filter for special coupons
+          {
+            $match: {
+              $or: [
+                { is_spacial_copun: false },
+                {
+                  is_spacial_copun: true,
+                  $or: [
+                    { is_spacial_copun_user: userId },
+                    { is_spacial_copun_user: { $in: referredUserIds } },
+                  ],
+                },
+              ],
+            },
+          },
+          {
+            $lookup: {
+              from: 'usercoupons',
+              let: { couponId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$couponId', '$$couponId'] },
+                        { $eq: ['$userId', userId] },
+                      ],
+                    },
+                  },
+                },
+                { $project: { status: 1, count: 1, _id: 0 } },
+              ],
+              as: 'userStatus',
+            },
+          },
+          { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+          {
+            $match: {
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+              $or: [
+                { userStatus: { $exists: false } },
+                {
+                  $and: [
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                    { 'userStatus.count': { $gte: 1 } },
+                  ],
+                },
+              ],
+            },
+          },
+          { $count: 'total' },
+        ]
+        : [
+          {
+            $match: {
+              is_spacial_copun: false,
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+            },
+          },
+          { $count: 'total' },
+        ]),
+    ];
 
-//       throw new Error("Sender Can not ")
-//     };
+    const totalResult = await Coupon.aggregate(countPipeline);
+    const total = totalResult[0]?.total || 0;
 
-//     let receiverUsedCoupon = await UserCoupon.findOne({ userId: receiverId, couponId }).session(session);
-
-//     const qrCode = `qr-${couponId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-//     if (!senderCoupon) {
-//       senderCoupon = new UserCoupon({
-//         couponId,
-//         userId: senderId,
-//         status: 'transferred',
-//         transferredTo: receiverId,
-//         transferDate: new Date(),
-//         count: 0,
-//         qrCode: qrCode + '-sender'
-//       });
-//       await senderCoupon.save({ session });
-//     } else if (senderCoupon.status === 'available') {
-//       senderCoupon.count -= 1;
-//       await senderCoupon.save({ session });
-//     }
-
-//     if (receiverUsedCoupon && receiverUsedCoupon.status === 'used') {
-//       receiverUsedCoupon.status = 'available';
-//       receiverUsedCoupon.senders.push({ senderId, sentAt: new Date() });
-//       receiverUsedCoupon.count += 1;
-//       receiverUsedCoupon.qrCode = qrCode;
-//       await receiverUsedCoupon.save({ session });
-
-//     } else if (receiverAvailableCoupon && receiverUsedCoupon.status === 'available') {
-//       receiverUsedCoupon.senders.push({ senderId, sentAt: new Date() });
-//       receiverUsedCoupon.count += 1;
-//       receiverUsedCoupon.qrCode = qrCode;
-//       await receiverUsedCoupon.save({ session });
-//     }
-//     else if (reciverTranferCoupon) {
-//       const newUserCoupon = new UserCoupon({
-//         couponId,
-//         userId: receiverId,
-//         status: 'available',
-//         senders: [{ senderId, sentAt: new Date() }],
-//         count: 1,
-//         qrCode
-//       });
-//       await newUserCoupon.save({ session });
-//     }
-//     else {
-//       const newUserCoupon = new UserCoupon({
-//         couponId,
-//         userId: receiverId,
-//         status: 'available',
-//         senders: [{ senderId, sentAt: new Date() }],
-//         count: 2,
-//         qrCode
-//       });
-//       await newUserCoupon.save({ session });
-//     }
-
-//     sender.couponCount -= 1;
-//     receiver.couponCount += 1;
-//     await sender.save({ session });
-//     await receiver.save({ session });
-
-//     coupon.currentDistributions += 1;
-//     await coupon.save({ session });
-
-//     console.log("Start the notification......")
-//     if (sender.devicetoken) {
-//       console.log("devicetoken  found the notification......")
-//       await sendNotification(
-//         sender.devicetoken,
-//         "Coupon Transferred 📤",
-//         `You have successfully transferred the coupon "${coupon.title}" to ${receiver.name || "a user"}.`,
-//         { type: "coupon_transferred", couponId: coupon._id.toString() }
-//       );
-//       console.log("Notification send succesfully  found the notification......")
-//     }
-
-//     if (receiver.devicetoken) {
-//       console.log("devicetoken  found the notification......")
-
-//       await sendNotification(
-//         receiver.devicetoken,
-//         "Coupon Received 🎁",
-//         `${sender.name || "Someone"} has sent you a coupon "${coupon.title}".`,
-//         { type: "coupon_received", couponId: coupon._id.toString() }
-//       );
-//       console.log("Notification send succesfully  found the notification......")
-
-//     }
-
-
-//     await session.commitTransaction();
-//     return res.status(200).json({ success: true, message: "Coupon transferred" });
-
-//   } catch (error) {
-//     await session.abortTransaction();
-//     return res.status(400).json({ success: false, message: error.message });
-//   } finally {
-//     session.endSession();
-//   }
-// };
+    res.status(200).json({
+      success: true,
+      mode,
+      data: coupons,
+      page: parsedPage,
+      limit: parsedLimit,
+      total,
+      pages: Math.ceil(total / parsedLimit),
+    });
+  } catch (error) {
+    console.error('Error fetching coupons:', error);
+    res.status(500).json({ success: false, message: 'An unexpected error occurred' });
+  }
+};
 
 
 export const transferCoupon = async (req, res) => {

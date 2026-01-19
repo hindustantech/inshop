@@ -28,8 +28,13 @@ import {
     updateCouponByAdmin,
     createCouponAdmin,
     updateCouponFromAdmin,
+    updateGiftHamperAdmin,
     ownerApproveCoupon,
     ownerRevokeCoupon,
+    getAllGiftWithStatusTag,
+    createGiftHamperAdmin,
+    getAllGiftForAdmin,
+    getGiftById,
 } from '../controllers/couponController.js';
 import { checkPermission } from '../middlewares/checkPermission.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
@@ -68,6 +73,14 @@ router.post(
     roleBasedOwnership,
     createCouponAdmin
 );
+router.post(
+    '/createGiftHamperAdmin',
+    authMiddleware,
+    checkPermission('coupon.create'),
+    upload.array("images", 5),
+    roleBasedOwnership,
+    createGiftHamperAdmin
+);
 
 router.put(
     '/updateCouponFromAdmin/:id',
@@ -75,8 +88,15 @@ router.put(
     upload.array('images', 10),
     updateCouponFromAdmin
 );
+router.put(
+    '/updateGiftHamperAdmin/:id',
+    authMiddleware,
+    upload.array('images', 10),
+    updateGiftHamperAdmin
+);
 
 router.get('/getAllCouponsWithStatusTag', authMiddleware1, getAllCouponsWithStatusTag);
+router.get('/getAllGiftWithStatusTag', authMiddleware1, getAllGiftWithStatusTag);
 
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);
@@ -101,6 +121,9 @@ router.get('/:couponId/owner/:ownerId', authMiddleware, getOwnerCouponDetails);
 // Public routes (no authentication required)
 router.get('/getall', authMiddleware, getall);
 router.get('/get/:id', authMiddleware, getById);
+
+router.get('/getall', authMiddleware, getAllGiftForAdmin);
+router.get('/get/:id', authMiddleware, getGiftById);
 router.get('/getOwnerDraftExpiredCoupon/:id', authMiddleware, getOwnerDraftExpiredCoupon);
 router.get('/get-cities', authMiddleware, getAllCities);
 
