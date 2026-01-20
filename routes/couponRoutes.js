@@ -122,8 +122,8 @@ router.get('/:couponId/owner/:ownerId', authMiddleware, getOwnerCouponDetails);
 router.get('/getall', authMiddleware, getall);
 router.get('/get/:id', authMiddleware, getById);
 
-router.get('/getall', authMiddleware, getAllGiftForAdmin);
-router.get('/get/:id', authMiddleware, getGiftById);
+router.get('/getAllGiftForAdmin', authMiddleware, getAllGiftForAdmin);
+router.get('/getGiftById/:id', authMiddleware, getGiftById);
 router.get('/getOwnerDraftExpiredCoupon/:id', authMiddleware, getOwnerDraftExpiredCoupon);
 router.get('/get-cities', authMiddleware, getAllCities);
 
