@@ -3224,6 +3224,7 @@ export const getAllGiftWithStatusTag = async (req, res) => {
     }
 
     const skip = (parsedPage - 1) * parsedLimit;
+    const now = new Date(); // Current time for lock expiration checks
 
     let mode = userId ? 'user' : 'guest';
     let baseLocation = null;
@@ -3373,7 +3374,6 @@ export const getAllGiftWithStatusTag = async (req, res) => {
           {
             $match: {
               active: true,
-
               $or: [
                 { validTill: { $gt: new Date() } },
                 { validTill: null },
@@ -3394,17 +3394,6 @@ export const getAllGiftWithStatusTag = async (req, res) => {
               couponCount: { $ifNull: ['$userStatus.count', 1] },
             },
           },
-          {
-            $addFields: {
-              displayTag: {
-                $cond: {
-                  if: { $eq: ['$userStatus.status', 'cancelled'] },
-                  then: { $concat: ['Cancelled: ', { $toString: '$couponCount' }] },
-                  else: { $concat: ['Available: ', { $toString: '$couponCount' }] },
-                },
-              },
-            },
-          },
         ]
         : [
           // For guest users, only show non-special coupons
@@ -3419,12 +3408,77 @@ export const getAllGiftWithStatusTag = async (req, res) => {
               ],
             },
           },
-          {
-            $addFields: {
-              displayTag: 'Available coupon: 1',
-            },
-          },
         ]),
+
+      // Add lock status for logged-in users
+      ...(userId ? [
+        {
+          $addFields: {
+            myLock: {
+              $filter: {
+                input: "$activeLocks",
+                as: "lock",
+                cond: {
+                  $and: [
+                    { $eq: ["$$lock.userId", userId] },
+                    { $gt: ["$$lock.lockExpiresAt", now] }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          $addFields: {
+            // Check if there's any active lock for this user
+            isLockedByMe: {
+              $cond: {
+                if: { $gt: [{ $size: "$myLock" }, 0] },
+                then: true,
+                else: false
+              }
+            },
+            // Get the first active lock (should be only one)
+            myLockDetails: {
+              $cond: {
+                if: { $gt: [{ $size: "$myLock" }, 0] },
+                then: { $arrayElemAt: ["$myLock", 0] },
+                else: null
+              }
+            }
+          }
+        }
+      ] : []),
+
+      // Add display tag based on various conditions
+      {
+        $addFields: {
+          displayTag: {
+            $cond: [
+              // For guest users or users without coupon status
+              { $or: [{ $not: { $ifNull: ["$userStatus", false] } }, { $eq: [userId, null] }] },
+              "Available coupon: 1",
+              {
+                $cond: [
+                  // If user has used or transferred the coupon
+                  { $in: ["$userStatus.status", ["used", "transferred"]] },
+                  { $concat: ["Used"] },
+                  {
+                    $cond: [
+                      // If user has cancelled the coupon
+                      { $eq: ["$userStatus.status", "cancelled"] },
+                      { $concat: ["Cancelled: ", { $toString: "$couponCount" }] },
+                      // Default: show available count
+                      { $concat: ["Available: ", { $toString: "$couponCount" }] }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+
       {
         $project: {
           title: 1,
@@ -3439,9 +3493,30 @@ export const getAllGiftWithStatusTag = async (req, res) => {
           discountPercentage: 1,
           validTill: 1,
           displayTag: 1,
+          active: 1,
+          lockCoupon: 1,
+
+          // Lock-related fields
+          isLockedByMe: { $ifNull: ["$isLockedByMe", false] },
+          myLock: {
+            $cond: [
+              { $eq: ["$isLockedByMe", true] },
+              {
+                userId: "$myLockDetails.userId",
+                lockedAt: "$myLockDetails.lockedAt",
+                lockExpiresAt: "$myLockDetails.lockExpiresAt",
+                lockDurationDays: "$myLockDetails.lockDurationDays"
+              },
+              null
+            ]
+          },
+
           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
+          couponCount: { $ifNull: ["$couponCount", 1] },
+          userStatus: 1
         },
       },
+
       { $sort: sortByLatest ? { validTill: -1, createdAt: -1 } : { distance: 1, validTill: -1 } },
       { $skip: skip },
       { $limit: parsedLimit },
@@ -3560,7 +3635,7 @@ export const getAllGiftWithStatusTag = async (req, res) => {
       pages: Math.ceil(total / parsedLimit),
     });
   } catch (error) {
-    console.error('Error fetching coupons:', error);
+    console.error('Error fetching gift hampers:', error);
     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
   }
 };

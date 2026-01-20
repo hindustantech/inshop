@@ -40,7 +40,9 @@ import comment from './routes/comment.route.js'
 import planRoutes from './routes/plan.routes.js'
 import supports from './routes/supoort.js'
 import scanTounluck from './routes/unlockRoute.js'
+import giftHamperRoutes from './routes/GiftHamper.route.js';
 // import './cron/referralSummary.cron.js'
+// import './controllers/crronjob.js'
 dotenv.config();
 await connectDB();
 
@@ -72,6 +74,8 @@ app.use('/api/adRoute', adroute);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/agencypatner', agencypatner);
 // API routes
+app.use("/api/gift-hampers", giftHamperRoutes);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/coupon', couponRoutes);
 app.use('/api/link', linkRoutes);
