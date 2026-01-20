@@ -110,7 +110,7 @@ export const lockGiftHamperController = async (req, res) => {
         session.startTransaction();
 
         const userId = req.user?._id;
-        const { couponId, lockDurationDays = 1 } = req.body;
+        const { couponId, lockDurationDays = 30 } = req.body;
 
         if (!userId || !mongoose.isValidObjectId(couponId)) {
             await session.abortTransaction();
