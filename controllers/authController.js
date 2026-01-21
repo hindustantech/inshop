@@ -64,7 +64,7 @@ export const deleteUser = async (req, res) => {
     /* ===============================
        2. Authorization (Super Admin)
     =============================== */
-    if (req.user.role !== "super_admin") {
+    if (req.user.type !== "super_admin") {
       return res.status(403).json({
         success: false,
         message: "Access denied. Super admin only."

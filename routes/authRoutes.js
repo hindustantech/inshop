@@ -46,7 +46,7 @@ router.get('/updateProfileImage', authMiddleware, upload.single('profileImage'),
 router.post('/signup', signup);
 router.post("/find-by-phone", findUserByPhone);
 router.get("/getUserProfile", authMiddleware, getUserProfile);
-router.get("/deleteUser/:targetUserId", authMiddleware, deleteUser);
+router.delete("/deleteUser", authMiddleware, deleteUser);
 
 router.post('/verifyOtp', verifyOtp);
 router.post('/login', login);
