@@ -49,6 +49,105 @@ export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {
   }
 };
 
+export const deleteUser = async (req, res) => {
+  try {
+    /* ===============================
+       1. Authentication Check
+    =============================== */
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized"
+      });
+    }
+
+    /* ===============================
+       2. Authorization (Super Admin)
+    =============================== */
+    if (req.user.role !== "super_admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Super admin only."
+      });
+    }
+
+    /* ===============================
+       3. Validate Target User ID
+    =============================== */
+    const targetUserId = req.params.id;
+
+    if (!mongoose.isValidObjectId(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user id"
+      });
+    }
+
+    /* ===============================
+       4. Prevent Self Deletion
+    =============================== */
+    if (req.user.id === targetUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "Super admin cannot delete self"
+      });
+    }
+
+    /* ===============================
+       5. Fetch Target User
+    =============================== */
+    const user = await User.findOne({
+      _id: targetUserId,
+      isDeleted: false
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    /* ===============================
+       6. Block Deleting Other Super Admins
+    =============================== */
+    if (user.role === "superadmin") {
+      return res.status(403).json({
+        success: false,
+        message: "Cannot delete another super admin"
+      });
+    }
+
+    /* ===============================
+       7. Soft Delete
+    =============================== */
+    user.isDeleted = true;
+    user.deletedAt = new Date();
+    await user.save();
+
+    /* ===============================
+       8. Audit Logging (optional)
+    =============================== */
+    // AuditLog.create({
+    //   action: "DELETE_USER",
+    //   performedBy: req.user.id,
+    //   targetUser: targetUserId
+    // });
+
+    return res.status(200).json({
+      success: true,
+      message: "User deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("DELETE_USER_ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
 
 export const getUserProfile = async (req, res) => {
   try {

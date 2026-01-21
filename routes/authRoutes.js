@@ -20,7 +20,8 @@ import {
     getProfile,
     updateProfileImage,
     getUserIdsAndNamesByReferralCodesController,
-    getUserProfile
+    getUserProfile,
+    deleteUser,
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
@@ -45,9 +46,10 @@ router.get('/updateProfileImage', authMiddleware, upload.single('profileImage'),
 router.post('/signup', signup);
 router.post("/find-by-phone", findUserByPhone);
 router.get("/getUserProfile", authMiddleware, getUserProfile);
+router.get("/deleteUser", authMiddleware, deleteUser);
 
 router.post('/verifyOtp', verifyOtp);
-router.post('/login', login);
+router.post('/login', login);   
 router.post('/resendOtp', resendOtp);
 router.post('/signout', signout);
 router.post('/forgot-password', forgotPassword);

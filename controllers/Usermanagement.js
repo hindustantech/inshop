@@ -4,40 +4,71 @@ import bcrypt from 'bcryptjs'; // Assume bcryptjs is installed for password hash
 import json2csv from 'json2csv'
 import mongoose from 'mongoose';
 // Helper function for paginatiozn and filtering
-const getUserQuery = (search, role, isAgency) => {
+
+export const getUserQuery = (search, role, isAgency, fromDate, toDate) => {
   const query = {};
+
+  // Text search
   if (search) {
     query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-      { phone: { $regex: search, $options: 'i' } }
+      { name: { $regex: search, $options: "i" } },
+      { email: { $regex: search, $options: "i" } },
+      { phone: { $regex: search, $options: "i" } }
     ];
   }
+
+  // Role filter
   if (role) {
-    query.type = role;
+    query.role = role;
   }
-  if (isAgency === 'true') {
-    query.type = 'agency';
+
+  // Agency filter
+  if (isAgency !== "") {
+    query.isAgency = isAgency === "true";
   }
+
+  // Date range filter (createdAt)
+  if (fromDate || toDate) {
+    query.createdAt = {};
+
+    if (fromDate && !isNaN(new Date(fromDate))) {
+      query.createdAt.$gte = new Date(fromDate);
+    }
+
+    if (toDate && !isNaN(new Date(toDate))) {
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999); // include full day
+      query.createdAt.$lte = end;
+    }
+
+    // Clean empty object
+    if (Object.keys(query.createdAt).length === 0) {
+      delete query.createdAt;
+    }
+  }
+
   return query;
 };
+
 
 // GET /api/users - Fetch all users with pagination, search, filters
 export const getAllUsers = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const search = req.query.search || '';
-    const role = req.query.role || '';
-    const isAgency = req.query.agency || '';
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+    const search = req.query.search || "";
+    const role = req.query.role || "";
+    const isAgency = req.query.agency || "";
+    const fromDate = req.query.fromDate || "";
+    const toDate = req.query.toDate || "";
 
-    const query = getUserQuery(search, role, isAgency);
+    const query = getUserQuery(search, role, isAgency, fromDate, toDate);
 
     const skip = (page - 1) * limit;
 
     const [users, total] = await Promise.all([
       User.find(query)
-        .select('-password -otp') // Exclude sensitive fields
+        .select("-password -otp")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -59,7 +90,7 @@ export const getAllUsers = async (req, res) => {
           hasPrev: page > 1
         }
       },
-      message: 'Users fetched successfully'
+      message: "Users fetched successfully"
     });
   } catch (error) {
     res.status(500).json({
@@ -70,20 +101,23 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
+
 // GET /api/users/export - Export users to CSV
 export const exportUsers = async (req, res) => {
   try {
-    const search = req.query.search || '';
-    const role = req.query.role || '';
-    const isAgency = req.query.agency || '';
+    const search = req.query.search || "";
+    const role = req.query.role || "";
+    const isAgency = req.query.agency || "";
+    const fromDate = req.query.fromDate || "";
+    const toDate = req.query.toDate || "";
 
-    const query = getUserQuery(search, role, isAgency);
+    const query = getUserQuery(search, role, isAgency, fromDate, toDate);
 
     const users = await User.find(query)
-      .select('-password -otp') // Exclude sensitive fields
+      .select("-password -otp")
+      .sort({ createdAt: -1 })
       .lean();
 
-    // Prepare data for CSV, excluding sensitive fields
     const csvData = users.map(user => ({
       UID: user.uid,
       Name: user.name,
@@ -91,24 +125,30 @@ export const exportUsers = async (req, res) => {
       Phone: user.phone,
       Type: user.type,
       IsVerified: user.isVerified,
+      referredBy: user.referredBy,
+      ReferralCommissionType: user.referrelCommisationType,
+      ReferralCommission: user.referrelCommisation,
       Suspended: user.suspend,
       ReferralCode: user.referalCode,
-      CreatedAt: user.createdAt
+      CreatedAt: user.createdAt.toISOString()
     }));
 
     let csv;
     try {
       csv = json2csv.parse(csvData);
-    } catch (err) {
-      // Fallback manual CSV generation if library fails
-      const headers = Object.keys(csvData[0]).join(',');
-      const rows = csvData.map(row => Object.values(row).join(',')).join('\n');
-      csv = `${headers}\n${rows}`;
+    } catch {
+      if (!csvData.length) csv = "No Data";
+      else {
+        const headers = Object.keys(csvData[0]).join(",");
+        const rows = csvData.map(r => Object.values(r).join(",")).join("\n");
+        csv = `${headers}\n${rows}`;
+      }
     }
 
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename=users.csv');
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", "attachment; filename=users.csv");
     res.status(200).send(csv);
+
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -117,6 +157,7 @@ export const exportUsers = async (req, res) => {
     });
   }
 };
+
 
 // GET /api/users/analytics - User analytics
 export const getUserAnalytics = async (req, res) => {
