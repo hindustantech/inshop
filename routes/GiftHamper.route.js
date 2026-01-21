@@ -19,7 +19,7 @@ router.post("/lock", lockGiftHamperController);
 router.post("/:couponId/transfer", transferGiftHamperLock);
 
 // POST /api/gift-hampers/:couponId/redeem - Redeem a gift hamper
-router.post("/:couponId/redeem", redeemGiftHamper);
+router.post("/redeem", redeemGiftHamper);
 
 // GET /api/gift-hampers/my-locked - Get user's locked gift hampers
 router.get("/my-locked", getMyLockedGiftHampers);

@@ -1,6 +1,10 @@
 import Coupon from "../models/coupunModel.js";
 import Sales from "../models/Sales.js";
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
+import User from "../models/userModel.js";
+
+const JWT_SECRET = process.env.JWT_SECRET || "your_super_secret_key"; // keep this secret in env
 /* ================= CONTROLLER ================= */
 
 export const transferGiftHamperLock = async (req, res) => {
@@ -73,7 +77,7 @@ export const transferGiftHamperLock = async (req, res) => {
             lockExpiresAt: senderLock.lockExpiresAt
         });
 
-      
+
 
         await coupon.save({ session });
 
@@ -257,57 +261,124 @@ export const lockGiftHamperController = async (req, res) => {
 
 
 export const redeemGiftHamper = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
-        const userId = req.user._id;
-        const { couponId } = req.params;
+        const userId = new mongoose.Types.ObjectId(req.user._id);
+        const { couponId, owner } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(couponId)) {
+            return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
+        }
+
+        if (!owner) {
+            return res.status(400).json({ success: false, message: "Invalid Owner Token" });
+        }
+
+        // ✅ Verify owner token
+        const decoded = jwt.verify(owner, JWT_SECRET);
+        if (!decoded || !decoded.userId) {
+            return res.status(401).json({ message: "Invalid or expired owner token" });
+        }
+
+        const ownerUser = await User.findById(decoded.userId);
+        if (!ownerUser) {
+            return res.status(401).json({ message: "Owner not found, authorization denied" });
+        }
+
+
         const now = new Date();
+
+        // 1. Find coupon with valid lock AND distribution available
         const coupon = await Coupon.findOne({
             _id: couponId,
             isGiftHamper: true,
             active: true,
+            $or: [
+                { maxDistributions: 0 }, // unlimited
+                { $expr: { $lt: ["$currentDistributions", "$maxDistributions"] } }
+            ],
             activeLocks: {
                 $elemMatch: {
-                    userId: new mongoose.Types.ObjectId(userId),
+                    userId,
                     lockExpiresAt: { $gt: now }
                 }
             }
-        });
+        }).session(session);
+
         if (!coupon) {
-            return res.status(404).json({
+            await session.abortTransaction();
+            return res.status(409).json({
                 success: false,
-                message: "No valid gift hamper lock found for this coupon"
+                message: "Gift hamper unavailable, expired, fully redeemed, or lock not valid"
             });
         }
-        // Mark coupon as redeemed for this user
-        const salesRecord = new Sales({
+
+        // 2. Idempotency check
+        const existingSale = await Sales.findOne({
             couponId: coupon._id,
-            userId: userId,
+            userId,
+            status: "completed"
+        }).session(session);
+
+        if (existingSale) {
+            await session.abortTransaction();
+            return res.status(409).json({
+                success: false,
+                message: "Gift hamper already redeemed"
+            });
+        }
+
+        // 3. Create sales record
+        await Sales.create([{
+            couponId: coupon._id,
+            userId,
             serviceStartTime: now,
             status: "completed",
-            amount: coupon.originalPrice,
-            discountAmount: coupon.discountAmount,
-            finalAmount: coupon.finalPrice
-        });
-        await salesRecord.save();
-        // Remove user's lock from coupon
-        coupon.activeLocks = coupon.activeLocks.filter(
-            l => l.userId.toString() !== userId.toString()
+            amount: coupon.originalPrice || coupon.worthGift,
+            discountAmount: coupon.discountAmount || 0,
+            finalAmount: coupon.finalPrice || 0
+        }], { session });
+
+        // 4. Atomic update: remove lock + increment distribution
+        const updateResult = await Coupon.updateOne(
+            {
+                _id: coupon._id,
+                $or: [
+                    { maxDistributions: 0 },
+                    { $expr: { $lt: ["$currentDistributions", "$maxDistributions"] } }
+                ]
+            },
+            {
+                $pull: { activeLocks: { userId } },
+                $inc: { currentDistributions: 1 }
+            },
+            { session }
         );
-        await coupon.save();
+
+        if (updateResult.modifiedCount !== 1) {
+            throw new Error("Distribution limit reached during redemption");
+        }
+
+        await session.commitTransaction();
+
         return res.status(200).json({
             success: true,
             message: "Gift hamper redeemed successfully"
         });
 
-    }
-    catch (error) {
+    } catch (error) {
+        await session.abortTransaction();
         console.error("Redeem Gift Hamper Error:", error);
+
         return res.status(500).json({
             success: false,
-            message: "Internal server error during gift hamper redemption"
+            message: "Gift hamper redemption failed"
         });
+    } finally {
+        session.endSession();
     }
-
 };
 
 
