@@ -31,6 +31,21 @@ export const transferGiftHamperLock = async (req, res) => {
             return res.status(404).json({ success: false, message: "Gift Hamper not found" });
         }
 
+
+        // 2. Idempotency check
+        const existingSale = await Sales.findOne({
+            couponId: coupon._id,
+            userId: toUserId,
+            status: "completed"
+        }).session(session);
+
+        if (existingSale) {
+            await session.abortTransaction();
+            return res.status(409).json({
+                success: false,
+                message: " you can`t trnasfer Gift hamper already redeemed"
+            });
+        }
         // 1. Check sender owns lock
         const senderLockIndex = coupon.activeLocks.findIndex(
             l => l.userId.toString() === fromUserId.toString()
