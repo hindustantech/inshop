@@ -96,43 +96,15 @@ export const deleteUser = async (req, res) => {
     /* ===============================
        5. Fetch Target User
     =============================== */
-    const user = await User.findOne({
-      _id: targetUserId,
-      isDeleted: false
-    });
+    const user = await User.findByIdAndDelete(targetUserId);
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-    }
 
-    /* ===============================
-       6. Block Deleting Other Super Admins
-    =============================== */
-    if (user.role === "superadmin") {
-      return res.status(403).json({
-        success: false,
-        message: "Cannot delete another super admin"
-      });
-    }
+   
 
-    /* ===============================
-       7. Soft Delete
-    =============================== */
-    user.isDeleted = true;
-    user.deletedAt = new Date();
-    await user.save();
 
-    /* ===============================
-       8. Audit Logging (optional)
-    =============================== */
-    // AuditLog.create({
-    //   action: "DELETE_USER",
-    //   performedBy: req.user.id,
-    //   targetUser: targetUserId
-    // });
+   
+
+
 
     return res.status(200).json({
       success: true,
