@@ -73,8 +73,7 @@ export const transferGiftHamperLock = async (req, res) => {
             lockExpiresAt: senderLock.lockExpiresAt
         });
 
-        // Optional: ownership transfer
-        coupon.ownerId = toUserId;
+      
 
         await coupon.save({ session });
 
