@@ -74,7 +74,7 @@ export const deleteUser = async (req, res) => {
     /* ===============================
        3. Validate Target User ID
     =============================== */
-    const { targetUserId } = req.params;
+    const { targetUserId } = req.body;
 
     if (!mongoose.isValidObjectId(targetUserId)) {
       return res.status(400).json({
