@@ -260,161 +260,419 @@ export const updateCouponByAdmin = async (req, res) => {
 
 
 
+// export const updateCouponFromAdmin = async (req, res) => {
+//   try {
+//     const couponId = req.params.id;
+
+//     if (!mongoose.Types.ObjectId.isValid(couponId)) {
+//       return res.status(400).json({ success: false, message: 'Invalid coupon ID' });
+//     }
+
+//     const updates = { ...req.body };
+
+//     // 1. Handle ownerId by phone number
+//     if (updates.ownerPhone) {
+//       const phone = String(updates.ownerPhone).trim();
+
+//       if (!phone || phone.length < 10) {
+//         return res.status(400).json({ success: false, message: 'Valid phone number required for owner' });
+//       }
+
+//       const user = await User.findOne({ phone });
+
+//       if (!user) {
+//         return res.status(404).json({ success: false, message: `User with phone ${phone} not found` });
+//       }
+
+//       updates.ownerId = user._id;
+//       delete updates.ownerPhone;
+//     }
+
+//     // 2. Handle shope_location
+//     if (updates.shope_location) {
+//       try {
+//         updates.shope_location = typeof updates.shope_location === 'string'
+//           ? JSON.parse(updates.shope_location)
+//           : updates.shope_location;
+//       } catch (e) {
+//         return res.status(400).json({ success: false, message: 'Invalid shope_location format' });
+//       }
+//     }
+
+//     // 3. Handle Images → Cloudinary (replace all images if new ones uploaded)
+//     if (req.files && req.files.length > 0) {
+//       const results = await Promise.all(
+//         req.files.map(file => uploadToCloudinary(file.buffer, 'coupons'))
+//       );
+//       updates.copuon_image = results.map(r => r.secure_url);
+//     }
+
+//     // 4. DISCOUNT: Save exactly what user types (as string)
+//     if (updates.hasOwnProperty('discountPercentage')) {
+//       let input = updates.discountPercentage;
+//       if (input === null || input === undefined) input = '';
+//       input = String(input).trim();
+//       updates.discountPercentage = input === '' ? '0' : input;
+//     }
+
+//     // 5. Handle Arrays safely
+//     ['tag', 'categoryIds', 'is_spacial_copun_user'].forEach(field => {
+//       if (updates[field] !== undefined) {
+//         if (typeof updates[field] === 'string') {
+//           try { updates[field] = JSON.parse(updates[field]); } catch { }
+//         }
+//         if (!Array.isArray(updates[field])) updates[field] = [];
+//       }
+//     });
+
+//     if (updates.categoryIds) {
+//       updates.category = updates.categoryIds;
+//       delete updates.categoryIds;
+//     }
+
+//     // 6. STATUS VALIDATION & AUTO ACTIVE FLAG (like in create)
+//     if (updates.status) {
+//       const allowedStatus = ["draft", "published", "expired", "disabled"];
+//       if (!allowedStatus.includes(updates.status)) {
+//         return res.status(400).json({
+//           success: false,
+//           message: `Invalid status. Allowed: ${allowedStatus.join(", ")}`
+//         });
+//       }
+//       // Auto-set active based on status
+//       updates.active = updates.status === "published";
+//     }
+
+//     // ==== CRITICAL FIX: fromTime / toTime VALIDATION ====
+//     const isFullDay = updates.isFullDay === true ||
+//       updates.isFullDay === 'true' ||
+//       updates.isFullDay === '1';
+
+//     if (isFullDay) {
+//       // Completely remove time fields → Mongoose skips required validation
+//       delete updates.fromTime;
+//       delete updates.toTime;
+//     } else {
+//       // Not full day → require and validate times
+//       if (!updates.fromTime || !updates.toTime) {
+//         return res.status(400).json({
+//           success: false,
+//           message: 'fromTime and toTime are required when coupon is not full day'
+//         });
+//       }
+
+//       // Optional: Validate time format HH:MM (24-hour)
+//       const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+//       if (!timeRegex.test(updates.fromTime) || !timeRegex.test(updates.toTime)) {
+//         return res.status(400).json({
+//           success: false,
+//           message: 'Time must be in HH:MM format (e.g. 09:30, 14:45)'
+//         });
+//       }
+//     }
+//     // ==============================================
+
+//     // 7. PROTECTED FIELDS – Never allow update
+//     const protectedFields = [
+//       'currentDistributions', 'consumersId', 'creationDate',
+//       'createdBy', 'createdby', 'promotion', '__v'
+//     ];
+//     protectedFields.forEach(f => delete updates[f]);
+
+//     // 8. Final Update with validation
+//     const updatedCoupon = await Coupon.findByIdAndUpdate(
+//       couponId,
+//       { $set: updates },
+//       { new: true, runValidators: true }
+//     )
+//       .populate('category', 'name')
+//       .populate('ownerId', 'name phone')
+//       .populate('is_spacial_copun_user', 'name phone referralCode')
+//       .lean();
+
+//     if (!updatedCoupon) {
+//       return res.status(404).json({ success: false, message: 'Coupon not found' });
+//     }
+
+//     return res.json({
+//       success: true,
+//       message: 'Coupon updated successfully',
+//       data: updatedCoupon
+//     });
+
+//   } catch (error) {
+//     console.error('Update coupon error:', error);
+
+//     if (error.name === 'ValidationError') {
+//       const messages = Object.values(error.errors).map(err => err.message);
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Validation failed',
+//         error: messages.join(', ')
+//       });
+//     }
+
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Server error',
+//       error: error.message
+//     });
+//   }
+// };
+
+const parseArrayField = (value, { objectId = false } = {}) => {
+  if (value === undefined || value === null) return [];
+
+  let arr = [];
+
+  // Already array
+  if (Array.isArray(value)) {
+    arr = value;
+  }
+  // JSON string array
+  else if (typeof value === "string" && value.trim().startsWith("[")) {
+    try {
+      arr = JSON.parse(value);
+    } catch {
+      arr = [];
+    }
+  }
+  // Comma separated string
+  else if (typeof value === "string") {
+    arr = value
+      .split(",")
+      .map(v => v.trim())
+      .filter(v => v.length > 0);
+  }
+
+  // Normalize
+  arr = arr
+    .map(v => (typeof v === "string" ? v.trim() : v))
+    .filter(v => v !== "");
+
+  // Remove duplicates
+  arr = [...new Set(arr)];
+
+  // Validate ObjectIds if needed
+  if (objectId) {
+    arr = arr.filter(id => mongoose.Types.ObjectId.isValid(id));
+  }
+
+  return arr;
+};
+
+/* ================================
+   Controller
+   ================================ */
 export const updateCouponFromAdmin = async (req, res) => {
   try {
     const couponId = req.params.id;
 
     if (!mongoose.Types.ObjectId.isValid(couponId)) {
-      return res.status(400).json({ success: false, message: 'Invalid coupon ID' });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coupon ID"
+      });
     }
 
     const updates = { ...req.body };
 
-    // 1. Handle ownerId by phone number
+    /* ================================
+       1. Owner mapping by phone
+       ================================ */
     if (updates.ownerPhone) {
       const phone = String(updates.ownerPhone).trim();
 
       if (!phone || phone.length < 10) {
-        return res.status(400).json({ success: false, message: 'Valid phone number required for owner' });
+        return res.status(400).json({
+          success: false,
+          message: "Valid phone number required for owner"
+        });
       }
 
-      const user = await User.findOne({ phone });
+      const user = await User.findOne({ phone }).select("_id");
 
       if (!user) {
-        return res.status(404).json({ success: false, message: `User with phone ${phone} not found` });
+        return res.status(404).json({
+          success: false,
+          message: `User with phone ${phone} not found`
+        });
       }
 
       updates.ownerId = user._id;
       delete updates.ownerPhone;
     }
 
-    // 2. Handle shope_location
+    /* ================================
+       2. Shop location parsing
+       ================================ */
     if (updates.shope_location) {
       try {
-        updates.shope_location = typeof updates.shope_location === 'string'
-          ? JSON.parse(updates.shope_location)
-          : updates.shope_location;
-      } catch (e) {
-        return res.status(400).json({ success: false, message: 'Invalid shope_location format' });
+        updates.shope_location =
+          typeof updates.shope_location === "string"
+            ? JSON.parse(updates.shope_location)
+            : updates.shope_location;
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid shope_location format"
+        });
       }
     }
 
-    // 3. Handle Images → Cloudinary (replace all images if new ones uploaded)
+    /* ================================
+       3. Image replacement
+       ================================ */
     if (req.files && req.files.length > 0) {
       const results = await Promise.all(
-        req.files.map(file => uploadToCloudinary(file.buffer, 'coupons'))
+        req.files.map(file =>
+          uploadToCloudinary(file.buffer, "coupons")
+        )
       );
+
       updates.copuon_image = results.map(r => r.secure_url);
     }
 
-    // 4. DISCOUNT: Save exactly what user types (as string)
-    if (updates.hasOwnProperty('discountPercentage')) {
+    /* ================================
+       4. Discount handling
+       ================================ */
+    if (Object.prototype.hasOwnProperty.call(updates, "discountPercentage")) {
       let input = updates.discountPercentage;
-      if (input === null || input === undefined) input = '';
+      if (input === null || input === undefined) input = "";
       input = String(input).trim();
-      updates.discountPercentage = input === '' ? '0' : input;
+      updates.discountPercentage = input === "" ? "0" : input;
     }
 
-    // 5. Handle Arrays safely
-    ['tag', 'categoryIds', 'is_spacial_copun_user'].forEach(field => {
-      if (updates[field] !== undefined) {
-        if (typeof updates[field] === 'string') {
-          try { updates[field] = JSON.parse(updates[field]); } catch { }
-        }
-        if (!Array.isArray(updates[field])) updates[field] = [];
-      }
-    });
+    /* ================================
+       5. Comma / JSON / Array handling
+       ================================ */
+    if (updates.tag !== undefined) {
+      updates.tag = parseArrayField(updates.tag);
+    }
+
+    if (updates.categoryIds !== undefined) {
+      updates.categoryIds = parseArrayField(updates.categoryIds, {
+        objectId: true
+      });
+    }
+
+    if (updates.is_spacial_copun_user !== undefined) {
+      updates.is_spacial_copun_user = parseArrayField(
+        updates.is_spacial_copun_user,
+        { objectId: true }
+      );
+    }
 
     if (updates.categoryIds) {
       updates.category = updates.categoryIds;
       delete updates.categoryIds;
     }
 
-    // 6. STATUS VALIDATION & AUTO ACTIVE FLAG (like in create)
+    /* ================================
+       6. Status validation
+       ================================ */
     if (updates.status) {
       const allowedStatus = ["draft", "published", "expired", "disabled"];
+
       if (!allowedStatus.includes(updates.status)) {
         return res.status(400).json({
           success: false,
           message: `Invalid status. Allowed: ${allowedStatus.join(", ")}`
         });
       }
-      // Auto-set active based on status
+
       updates.active = updates.status === "published";
     }
 
-    // ==== CRITICAL FIX: fromTime / toTime VALIDATION ====
-    const isFullDay = updates.isFullDay === true ||
-      updates.isFullDay === 'true' ||
-      updates.isFullDay === '1';
+    /* ================================
+       7. Time validation
+       ================================ */
+    const isFullDay =
+      updates.isFullDay === true ||
+      updates.isFullDay === "true" ||
+      updates.isFullDay === "1";
 
     if (isFullDay) {
-      // Completely remove time fields → Mongoose skips required validation
       delete updates.fromTime;
       delete updates.toTime;
     } else {
-      // Not full day → require and validate times
       if (!updates.fromTime || !updates.toTime) {
         return res.status(400).json({
           success: false,
-          message: 'fromTime and toTime are required when coupon is not full day'
+          message: "fromTime and toTime are required when coupon is not full day"
         });
       }
 
-      // Optional: Validate time format HH:MM (24-hour)
       const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
-      if (!timeRegex.test(updates.fromTime) || !timeRegex.test(updates.toTime)) {
+
+      if (
+        !timeRegex.test(updates.fromTime) ||
+        !timeRegex.test(updates.toTime)
+      ) {
         return res.status(400).json({
           success: false,
-          message: 'Time must be in HH:MM format (e.g. 09:30, 14:45)'
+          message: "Time must be in HH:MM format"
         });
       }
     }
-    // ==============================================
 
-    // 7. PROTECTED FIELDS – Never allow update
+    /* ================================
+       8. Protected fields
+       ================================ */
     const protectedFields = [
-      'currentDistributions', 'consumersId', 'creationDate',
-      'createdBy', 'createdby', 'promotion', '__v'
+      "currentDistributions",
+      "consumersId",
+      "creationDate",
+      "createdBy",
+      "createdby",
+      "promotion",
+      "__v"
     ];
+
     protectedFields.forEach(f => delete updates[f]);
 
-    // 8. Final Update with validation
+    /* ================================
+       9. Database update
+       ================================ */
     const updatedCoupon = await Coupon.findByIdAndUpdate(
       couponId,
       { $set: updates },
       { new: true, runValidators: true }
     )
-      .populate('category', 'name')
-      .populate('ownerId', 'name phone')
-      .populate('is_spacial_copun_user', 'name phone referralCode')
+      .populate("category", "name")
+      .populate("ownerId", "name phone")
+      .populate("is_spacial_copun_user", "name phone referralCode")
       .lean();
 
     if (!updatedCoupon) {
-      return res.status(404).json({ success: false, message: 'Coupon not found' });
+      return res.status(404).json({
+        success: false,
+        message: "Coupon not found"
+      });
     }
 
     return res.json({
       success: true,
-      message: 'Coupon updated successfully',
+      message: "Coupon updated successfully",
       data: updatedCoupon
     });
 
   } catch (error) {
-    console.error('Update coupon error:', error);
+    console.error("Update coupon error:", error);
 
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(err => err.message);
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map(e => e.message);
+
       return res.status(400).json({
         success: false,
-        message: 'Validation failed',
-        error: messages.join(', ')
+        message: "Validation failed",
+        error: messages.join(", ")
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: 'Server error',
+      message: "Server error",
       error: error.message
     });
   }
