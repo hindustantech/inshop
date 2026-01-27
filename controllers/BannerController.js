@@ -823,7 +823,7 @@ export const getUserNearestBanners = async (req, res) => {
       manualCode,
       lat,
       lng,
-      category, // Can be a single ID or array of IDs (e.g., category[]=id1&category[]=id2)
+      categoryIds, // Can be a single ID or array of IDs (e.g., category[]=id1&category[]=id2)
     } = req.query;
 
     const skip = (page - 1) * limit;
@@ -911,12 +911,12 @@ export const getUserNearestBanners = async (req, res) => {
     let categoryFilter = {};
     let validCategoryIds = []; // Declare here to use in both main and fallback pipelines
 
-    if (category) {
+    if (categoryIds) {
       // Handle category as array or single ID
-      const categoryIds = Array.isArray(category) ? category : [category];
+      const categoryIdsArray = Array.isArray(categoryIds) ? categoryIds : [categoryIds];
 
       // Validate all category IDs
-      for (const catId of categoryIds) {
+      for (const catId of categoryIdsArray) {
         if (mongoose.Types.ObjectId.isValid(catId)) {
           validCategoryIds.push(new mongoose.Types.ObjectId(catId));
         } else {
