@@ -1113,7 +1113,7 @@ export const getUserNearestBanners = async (req, res) => {
       pages: Math.ceil(total / limit),
       data,
       filters: {
-        category: category || null,
+        category: categoryIds || null,
         search: search || null,
         radius: effectiveRadius || null,
       },
