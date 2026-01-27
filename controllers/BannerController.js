@@ -909,10 +909,13 @@ export const getUserNearestBanners = async (req, res) => {
 
     // 6️⃣ Build category filter
     let categoryFilter = {};
+    let validCategoryIds = []; // Declare here to use in both main and fallback pipelines
+
     if (category) {
       // Handle category as array or single ID
       const categoryIds = Array.isArray(category) ? category : [category];
-      const validCategoryIds = [];
+
+      // Validate all category IDs
       for (const catId of categoryIds) {
         if (mongoose.Types.ObjectId.isValid(catId)) {
           validCategoryIds.push(new mongoose.Types.ObjectId(catId));
@@ -924,9 +927,10 @@ export const getUserNearestBanners = async (req, res) => {
           });
         }
       }
+
       if (validCategoryIds.length > 0) {
         categoryFilter = { category: { $in: validCategoryIds } };
-        console.log(`Category filter applied: ${validCategoryIds.join(', ')}`);
+        console.log(`Category filter applied: ${validCategoryIds.map(id => id.toString()).join(', ')}`);
       } else {
         return res.status(400).json({
           success: false,
@@ -935,15 +939,17 @@ export const getUserNearestBanners = async (req, res) => {
       }
     }
 
-    // 7️⃣ Combine all filters
+    // 7️⃣ Combine all filters for geoNear query
     const mainQuery = {
       $and: [
         expiryQuery,
-        categoryFilter,
-      ].filter((condition) => Object.keys(condition).length > 0),
+        ...(Object.keys(categoryFilter).length > 0 ? [categoryFilter] : []),
+      ],
     };
 
-    // 8️⃣ Build aggregation pipeline
+    console.log(`Main query: ${JSON.stringify(mainQuery)}`);
+
+    // 8️⃣ Build main aggregation pipeline
     const dataPipeline = [
       {
         $geoNear: {
@@ -1002,7 +1008,7 @@ export const getUserNearestBanners = async (req, res) => {
       console.log('No banners found with initial query, falling back to all non-expired banners');
       const fallbackPipeline = [
         { $match: expiryQuery },
-        ...(categoryFilter.category
+        ...(validCategoryIds.length > 0
           ? [{ $match: { category: { $in: validCategoryIds } } }]
           : []),
         ...(search.trim()
@@ -1077,7 +1083,7 @@ export const getUserNearestBanners = async (req, res) => {
     if (data.length > 0 && mode === 'fallback') {
       const fallbackCountPipeline = [
         { $match: expiryQuery },
-        ...(categoryFilter.category
+        ...(validCategoryIds.length > 0
           ? [{ $match: { category: { $in: validCategoryIds } } }]
           : []),
         ...(search.trim()
@@ -1107,7 +1113,7 @@ export const getUserNearestBanners = async (req, res) => {
       pages: Math.ceil(total / limit),
       data,
       filters: {
-        category: category || null, // Return the array of category IDs
+        category: category || null,
         search: search || null,
         radius: effectiveRadius || null,
       },
@@ -1118,7 +1124,7 @@ export const getUserNearestBanners = async (req, res) => {
   }
 };
 
-  
+
 
 
 
