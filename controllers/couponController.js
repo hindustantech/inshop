@@ -1847,7 +1847,7 @@ export const createCouponAdmin = async (req, res) => {
   try {
     const {
       shop_name,
-      phone,
+      owner_phone,
       coupon_color = "#FFFFFF",
       title,
       status = "draft",
@@ -1972,10 +1972,10 @@ export const createCouponAdmin = async (req, res) => {
         message: "shop_name and title are required",
       });
     }
-    if (phone && !/^\+?[1-9]\d{1,14}$/.test(phone)) {
+    if (owner_phone && !/^\+?[1-9]\d{1,14}$/.test(owner_phone)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid phone number format",
+        message: "Invalid owner_phone number format",
       });
     }
     // Discount percentage validation
@@ -2110,7 +2110,7 @@ export const createCouponAdmin = async (req, res) => {
     // Prepare coupon data
     const couponData = {
       title,
-      phone,
+      owner_phone,
       shop_name,
       coupon_color,
       manul_address: manual_address,

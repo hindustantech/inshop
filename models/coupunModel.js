@@ -110,7 +110,7 @@ const couponSchema = new mongoose.Schema({
     ref: 'User', // assuming you have an 'Owner' model or similar
     required: true
   },
-  phone:{
+  owner_phone:{
     type: String,
   
   },
