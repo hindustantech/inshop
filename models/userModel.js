@@ -133,6 +133,10 @@ const userSchema = new mongoose.Schema({
     type: String,
   }
   ,
+  corpareteUser: {
+    type: Boolean,
+    default: false
+  },
 
 
   permissions: [

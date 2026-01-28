@@ -467,7 +467,7 @@ const parseArrayField = (value, { objectId = false } = {}) => {
 export const updateCouponFromAdmin = async (req, res) => {
   try {
     const couponId = req.params.id;
-
+   
     if (!mongoose.Types.ObjectId.isValid(couponId)) {
       return res.status(400).json({
         success: false,
@@ -1847,6 +1847,7 @@ export const createCouponAdmin = async (req, res) => {
   try {
     const {
       shop_name,
+      phone,
       coupon_color = "#FFFFFF",
       title,
       status = "draft",
@@ -1971,6 +1972,13 @@ export const createCouponAdmin = async (req, res) => {
         message: "shop_name and title are required",
       });
     }
+    if (phone && !/^\+?[1-9]\d{1,14}$/.test(phone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid phone number format",
+      });
+    }
+    // Discount percentage validation
 
     const parsedDiscount = Number(discountPercentage);
     if (isNaN(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
@@ -2102,6 +2110,7 @@ export const createCouponAdmin = async (req, res) => {
     // Prepare coupon data
     const couponData = {
       title,
+      phone,
       shop_name,
       coupon_color,
       manul_address: manual_address,
