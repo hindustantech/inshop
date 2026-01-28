@@ -31,6 +31,7 @@ import {
     updateGiftHamperAdmin,
     ownerApproveCoupon,
     ownerRevokeCoupon,
+    getBycId,
     getAllGiftWithStatusTag,
     createGiftHamperAdmin,
     getAllGiftForAdmin,
@@ -121,6 +122,7 @@ router.get('/:couponId/owner/:ownerId', authMiddleware, getOwnerCouponDetails);
 // Public routes (no authentication required)
 router.get('/getall', authMiddleware, getall);
 router.get('/get/:id', authMiddleware, getById);
+router.get('/getBycId/:id', authMiddleware, getBycId);
 
 router.get('/getAllGiftForAdmin', authMiddleware, getAllGiftForAdmin);
 router.get('/getGiftById/:id', authMiddleware, getGiftById);
