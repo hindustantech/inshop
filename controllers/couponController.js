@@ -2774,37 +2774,37 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
 
 
-// export const getById = async (req, res) => {
-//   try {
-//     const { id } = req.params; // 👈 FIXED here
+export const getBycId = async (req, res) => {
+  try {
+    const { id } = req.params; // 👈 FIXED here
 
-//     // Fetch coupon with details, only phone + name for users
-//     const coupon = await Coupon.findById(id)
-//       .populate("createdby", "name phone")
-//       .populate("category", "name")
-//       .populate("ownerId", "name phone")
+    // Fetch coupon with details, only phone + name for users
+    const coupon = await Coupon.findById(id)
+      .populate("createdby", "name phone")
+      .populate("category", "name")
+      .populate("ownerId", "name phone")
 
-//     if (!coupon) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Coupon not found",
-//       });
-//     }
+    if (!coupon) {
+      return res.status(404).json({
+        success: false,
+        message: "Coupon not found",
+      });
+    }
 
-//     res.status(200).json({
-//       success: true,
-//       message: "Coupon fetched successfully",
-//       data: coupon,
-//     });
-//   } catch (error) {
-//     console.error("Error fetching coupon:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: "Error fetching coupon",
-//       error: error.message,
-//     });
-//   }
-// };
+    res.status(200).json({
+      success: true,
+      message: "Coupon fetched successfully",
+      data: coupon,
+    });
+  } catch (error) {
+    console.error("Error fetching coupon:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching coupon",
+      error: error.message,
+    });
+  }
+};
 
 
 
