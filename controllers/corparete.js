@@ -1,9 +1,72 @@
 import mongoose from "mongoose";
 import CorporateRequest from "../models/corparete.js";
+import User from "../models/userModel.js";
+/**
+ * Toggle Corporate User Flag
+ * Only: admin / super_admin
+ *
+ * PATCH /api/admin/users/:userId/corporate
+ * body: { enable: true | false }
+ */
+export const toggleCorporateUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { enable } = req.body;
 
-/* ================================
-   Utils
-================================ */
+    // ---------- Validation ----------
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid userId",
+      });
+    }
+
+    if (typeof enable !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "`enable` must be boolean (true/false)",
+      });
+    }
+
+    // ---------- Authorization ----------
+    const requester = req.user; // injected by auth middleware
+
+    if (!["admin", "super_admin"].includes(requester.type)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    // ---------- Update (atomic) ----------
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: { corpareteUser: enable } },
+      { new: true, runValidators: true }
+    ).select("_id name email corpareteUser type");
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // ---------- Response ----------
+    return res.status(200).json({
+      success: true,
+      message: `Corporate user ${enable ? "enabled" : "disabled"} successfully`,
+      data: updatedUser,
+    });
+  } catch (error) {
+    console.error("toggleCorporateUser error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
