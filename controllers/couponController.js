@@ -2774,15 +2774,57 @@ export const getAllCouponsForAdmin = async (req, res) => {
 
 
 
+// export const getById = async (req, res) => {
+//   try {
+//     const { id } = req.params; // 👈 FIXED here
+
+//     // Fetch coupon with details, only phone + name for users
+//     const coupon = await Coupon.findById(id)
+//       .populate("createdby", "name phone")
+//       .populate("category", "name")
+//       .populate("ownerId", "name phone")
+
+//     if (!coupon) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Coupon not found",
+//       });
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Coupon fetched successfully",
+//       data: coupon,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching coupon:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching coupon",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
+
 export const getById = async (req, res) => {
   try {
-    const { id } = req.params; // 👈 FIXED here
+    const { id } = req.params;
 
-    // Fetch coupon with details, only phone + name for users
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coupon id",
+      });
+    }
+
     const coupon = await Coupon.findById(id)
       .populate("createdby", "name phone")
       .populate("category", "name")
       .populate("ownerId", "name phone")
+      .lean(); // performance + safe mutation
 
     if (!coupon) {
       return res.status(404).json({
@@ -2791,14 +2833,34 @@ export const getById = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    /* ----------------------------------------------------
+       Owner phone resolution (STRICT priority)
+       1. coupon.owner_phone
+       2. coupon.ownerId.phone
+    ----------------------------------------------------- */
+
+    const resolvedOwnerPhone =
+      coupon.owner_phone && coupon.owner_phone.trim() !== ""
+        ? coupon.owner_phone
+        : coupon.ownerId?.phone || null;
+
+    // keep response structure identical, just normalize values
+    coupon.owner_phone = resolvedOwnerPhone;
+
+    if (coupon.ownerId) {
+      coupon.ownerId.phone = resolvedOwnerPhone;
+    }
+
+    return res.status(200).json({
       success: true,
       message: "Coupon fetched successfully",
       data: coupon,
     });
+
   } catch (error) {
     console.error("Error fetching coupon:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Error fetching coupon",
       error: error.message,
