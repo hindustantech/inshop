@@ -2644,6 +2644,137 @@ export const getMyCoupons = async (req, res) => {
 
 
 /* 2. Get All Coupons (SuperAdmin) */
+// export const getAllCouponsForAdmin = async (req, res) => {
+//   try {
+//     const {
+//       page = 1,
+//       limit = 10,
+//       search,
+//       tag,
+//       category,
+//       exportCSV,
+//       expiryDate,
+//       status, // "active" | "inactive"
+//       fromDate,
+//       toDate,
+//     } = req.query;
+
+//     let filter = {};
+
+//     // Role-based filter
+//     if (req.user.type === "agency") {
+//       filter.createdby = new mongoose.Types.ObjectId(req.user.id);
+//     } else if (req.user.type === "super_admin" || req.user.type === "admin") {
+//       // Super admin & admin can view all coupons → no filter restriction
+//     } else {
+//       // Any other user type is denied
+//       return res.status(403).json({
+//         success: false,
+//         message: "Access denied",
+//       });
+//     }
+
+//     // Search filter
+//     if (search) {
+//       const regex = new RegExp(search, "i");
+//       filter.$or = [{ title: regex }, { tag: { $in: [regex] } }];
+//     }
+
+//     // Tag filter
+//     if (tag) filter.tag = { $in: [tag] };
+
+//     // Category filter
+//     if (category && mongoose.Types.ObjectId.isValid(category))
+//       filter.category = category;
+
+//     // Active / Inactive filter
+//     if (status === "active") filter.active = true;
+//     else if (status === "inactive") filter.active = false;
+
+//     // Date range filter
+//     if (fromDate || toDate) {
+//       filter.creationDate = {};
+//       if (fromDate) filter.creationDate.$gte = new Date(fromDate);
+//       if (toDate) {
+//         const end = new Date(toDate);
+//         end.setHours(23, 59, 59, 999);
+//         filter.creationDate.$lte = end;
+//       }
+//     }
+
+//     const skip = (page - 1) * limit;
+
+//     let query = Coupon.find(filter)
+//       .populate("category", "name")
+//       .populate("createdby", "name phone type")
+//       .populate("ownerId", "name phone type");
+
+//     // Dynamic summary filter (same as role filter)
+//     const summaryFilter = { ...filter };
+
+//     const now = new Date();
+//     const expiringSoonDate = new Date();
+//     expiringSoonDate.setDate(now.getDate() + 7);
+
+//     const [total, activeCount, inactiveCount, expiringSoonCount] = await Promise.all([
+//       Coupon.countDocuments(summaryFilter),
+//       Coupon.countDocuments({ ...summaryFilter, active: true }),
+//       Coupon.countDocuments({ ...summaryFilter, active: false }),
+//       Coupon.countDocuments({
+//         ...summaryFilter,
+//         active: true,
+//         validTill: { $gte: now, $lte: expiringSoonDate },
+//       }),
+//     ]);
+
+//     // CSV Export
+//     if (exportCSV) {
+//       let allCoupons = await query.lean();
+//       const exportData = allCoupons.map((c) => ({
+//         Title: c.title,
+//         Discount: c.discountPercentage,
+//         Category: c.category?.name,
+//         CreatedBy: c.createdby?.name,
+//         OwnerBy: c.ownerId?.name,
+//         CreatedAt: c.creationDate,
+//         ValidTill: c.validTill,
+//         Status: c.active ? "Active" : "Inactive",
+//       }));
+
+//       return exportToCSV(res, exportData, "all_coupons.csv");
+//     }
+
+//     // Normal Pagination
+//     let coupons = await query.skip(skip).limit(Number(limit)).lean();
+
+//     // Add used count for each coupon
+//     for (const coupon of coupons) {
+//       coupon.used = await UserCoupon.countDocuments({
+//         couponId: coupon._id,
+//         status: "used",
+//       });
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       page: Number(page),
+//       limit: Number(limit),
+//       total,
+//       summary: {
+//         active: activeCount,
+//         inactive: inactiveCount,
+//         expiringSoon: expiringSoonCount,
+//       },
+//       data: coupons,
+//     });
+//   } catch (error) {
+//     console.error("Error in getAllCouponsForAdmin:", error);
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+
+
 export const getAllCouponsForAdmin = async (req, res) => {
   try {
     const {
@@ -2653,47 +2784,72 @@ export const getAllCouponsForAdmin = async (req, res) => {
       tag,
       category,
       exportCSV,
-      status, // "active" | "inactive"
+      status,              // active | inactive
       fromDate,
       toDate,
+      expiryFrom,
+      expiryTo,
+      expiringSoon,
+      expiringInDays = 7
     } = req.query;
 
-    let filter = {};
+    const filter = {};
 
-    // Role-based filter
+    // =============================
+    // Role Based Access Control
+    // =============================
     if (req.user.type === "agency") {
       filter.createdby = new mongoose.Types.ObjectId(req.user.id);
-    } else if (req.user.type === "super_admin" || req.user.type === "admin") {
-      // Super admin & admin can view all coupons → no filter restriction
+    } else if (["admin", "super_admin"].includes(req.user.type)) {
+      // full access
     } else {
-      // Any other user type is denied
       return res.status(403).json({
         success: false,
-        message: "Access denied",
+        message: "Access denied"
       });
     }
 
-    // Search filter
+    // =============================
+    // Search Filter
+    // =============================
     if (search) {
       const regex = new RegExp(search, "i");
-      filter.$or = [{ title: regex }, { tag: { $in: [regex] } }];
+      filter.$or = [
+        { title: regex },
+        { tag: { $in: [regex] } }
+      ];
     }
 
-    // Tag filter
-    if (tag) filter.tag = { $in: [tag] };
+    // =============================
+    // Tag Filter
+    // =============================
+    if (tag) {
+      filter.tag = { $in: [tag] };
+    }
 
-    // Category filter
-    if (category && mongoose.Types.ObjectId.isValid(category))
+    // =============================
+    // Category Filter
+    // =============================
+    if (category && mongoose.Types.ObjectId.isValid(category)) {
       filter.category = category;
+    }
 
-    // Active / Inactive filter
+    // =============================
+    // Status Filter
+    // =============================
     if (status === "active") filter.active = true;
-    else if (status === "inactive") filter.active = false;
+    if (status === "inactive") filter.active = false;
 
-    // Date range filter
+    // =============================
+    // Creation Date Filter
+    // =============================
     if (fromDate || toDate) {
       filter.creationDate = {};
-      if (fromDate) filter.creationDate.$gte = new Date(fromDate);
+
+      if (fromDate) {
+        filter.creationDate.$gte = new Date(fromDate);
+      }
+
       if (toDate) {
         const end = new Date(toDate);
         end.setHours(23, 59, 59, 999);
@@ -2701,59 +2857,127 @@ export const getAllCouponsForAdmin = async (req, res) => {
       }
     }
 
-    const skip = (page - 1) * limit;
+    // =============================
+    // Expiry Range Filter (validTill)
+    // =============================
+    if (expiryFrom || expiryTo) {
+      filter.validTill = {};
 
-    let query = Coupon.find(filter)
+      if (expiryFrom) {
+        const from = new Date(expiryFrom);
+        from.setHours(0, 0, 0, 0);
+        filter.validTill.$gte = from;
+      }
+
+      if (expiryTo) {
+        const to = new Date(expiryTo);
+        to.setHours(23, 59, 59, 999);
+        filter.validTill.$lte = to;
+      }
+    }
+
+    // =============================
+    // Expiring Soon Filter
+    // =============================
+    if (expiringSoon === "true") {
+      const now = new Date();
+      const future = new Date();
+      future.setDate(now.getDate() + Number(expiringInDays));
+
+      filter.validTill = {
+        $gte: now,
+        $lte: future
+      };
+
+      filter.active = true;
+    }
+
+    // =============================
+    // Pagination
+    // =============================
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const baseQuery = Coupon.find(filter)
       .populate("category", "name")
       .populate("createdby", "name phone type")
-      .populate("ownerId", "name phone type");
+      .populate("ownerId", "name phone type")
+      .sort({ creationDate: -1 });
 
-    // Dynamic summary filter (same as role filter)
+    // =============================
+    // Summary Counts (Parallel)
+    // =============================
+    const now = new Date();
+    const soonDate = new Date();
+    soonDate.setDate(now.getDate() + 7);
+
     const summaryFilter = { ...filter };
 
-    const now = new Date();
-    const expiringSoonDate = new Date();
-    expiringSoonDate.setDate(now.getDate() + 7);
-
-    const [total, activeCount, inactiveCount, expiringSoonCount] = await Promise.all([
+    const [
+      total,
+      activeCount,
+      inactiveCount,
+      expiringSoonCount
+    ] = await Promise.all([
       Coupon.countDocuments(summaryFilter),
       Coupon.countDocuments({ ...summaryFilter, active: true }),
       Coupon.countDocuments({ ...summaryFilter, active: false }),
       Coupon.countDocuments({
         ...summaryFilter,
         active: true,
-        validTill: { $gte: now, $lte: expiringSoonDate },
-      }),
+        validTill: { $gte: now, $lte: soonDate }
+      })
     ]);
 
+    // =============================
     // CSV Export
-    if (exportCSV) {
-      let allCoupons = await query.lean();
-      const exportData = allCoupons.map((c) => ({
+    // =============================
+    if (exportCSV === "true") {
+      const allCoupons = await baseQuery.lean();
+
+      const exportData = allCoupons.map(c => ({
         Title: c.title,
         Discount: c.discountPercentage,
-        Category: c.category?.name,
-        CreatedBy: c.createdby?.name,
-        OwnerBy: c.ownerId?.name,
+        Category: c.category?.name || "",
+        CreatedBy: c.createdby?.name || "",
+        OwnerBy: c.ownerId?.name || "",
         CreatedAt: c.creationDate,
         ValidTill: c.validTill,
-        Status: c.active ? "Active" : "Inactive",
+        Status: c.active ? "Active" : "Inactive"
       }));
 
       return exportToCSV(res, exportData, "all_coupons.csv");
     }
 
-    // Normal Pagination
-    let coupons = await query.skip(skip).limit(Number(limit)).lean();
+    // =============================
+    // Fetch Data
+    // =============================
+    const coupons = await baseQuery
+      .skip(skip)
+      .limit(Number(limit))
+      .lean();
 
-    // Add used count for each coupon
-    for (const coupon of coupons) {
-      coupon.used = await UserCoupon.countDocuments({
-        couponId: coupon._id,
-        status: "used",
-      });
-    }
+    // =============================
+    // Used Count (Batch Optimized)
+    // =============================
+    const couponIds = coupons.map(c => c._id);
 
+    const usageStats = await UserCoupon.aggregate([
+      { $match: { couponId: { $in: couponIds }, status: "used" } },
+      { $group: { _id: "$couponId", count: { $sum: 1 } } }
+    ]);
+
+    const usageMap = {};
+    usageStats.forEach(u => {
+      usageMap[u._id.toString()] = u.count;
+    });
+
+    coupons.forEach(c => {
+      c.used = usageMap[c._id.toString()] || 0;
+    });
+
+    // =============================
+    // Response
+    // =============================
     return res.status(200).json({
       success: true,
       page: Number(page),
@@ -2762,13 +2986,17 @@ export const getAllCouponsForAdmin = async (req, res) => {
       summary: {
         active: activeCount,
         inactive: inactiveCount,
-        expiringSoon: expiringSoonCount,
+        expiringSoon: expiringSoonCount
       },
-      data: coupons,
+      data: coupons
     });
+
   } catch (error) {
-    console.error("Error in getAllCouponsForAdmin:", error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error("getAllCouponsForAdmin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
   }
 };
 
