@@ -2786,7 +2786,7 @@ export const getAllCouponsForAdmin = async (req, res) => {
       exportCSV,
       status,              // active | inactive
       fromDate,
-      toDate,
+      toDate,  
       expiryFrom,
       expiryTo,
       expiringSoon,
