@@ -30,7 +30,7 @@ export const createCategory = async (req, res) => {
 // Get All Categories (with pagination, search, and access control)
 export const getCategories = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "" } = req.query;
+    const { page = 1, limit = 20, search = "" } = req.query;
 
     const query = {};
     if (search) {
