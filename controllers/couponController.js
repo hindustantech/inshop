@@ -1658,8 +1658,6 @@ export const createCoupon = async (req, res) => {
       shop_name,
       websiteLink,
       googleMapLink,
-      websiteLink,
-      googleMapLink,
       manul_address: manual_address,
       copuon_srno,
       discountPercentage,
