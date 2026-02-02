@@ -1,5 +1,5 @@
 import express from 'express';
-import { getAdUserCityByCopunWithGeo, getBannersByLocation, createAd, getAllAds, updateAd, addOrUpdateAds, appendAds, removeAds, bulkUpdateAds } from '../controllers/AdController.js';
+import { getAdUserCityByCopunSpacileWithGeo, getAdUserCityByCopunWithGeo, getBannersByLocation, createAd, getAllAds, updateAd, addOrUpdateAds, appendAds, removeAds, bulkUpdateAds } from '../controllers/AdController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1 } from '../middlewares/checkuser.js';
 import { checkPermission } from '../middlewares/checkPermission.js';
@@ -24,6 +24,7 @@ router.patch('/ads/remove', authMiddleware, removeAds);
 // Only super admin can use bulk operations
 router.patch('/ads/bulk', authMiddleware, bulkUpdateAds);
 router.get('/getAdUserCityByCopunWithGeo', authMiddleware1, getAdUserCityByCopunWithGeo);
+router.get('/getAdUserCityByCopunSpacileWithGeo', authMiddleware1, getAdUserCityByCopunSpacileWithGeo);
 router.get('/getBannersByLocation', authMiddleware1, getBannersByLocation);
 
 export default router;

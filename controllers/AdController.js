@@ -21,7 +21,7 @@ export const createAd = async (req, res) => {
 
     res.status(201).json({ success: true, message: "Ad created successfully", data: newAd });
   } catch (error) {
-    
+
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -32,7 +32,7 @@ export const getAllAds = async (req, res) => {
     const ads = await Ad.find().sort({ createdAt: -1 }); // Latest first
     res.status(200).json({ success: true, data: ads });
   } catch (error) {
-    
+
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -55,7 +55,7 @@ export const updateAd = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Ad updated successfully", data: updatedAd });
   } catch (error) {
-   
+
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -182,7 +182,7 @@ export const getBannersByLocation = async (req, res) => {
     });
 
   } catch (error) {
-  
+
     res.status(500).json({
       success: false,
       message: 'Server error'
@@ -202,18 +202,18 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     }
 
     // Validate query parameters
-    const { 
-      radius = 100000, 
-      search = '', 
-      page = 1, 
-      limit = 50, 
-      manualCode, 
-      lat, 
-      lng, 
+    const {
+      radius = 100000,
+      search = '',
+      page = 1,
+      limit = 50,
+      manualCode,
+      lat,
+      lng,
       category,
       promotion // New promotion filter parameter
     } = req.query;
-    
+
     const parsedPage = parseInt(page);
     const parsedLimit = parseInt(limit);
     const parsedRadius = parseInt(radius);
@@ -251,20 +251,29 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     if (promotion) {
       const promotionIds = Array.isArray(promotion) ? promotion : promotion.split(',');
       const validPromotionIds = promotionIds.filter(id => mongoose.isValidObjectId(id));
-      
+
       if (validPromotionIds.length !== promotionIds.length) {
         return res.status(400).json({ success: false, message: 'One or more invalid promotion IDs' });
       }
-      
+
       // Verify that the promotion IDs exist in the Ad collection
       const foundPromotions = await Ad.find({ _id: { $in: validPromotionIds } }).select('_id');
       if (foundPromotions.length !== validPromotionIds.length) {
         return res.status(400).json({ success: false, message: 'One or more promotions not found' });
       }
-      
+
       promotionFilter = { $in: validPromotionIds.map(id => new mongoose.Types.ObjectId(id)) };
     }
 
+
+    // Recommended filter
+    let recommendedFilter = null;
+
+    if (recomendedForyou === 'true') {
+      recommendedFilter = true;
+    } else if (recomendedForyou === 'false') {
+      recommendedFilter = false;
+    }
     const skip = (parsedPage - 1) * parsedLimit;
 
     let mode = userId ? 'user' : 'guest';
@@ -347,6 +356,9 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
     const geoQuery = {
       ...(categoryFilter ? { category: categoryFilter } : {}),
       ...(promotionFilter ? { promotion: promotionFilter } : {}),
+      ...(recommendedFilter !== null
+        ? { recomendedForyou: recommendedFilter }
+        : {}),
     };
 
     // 8️⃣ Build aggregation pipeline
@@ -453,6 +465,9 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
             $match: {
               is_spacial_copun: false,
               active: true,
+              ...(recommendedFilter !== null
+                ? { recomendedForyou: recommendedFilter }
+                : {}),
               $or: [
                 { validTill: { $gt: new Date() } },
                 { validTill: null },
@@ -613,8 +628,418 @@ export const getAdUserCityByCopunWithGeo = async (req, res) => {
       pages: Math.ceil(total / parsedLimit),
     });
   } catch (error) {
-    
+
     res.status(500).json({ success: false, message: 'An unexpected error occurred' });
+  }
+};
+
+export const getAdUserCityByCopunSpacileWithGeo = async (req, res) => {
+  try {
+    // Determine user ID (null for guests)
+    let userId = null;
+    if (req.user?.id && mongoose.isValidObjectId(req.user.id)) {
+      userId = new mongoose.Types.ObjectId(req.user.id);
+    }
+
+    // Validate query parameters
+    const {
+      radius = 100000,
+      search = '',
+      page = 1,
+      limit = 50,
+      manualCode,
+      lat,
+      lng,
+      category,
+      promotion,
+      recomendedForyou, // New recommended filter
+    } = req.query;
+
+    const parsedPage = parseInt(page);
+    const parsedLimit = parseInt(limit);
+    const parsedRadius = parseInt(radius);
+
+    if (isNaN(parsedPage) || parsedPage < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid page number' });
+    }
+    if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+      return res.status(400).json({ success: false, message: 'Invalid limit, must be between 1 and 100' });
+    }
+    if ((lat && isNaN(Number(lat))) || (lng && isNaN(Number(lng)))) {
+      return res.status(400).json({ success: false, message: 'Invalid latitude or longitude' });
+    }
+    if (isNaN(parsedRadius) || parsedRadius < 0) {
+      return res.status(400).json({ success: false, message: 'Invalid radius' });
+    }
+
+    // Enhanced category validation
+    let categoryFilter = null;
+    if (category) {
+      const categoryIds = Array.isArray(category) ? category : category.split(',');
+      const validIds = categoryIds.filter(id => mongoose.isValidObjectId(id));
+      if (validIds.length !== categoryIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more invalid category IDs' });
+      }
+      const foundCategories = await Category.find({ _id: { $in: validIds } }).select('_id');
+      if (foundCategories.length !== validIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more categories not found' });
+      }
+      categoryFilter = { $in: validIds.map(id => new mongoose.Types.ObjectId(id)) };
+    }
+
+    // Promotion filter validation and setup
+    let promotionFilter = null;
+    if (promotion) {
+      const promotionIds = Array.isArray(promotion) ? promotion : promotion.split(',');
+      const validPromotionIds = promotionIds.filter(id => mongoose.isValidObjectId(id));
+
+      if (validPromotionIds.length !== promotionIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more invalid promotion IDs' });
+      }
+
+      const foundPromotions = await Ad.find({ _id: { $in: validPromotionIds } }).select('_id');
+      if (foundPromotions.length !== validPromotionIds.length) {
+        return res.status(400).json({ success: false, message: 'One or more promotions not found' });
+      }
+
+      promotionFilter = { $in: validPromotionIds.map(id => new mongoose.Types.ObjectId(id)) };
+    }
+
+    // Recommended filter validation
+    let recommendedFilter = null;
+    if (recomendedForyou !== undefined) {
+      // Convert to boolean properly
+      if (recomendedForyou === 'true' || recomendedForyou === '1' || recomendedForyou === true) {
+        recommendedFilter = true;
+      } else if (recomendedForyou === 'false' || recomendedForyou === '0' || recomendedForyou === false) {
+        recommendedFilter = false;
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid recomendedForyou value. Use true/false, 1/0'
+        });
+      }
+    }
+
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    let mode = userId ? 'user' : 'guest';
+    let baseLocation = null;
+    let effectiveRadius = parsedRadius;
+    let sortByLatest = false;
+
+    // 1️⃣ Logged-in user: Get latestLocation
+    if (userId) {
+      const user = await User.findById(userId).select('latestLocation');
+      if (user?.latestLocation?.coordinates &&
+        user.latestLocation.coordinates[0] !== 0 &&
+        user.latestLocation.coordinates[1] !== 0) {
+        const [userLng, userLat] = user.latestLocation.coordinates;
+        baseLocation = { type: 'Point', coordinates: [userLng, userLat] };
+      }
+    }
+
+    // 2️⃣ Manual location (via manualCode)
+    let manualLocation = null;
+    if (manualCode) {
+      manualLocation = await ManualAddress.findOne({ uniqueCode: manualCode })
+        .select('city state location');
+      if (manualLocation?.location?.coordinates) {
+        if (!baseLocation) {
+          baseLocation = manualLocation.location;
+          mode = 'manual';
+          effectiveRadius = parsedRadius;
+        } else {
+          const check = await ManualAddress.aggregate([
+            {
+              $geoNear: {
+                near: baseLocation,
+                distanceField: 'distance',
+                spherical: true,
+                query: { uniqueCode: manualCode },
+              },
+            },
+            { $project: { distance: 1 } },
+          ]);
+
+          const distance = check[0]?.distance || 0;
+          if (distance > 100000) {
+            mode = 'manual';
+            baseLocation = manualLocation.location;
+            effectiveRadius = parsedRadius;
+          }
+        }
+      }
+    }
+
+    // 3️⃣ Custom location from query params (lat, lng)
+    if (lat && lng) {
+      baseLocation = { type: 'Point', coordinates: [Number(lng), Number(lat)] };
+      mode = 'custom';
+      effectiveRadius = parsedRadius || 100000;
+    }
+
+    // 4️⃣ Fallback: Default location (center of India) with no radius for latest coupons
+    if (!baseLocation) {
+      baseLocation = { type: 'Point', coordinates: [78.9629, 20.5937] };
+      mode = 'default';
+      effectiveRadius = null;
+      sortByLatest = true;
+    }
+
+    // 5️⃣ Build search regex
+    const searchRegex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+    // 6️⃣ Get referred users for the logged-in user (if applicable)
+    let referredUserIds = [];
+    if (userId) {
+      const specialCouponUsers = await Coupon.find({ is_spacial_copun: true })
+        .distinct('is_spacial_copun_user');
+      const referralUsages = await ReferralUsage.find({
+        referrerId: { $in: specialCouponUsers },
+      }).distinct('referredUserId');
+      referredUserIds = referralUsages.map(id => new mongoose.Types.ObjectId(id));
+    }
+
+    // 7️⃣ Build base match query for geoNear
+    const geoQuery = {
+      status: 'published', // Add status filter
+      active: true,
+      $or: [
+        { validTill: { $gt: new Date() } },
+        { validTill: null },
+      ],
+      ...(categoryFilter ? { category: categoryFilter } : {}),
+      ...(promotionFilter ? { promotion: promotionFilter } : {}),
+      ...(recommendedFilter !== null ? { recomendedForyou: recommendedFilter } : {}),
+    };
+
+    // 8️⃣ Build common pipeline stages
+    const buildCommonPipeline = (forCounting = false) => {
+      const pipeline = [
+        {
+          $geoNear: {
+            near: baseLocation,
+            distanceField: 'distance',
+            ...(effectiveRadius ? { maxDistance: effectiveRadius } : {}),
+            spherical: true,
+            key: 'shope_location',
+            query: geoQuery,
+          },
+        },
+      ];
+
+      // Add search filter
+      if (search.trim()) {
+        pipeline.push({
+          $match: {
+            $or: [
+              { manual_address: searchRegex },
+              { title: searchRegex },
+              { tag: { $elemMatch: { $regex: searchRegex } } },
+            ],
+          },
+        });
+      }
+
+      return pipeline;
+    };
+
+    // 9️⃣ User-specific pipeline stages
+    const buildUserPipeline = (forCounting = false) => {
+      const pipeline = [
+        // Filter for special coupons
+        {
+          $match: {
+            $or: [
+              { is_spacial_copun: false }, // Non-special coupons are visible to all
+              {
+                is_spacial_copun: true,
+                $or: [
+                  { is_spacial_copun_user: userId }, // User is in special coupon user list
+                  { is_spacial_copun_user: { $in: referredUserIds } }, // User was referred by special coupon user
+                ],
+              },
+            ],
+          },
+        },
+        {
+          $lookup: {
+            from: 'usercoupons',
+            let: { couponId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$couponId', '$$couponId'] },
+                      { $eq: ['$userId', userId] },
+                    ],
+                  },
+                },
+              },
+              { $project: { status: 1, count: 1, _id: 0 } },
+            ],
+            as: 'userStatus',
+          },
+        },
+        { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+        {
+          $match: {
+            $or: [
+              { userStatus: { $exists: false } },
+              {
+                $and: [
+                  { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                  { 'userStatus.count': { $gte: 1 } },
+                ],
+              },
+            ],
+          },
+        },
+      ];
+
+      if (!forCounting) {
+        pipeline.push(
+          {
+            $addFields: {
+              couponCount: { $ifNull: ['$userStatus.count', 1] },
+            },
+          },
+          {
+            $addFields: {
+              displayTag: {
+                $cond: {
+                  if: { $eq: ['$userStatus.status', 'cancelled'] },
+                  then: { $concat: ['Cancelled: ', { $toString: '$couponCount' }] },
+                  else: { $concat: ['Available: ', { $toString: '$couponCount' }] },
+                },
+              },
+            },
+          }
+        );
+      }
+
+      return pipeline;
+    };
+
+    // 🔟 Guest-specific pipeline stages
+    const buildGuestPipeline = () => [
+      {
+        $match: {
+          is_spacial_copun: false,
+        },
+      },
+      ...(!userId ? [{
+        $addFields: {
+          displayTag: 'Available coupon: 1',
+        },
+      }] : []),
+    ];
+
+    // 1️⃣1️⃣ Build complete data pipeline
+    const dataPipeline = [
+      ...buildCommonPipeline(false),
+      ...(userId ? buildUserPipeline(false) : buildGuestPipeline()),
+      // Add promotion lookup
+      {
+        $lookup: {
+          from: 'ads',
+          localField: 'promotion',
+          foreignField: '_id',
+          as: 'promotionDetails'
+        }
+      },
+      {
+        $project: {
+          title: 1,
+          shop_name: 1,
+          copuon_image: 1,
+          manual_address: 1,
+          copuon_srno: 1,
+          coupon_color: 1,
+          is_spacial_copun: 1,
+          isTransferable: 1,
+          discountPercentage: 1,
+          validTill: 1,
+          displayTag: 1,
+          recomendedForyou: 1, // Include in response
+          distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
+          promotion: 1,
+          promotionDetails: {
+            $arrayElemAt: ['$promotionDetails', 0]
+          },
+        },
+      },
+      {
+        $sort: sortByLatest ?
+          { recomendedForyou: -1, validTill: -1, createdAt: -1 } : // Prioritize recommended coupons
+          { recomendedForyou: -1, distance: 1, validTill: -1 }
+      },
+      { $skip: skip },
+      { $limit: parsedLimit },
+    ];
+
+    // 1️⃣2️⃣ Build count pipeline
+    const countPipeline = [
+      ...buildCommonPipeline(true),
+      ...(userId ? buildUserPipeline(true) : [
+        {
+          $match: {
+            is_spacial_copun: false,
+          },
+        },
+      ]),
+      { $count: 'total' },
+    ];
+
+    // Execute both pipelines in parallel for better performance
+    const [coupons, totalResult] = await Promise.all([
+      Coupon.aggregate(dataPipeline),
+      Coupon.aggregate(countPipeline),
+    ]);
+
+    const total = totalResult[0]?.total || 0;
+
+    res.status(200).json({
+      success: true,
+      mode,
+      data: coupons,
+      page: parsedPage,
+      limit: parsedLimit,
+      total,
+      pages: Math.ceil(total / parsedLimit),
+      filters: {
+        ...(categoryFilter && { category: category }),
+        ...(promotionFilter && { promotion: promotion }),
+        ...(recommendedFilter !== null && { recomendedForyou: recommendedFilter }),
+        ...(search && { search }),
+      },
+    });
+  } catch (error) {
+    console.error('Error in getAdUserCityByCopunSpacileWithGeo:', error);
+
+    // More specific error handling
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid data format in request'
+      });
+    }
+
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        details: error.message
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'An unexpected error occurred',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+    });
   }
 };
 

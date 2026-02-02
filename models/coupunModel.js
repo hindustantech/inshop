@@ -110,9 +110,9 @@ const couponSchema = new mongoose.Schema({
     ref: 'User', // assuming you have an 'Owner' model or similar
     required: true
   },
-  owner_phone:{
+  owner_phone: {
     type: String,
-  
+
   },
   validFrom: {
     type: Date,
@@ -234,6 +234,11 @@ const couponSchema = new mongoose.Schema({
     type: Boolean,
     default: false // Default: not transferable
   },
+  recomendedForyou: {
+    type: Boolean,
+    default: false // Default: not recommended
+  },
+
   isGiftHamper: {
     type: Boolean,
     default: false // Default: not GiftHamper
@@ -252,6 +257,17 @@ const couponSchema = new mongoose.Schema({
     type: [String],
     require: true,
   },
+
+  websiteLink: {
+    type: String,
+    required: false,
+    default: null
+  },
+    googlreMapLink: {
+    type: String,
+    required: false,
+    default: null
+  } ,
 
 
 });

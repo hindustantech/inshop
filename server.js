@@ -42,6 +42,7 @@ import supports from './routes/supoort.js'
 import scanTounluck from './routes/unlockRoute.js'
 import giftHamperRoutes from './routes/GiftHamper.route.js';
 import corporateRoutes from './routes/corperate.js'
+import appsettingroutes from './routes/appsetting.js'
 // import './cron/referralSummary.cron.js'
 // import './controllers/crronjob.js'
 dotenv.config();
@@ -77,7 +78,7 @@ app.use('/api/agencypatner', agencypatner);
 // API routes
 app.use("/api/gift-hampers", giftHamperRoutes);
 app.use("/api/corporateRoutes", corporateRoutes);
-
+app.use('/api/appsetting', appsettingroutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/coupon', couponRoutes);
 app.use('/api/link', linkRoutes);
