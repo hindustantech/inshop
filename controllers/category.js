@@ -30,9 +30,13 @@ export const createCategory = async (req, res) => {
 // Get All Categories (with pagination, search, and access control)
 export const getCategories = async (req, res) => {
   try {
-    const { page = 1, limit = 20, search = "" } = req.query;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const search = req.query.search?.trim() || "";
 
     const query = {};
+
+    /* ---------------- Search Filter ---------------- */
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -42,29 +46,103 @@ export const getCategories = async (req, res) => {
       ];
     }
 
-    // If user is not authenticated or not super_admin, only fetch active categories
+    /* ------------- Role Based Filter -------------- */
     if (!req.user || req.user.type !== "super_admin") {
       query.isActive = true;
+
+      // Exclude occasion=true
+      query.occasion = { $ne: true };
     }
 
-    const categories = await Category.find(query)
-      .skip((page - 1) * limit)
-      .limit(Number(limit))
-      .sort({ createdAt: -1 });
+    /* -------------- Pagination Logic -------------- */
+    const skip = (page - 1) * limit;
 
-    const total = await Category.countDocuments(query);
+    /* ------------------ Database ------------------ */
+    const [categories, total] = await Promise.all([
+      Category.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
 
+      Category.countDocuments(query),
+    ]);
+
+    /* ------------------ Response ------------------ */
     res.status(200).json({
+      success: true,
       total,
-      page: Number(page),
-      limit: Number(limit),
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
       categories,
     });
   } catch (error) {
-    res.status(500).json({ message: "Error fetching categories", error: error.message });
+    console.error("getCategories Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Error fetching categories",
+      error: error.message,
+    });
   }
 };
 
+
+export const getActiveOccasionCategories = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const search = req.query.search?.trim() || "";
+
+    const query = {
+      occasion: true,
+      isActive: true, // Only active occasions
+    };
+
+    /* ---------------- Search Filter ---------------- */
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { slug: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { tags: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    /* ---------------- Pagination ---------------- */
+    const skip = (page - 1) * limit;
+
+    /* ---------------- Database ---------------- */
+    const [categories, total] = await Promise.all([
+      Category.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Category.countDocuments(query),
+    ]);
+
+    /* ---------------- Response ---------------- */
+    res.status(200).json({
+      success: true,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      categories,
+    });
+  } catch (error) {
+    console.error("getActiveOccasionCategories Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Error fetching occasion categories",
+      error: error.message,
+    });
+  }
+};
 // Get Single Category (restrict inactive categories to super_admin)
 export const getCategoryById = async (req, res) => {
   try {

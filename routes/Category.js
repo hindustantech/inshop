@@ -6,7 +6,8 @@ import {
   getCategoryById,
   updateCategory,
   toggleCategory,
-  convetintoOccasion
+  convetintoOccasion,
+  getActiveOccasionCategories,
 } from "../controllers/category.js";
 import optionalAuth from "../middlewares/optionalAuth.js";
 import { checkPermission } from "../middlewares/checkPermission.js";
@@ -17,7 +18,8 @@ const router = express.Router();
 router.post("/createCategory", authMiddleware, checkPermission('category.create'), createCategory);
 
 // Get all categories (with pagination, search, and optional auth)
-router.get("/getCategories", optionalAuth,  getCategories);
+router.get("/getCategories", optionalAuth, getCategories);
+router.get("/getActiveOccasionCategories", optionalAuth, getActiveOccasionCategories);
 
 // Get single category by ID
 router.get("/getCategoryById/:id", optionalAuth, getCategoryById);
