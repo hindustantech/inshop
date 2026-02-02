@@ -1370,8 +1370,8 @@ export const createCoupon = async (req, res) => {
       isTransferable = false,
       tag,
       shope_location,
-      googlreMapLink,
       websiteLink,
+      googleMapLink
       // User CANNOT provide these - they come from plan
       // validityDays, // NOT ALLOWED
 
@@ -1656,9 +1656,10 @@ export const createCoupon = async (req, res) => {
     const couponData = {
       title,
       shop_name,
-      coupon_color,
-      googlreMapLink,
       websiteLink,
+      googleMapLink,
+      websiteLink,
+      googleMapLink,
       manul_address: manual_address,
       copuon_srno,
       discountPercentage,
@@ -1872,8 +1873,8 @@ export const createCouponAdmin = async (req, res) => {
       tag,
       shope_location,
       planId,
-      googlreMapLink,
       websiteLink,
+      googleMapLink,
     } = req.body;
 
     const userId = req.user?._id;
@@ -2118,8 +2119,8 @@ export const createCouponAdmin = async (req, res) => {
       title,
       owner_phone,
       shop_name,
-      googlreMapLink,
       websiteLink,
+      googleMapLink,
       coupon_color,
       manul_address: manual_address,
       copuon_srno,
@@ -3060,7 +3061,7 @@ export const getById = async (req, res) => {
       .populate("createdby", "name phone")
       .populate("category", "name")
       .populate("ownerId", "name phone")
-      .lean(); // performance + safe mutation
+      .lean();
 
     if (!coupon) {
       return res.status(404).json({
@@ -3069,23 +3070,21 @@ export const getById = async (req, res) => {
       });
     }
 
-    /* ----------------------------------------------------
-       Owner phone resolution (STRICT priority)
-       1. coupon.owner_phone
-       2. coupon.ownerId.phone
-    ----------------------------------------------------- */
-
+    /* Normalize Owner Phone */
     const resolvedOwnerPhone =
-      coupon.owner_phone && coupon.owner_phone.trim() !== ""
-        ? coupon.owner_phone
-        : coupon.ownerId?.phone || null;
+      coupon.owner_phone?.trim() ||
+      coupon.ownerId?.phone ||
+      null;
 
-    // keep response structure identical, just normalize values
     coupon.owner_phone = resolvedOwnerPhone;
 
     if (coupon.ownerId) {
       coupon.ownerId.phone = resolvedOwnerPhone;
     }
+
+    /* Normalize Links */
+    coupon.websiteLink = coupon.websiteLink || null;
+    coupon.googleMapLink = coupon.googleMapLink || null;
 
     return res.status(200).json({
       success: true,
