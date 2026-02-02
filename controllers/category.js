@@ -143,24 +143,51 @@ export const toggleCategory = async (req, res) => {
 };
 
 
+
 export const convetintoOccasion = async (req, res) => {
   try {
     const { id } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid category ID" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid category ID",
+      });
     }
-    const category = await Category.findById(id);
+
+    const category = await Category.findByIdAndUpdate(
+      id,
+      [
+        {
+          $set: {
+            occasion: { $not: "$occasion" },
+          },
+        },
+      ],
+      { new: true }
+    );
+
     if (!category) {
-      return res.status(404).json({ message: "Category not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Category not found",
+      });
     }
-    category.occasion = true;
-    await category.save();
-    res.status(200).json({
-      message: `Category converted to occasion successfully`,
-      category,
+
+    return res.status(200).json({
+      success: true,
+      message: `Category occasion ${category.occasion ? "enabled" : "disabled"
+        } successfully`,
+      data: category,
     });
-  }
-  catch (error) {
-    res.status(500).json({ message: "Error converting category to occasion", error: error.message });
+
+  } catch (error) {
+    console.error("Toggle Occasion Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
