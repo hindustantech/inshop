@@ -6,6 +6,7 @@ import {
   getCategoryById,
   updateCategory,
   toggleCategory,
+  convetintoOccasion
 } from "../controllers/category.js";
 import optionalAuth from "../middlewares/optionalAuth.js";
 import { checkPermission } from "../middlewares/checkPermission.js";
@@ -26,5 +27,6 @@ router.put("/updateCategory/:id", optionalAuth, checkPermission('category.update
 
 // Toggle category status (requires super_admin, adjust middleware as needed)
 router.patch("/toggleCategory/:id", optionalAuth, checkPermission('category.update'), toggleCategory);
+router.patch("/convetintoOccasion/:id", optionalAuth, checkPermission('category.update'), convetintoOccasion);
 
 export default router;
