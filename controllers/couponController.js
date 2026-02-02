@@ -1370,6 +1370,8 @@ export const createCoupon = async (req, res) => {
       isTransferable = false,
       tag,
       shope_location,
+      googlreMapLink,
+      websiteLink,
       // User CANNOT provide these - they come from plan
       // validityDays, // NOT ALLOWED
 
@@ -1655,6 +1657,8 @@ export const createCoupon = async (req, res) => {
       title,
       shop_name,
       coupon_color,
+      googlreMapLink,
+      websiteLink,
       manul_address: manual_address,
       copuon_srno,
       discountPercentage,
@@ -1867,7 +1871,9 @@ export const createCouponAdmin = async (req, res) => {
       isTransferable = false,
       tag,
       shope_location,
-      planId, // Optional: only required if payment is required
+      planId,
+      googlreMapLink,
+      websiteLink,
     } = req.body;
 
     const userId = req.user?._id;
@@ -2112,6 +2118,8 @@ export const createCouponAdmin = async (req, res) => {
       title,
       owner_phone,
       shop_name,
+      googlreMapLink,
+      websiteLink,
       coupon_color,
       manul_address: manual_address,
       copuon_srno,
