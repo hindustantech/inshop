@@ -1,29 +1,76 @@
 // controllers/category.js
 import Category from "../models/CategoryCopun.js";
 import mongoose from "mongoose";
+import { uploadToCloudinary } from "../utils/Cloudinary.js";
 
-// Create Category (unchanged)
+
+
 export const createCategory = async (req, res) => {
   try {
     const { name, slug, description, tags } = req.body;
 
-    const categoryExists = await Category.findOne({ slug });
-    if (categoryExists) {
-      return res.status(400).json({ message: "Category with this slug already exists" });
+    /* ===============================
+       Validation
+    =============================== */
+
+    if (!name || !slug) {
+      return res.status(400).json({
+        success: false,
+        message: "Name and slug are required",
+      });
     }
 
-    const category = new Category({
+    const existingCategory = await Category.findOne({
+      $or: [{ slug }, { name }],
+    });
+
+    if (existingCategory) {
+      return res.status(409).json({
+        success: false,
+        message: "Category already exists",
+      });
+    }
+
+    /* ===============================
+       Image Upload
+    =============================== */
+
+    let imageUrl = null;
+
+    if (req.file?.buffer) {
+      const uploadResult = await uploadToCloudinary(
+        req.file.buffer,
+        "categories"
+      );
+
+      imageUrl = uploadResult.secure_url;
+    }
+
+    /* ===============================
+       Create Category
+    =============================== */
+
+    const category = await Category.create({
       name,
       slug,
       description,
-      tags,
-      createdBy: req.user ? req.user._id : null,
+      tags: tags ? tags.split(",") : [],
+      image: imageUrl,
+      createdBy: req.user?._id || null,
     });
 
-    await category.save();
-    res.status(201).json({ message: "Category created successfully", category });
+    return res.status(201).json({
+      success: true,
+      message: "Category created successfully",
+      data: category,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Error creating category", error: error.message });
+    console.error("Create Category Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };
 

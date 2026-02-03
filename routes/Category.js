@@ -12,10 +12,15 @@ import {
 import optionalAuth from "../middlewares/optionalAuth.js";
 import { checkPermission } from "../middlewares/checkPermission.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
+import multer from "multer";
 const router = express.Router();
 
+const storage = multer.memoryStorage(); // ✅ stores buffer in memory
+
+const upload = multer({ storage });
+
 // Create new category (requires authentication, adjust as needed)
-router.post("/createCategory", authMiddleware, checkPermission('category.create'), createCategory);
+router.post("/createCategory", authMiddleware, checkPermission('category.create'), upload.single("image"), createCategory);
 
 // Get all categories (with pagination, search, and optional auth)
 router.get("/getCategories", optionalAuth, getCategories);
