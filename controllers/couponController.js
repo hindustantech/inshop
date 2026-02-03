@@ -80,6 +80,51 @@ function deg2rad(deg) {
 }
 
 
+export const toggleRecommendedCoupon = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Coupon ID",
+      });
+    }
+
+    const coupon = await Coupon.findOneAndUpdate(
+      { _id: id },
+      [
+        {
+          $set: {
+            recomendedForyou: { $not: "$recomendedForyou" }
+          }
+        }
+      ],
+      { new: true }
+    ).select("recomendedForyou");
+
+    if (!coupon) {
+      return res.status(404).json({
+        success: false,
+        message: "Coupon not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Recommended status updated",
+      data: coupon,
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: err.message,
+    });
+  }
+};
+
 
 export const generateTheQRCode = async (req, res) => {
   try {

@@ -36,6 +36,7 @@ import {
     createGiftHamperAdmin,
     getAllGiftForAdmin,
     getGiftById,
+    toggleRecommendedCoupon,
 } from '../controllers/couponController.js';
 import { checkPermission } from '../middlewares/checkPermission.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
@@ -98,6 +99,7 @@ router.put(
 
 router.get('/getAllCouponsWithStatusTag', authMiddleware1, getAllCouponsWithStatusTag);
 router.get('/getAllGiftWithStatusTag', authMiddleware1, getAllGiftWithStatusTag);
+router.patch('/toggleRecommendedCoupon/:id', authMiddleware1, toggleRecommendedCoupon);
 
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);
