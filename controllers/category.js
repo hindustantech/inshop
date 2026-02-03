@@ -219,20 +219,108 @@ export const getCategoryById = async (req, res) => {
 export const updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const { name, slug, description, tags } = req.body;
+
+    /* ===============================
+       Validation
+    =============================== */
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid category ID" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid category ID"
+      });
     }
 
-    const category = await Category.findByIdAndUpdate(id, updates, { new: true });
+    if (!name || !slug) {
+      return res.status(400).json({
+        success: false,
+        message: "Name and slug are required",
+      });
+    }
+
+    // Check for duplicate category (excluding current category)
+    const existingCategory = await Category.findOne({
+      $or: [{ slug }, { name }],
+      _id: { $ne: id }
+    });
+
+    if (existingCategory) {
+      return res.status(409).json({
+        success: false,
+        message: "Category with this name or slug already exists",
+      });
+    }
+
+    /* ===============================
+       Find existing category
+    =============================== */
+
+    const category = await Category.findById(id);
     if (!category) {
-      return res.status(404).json({ message: "Category not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Category not found",
+      });
     }
 
-    res.status(200).json({ message: "Category updated successfully", category });
+    /* ===============================
+       Image Upload
+    =============================== */
+
+    let imageUrl = category.image; // Keep existing image by default
+
+    if (req.file?.buffer) {
+      const uploadResult = await uploadToCloudinary(
+        req.file.buffer,
+        "categories"
+      );
+
+      imageUrl = uploadResult.secure_url;
+
+      // Optional: Delete old image from Cloudinary if exists
+      // if (category.image) {
+      //   await deleteFromCloudinary(category.image);
+      // }
+    }
+
+    /* ===============================
+       Prepare update data
+    =============================== */
+
+    const updateData = {
+      name,
+      slug,
+      description,
+      tags: tags ? tags.split(",").map(tag => tag.trim()) : category.tags,
+      image: imageUrl,
+      updatedAt: Date.now(),
+    };
+
+    /* ===============================
+       Update Category
+    =============================== */
+
+    const updatedCategory = await Category.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Category updated successfully",
+      data: updatedCategory,
+    });
+
   } catch (error) {
-    res.status(500).json({ message: "Error updating category", error: error.message });
+    console.error("Update Category Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
 

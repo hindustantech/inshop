@@ -30,7 +30,7 @@ router.get("/getActiveOccasionCategories", optionalAuth, getActiveOccasionCatego
 router.get("/getCategoryById/:id", optionalAuth, getCategoryById);
 
 // Update category (requires authentication, adjust as needed)
-router.put("/updateCategory/:id", optionalAuth, checkPermission('category.update'), updateCategory);
+router.put("/updateCategory/:id", optionalAuth, checkPermission('category.update'),  upload.single("image"),updateCategory);
 
 // Toggle category status (requires super_admin, adjust middleware as needed)
 router.patch("/toggleCategory/:id", optionalAuth, checkPermission('category.update'), toggleCategory);
