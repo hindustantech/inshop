@@ -99,10 +99,10 @@ export const deleteUser = async (req, res) => {
     const user = await User.findByIdAndDelete(targetUserId);
 
 
-   
 
 
-   
+
+
 
 
 
@@ -575,6 +575,361 @@ export const UpdateManualAddress = async (req, res) => {
   }
 };
 
+
+export const generateUniqueReferralCode = async () => {
+  let code;
+  let exists = true;
+  let attempts = 0;
+
+  while (exists && attempts < 5) {
+    code = "IND" + Math.floor(100 + Math.random() * 900);
+
+    exists = await User.exists({
+      referalCode: code,
+    });
+
+    attempts++;
+  }
+
+  if (exists) {
+    throw new Error("Referral code generation failed");
+  }
+
+  return code;
+};
+
+
+export const startAuth = async (req, res) => {
+  try {
+    const { phone, deviceId, type, referralCode } = req.body;
+
+    /* ---------- Validation ---------- */
+
+    if (!phone || !deviceId || !type) {
+      return res.status(400).json({
+        message: "phone, deviceId and type required",
+      });
+    }
+
+    const allowed = ["user", "partner", "agency"];
+
+    if (!allowed.includes(type)) {
+      return res.status(401).json({
+        message: "Invalid type",
+      });
+    }
+
+    // Optional referral validation
+    if (referralCode && !/^IND\d{3}$/.test(referralCode)) {
+      return res.status(400).json({
+        message: "Invalid referral code format",
+      });
+    }
+
+    const cleanPhone = phone.trim();
+
+    /* ---------- Device Check ---------- */
+
+    const deviceUser = await User.findOne({ deviceId });
+
+    if (deviceUser && deviceUser.phone !== cleanPhone) {
+      return res.status(409).json({
+        message: "Device already linked to another account",
+      });
+    }
+
+    /* ---------- Find User ---------- */
+
+    let user = await User.findOne({ phone: cleanPhone });
+
+    let isNew = false;
+
+    /* ---------- Create If New ---------- */
+
+    if (!user) {
+      // Generate own referral
+      const ownReferral = await generateUniqueReferralCode();
+
+      user = await User.create({
+        phone: cleanPhone,
+        type,
+        referalCode: ownReferral,       // user's own code
+        referredBy: referralCode || null, // who referred him (optional)
+        isVerified: false,
+      });
+
+      isNew = true;
+    }
+
+    /* ---------- Type Lock ---------- */
+
+    if (!isNew && user.type !== type) {
+      return res.status(403).json({
+        message: "Account type mismatch",
+      });
+    }
+
+    /* ---------- Send OTP ---------- */
+
+    const otpResp = await sendWhatsAppOtp(cleanPhone);
+
+    if (!otpResp.success) {
+      if (isNew) await User.findByIdAndDelete(user._id);
+
+      return res.status(500).json({
+        message: "OTP send failed",
+      });
+    }
+
+    /* ---------- Save WhatsApp UID ---------- */
+
+    await User.updateOne(
+      { _id: user._id },
+      { whatsapp_uid: otpResp.data }
+    );
+
+    /* ---------- Response ---------- */
+
+    return res.json({
+      message: isNew
+        ? "Registered. OTP sent"
+        : "Login OTP sent",
+
+      userId: user._id,
+      isNewUser: isNew,
+      type: user.type,
+    });
+
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: "Auth start failed",
+      error: err.message,
+    });
+  }
+};
+
+
+export const completOtp = async (req, res) => {
+  try {
+    const { userId, otp, deviceId } = req.body;
+
+    if (!userId || !otp || !deviceId) {
+      return res.status(400).json({
+        message: "userId, otp, deviceId required",
+      });
+    }
+
+    // 1. Get user
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    // 2. Verify OTP
+    const verify = await verifyWhatsAppOtp(
+      user.whatsapp_uid,
+      otp
+    );
+
+    if (!verify.success) {
+      return res.status(400).json({
+        message: "Invalid OTP",
+      });
+    }
+
+    // 3. Bind device atomically
+    const updated = await User.findOneAndUpdate(
+      {
+        _id: userId,
+        $or: [{ deviceId: null }, { deviceId }],
+      },
+      {
+        $set: {
+          isVerified: true,
+          deviceId,
+          otp: null,
+        },
+      },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(409).json({
+        message: "Device already bound",
+      });
+    }
+
+    // 4. JWT
+    const token = generateToken(
+      updated._id,
+      updated.type
+    );
+
+    return res.json({
+      message: "Login success",
+      token,
+
+      user: {
+        id: updated._id,
+        phone: updated.phone,
+        type: updated.type,
+        isVerified: true,
+      },
+    });
+
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      message: "OTP verify failed",
+      error: err.message,
+    });
+  }
+};
+
+
+export const completeProfile = async (req, res) => {
+  try {
+    const userId = req.user.id; // from JWT middleware
+
+    const {
+      name,
+      email,
+      profileImage,
+      data,
+    } = req.body;
+
+    /* ---------- Validation ---------- */
+
+    if (!name && !email && !profileImage && !data) {
+      return res.status(400).json({
+        message: "At least one field is required",
+      });
+    }
+
+    /* ---------- Email Validation ---------- */
+
+    if (email) {
+      const emailRegex =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({
+          message: "Invalid email format",
+        });
+      }
+
+      const exists = await User.findOne({
+        email: email.toLowerCase(),
+        _id: { $ne: userId },
+      });
+
+      if (exists) {
+        return res.status(409).json({
+          message: "Email already in use",
+        });
+      }
+    }
+
+    /* ---------- Build Update Object ---------- */
+
+    const update = {};
+
+    if (name) update.name = name.trim();
+
+    if (email)
+      update.email = email.toLowerCase().trim();
+
+    if (profileImage)
+      update.profileImage = profileImage;
+
+    if (data && typeof data === "object")
+      update.data = data;
+
+    // Mark profile as completed
+    update.isProfileCompleted = true;
+
+    /* ---------- Atomic Update ---------- */
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: update },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select("-password -otp");
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    /* ---------- Response ---------- */
+
+    return res.json({
+      message: "Profile completed successfully",
+      user,
+    });
+
+  } catch (err) {
+    console.error(err);
+
+    if (err.code === 11000) {
+      return res.status(409).json({
+        message: "Duplicate field error",
+      });
+    }
+
+    res.status(500).json({
+      message: "Profile update failed",
+      error: err.message,
+    });
+  }
+};
+
+export const findUserByReferralOwner = async (req, res) => {
+  try {
+    const { code } = req.params;
+
+    if (!code) {
+      return res.status(400).json({
+        message: "Referral code is required",
+      });
+    }
+
+    // ✅ Find ONLY owner of this referral code
+    const user = await User.findOne({
+      referalCode: code,
+    }).select("-password -otp -whatsapp_uid");
+
+    if (!user) {
+      return res.status(404).json({
+        message: "No user found with this referral code",
+      });
+    }
+
+    return res.json({
+      success: true,
+      user,
+    });
+
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      success: false,
+      message: "Referral search failed",
+      error: err.message,
+    });
+  }
+};
 
 const signup = async (req, res) => {
   try {

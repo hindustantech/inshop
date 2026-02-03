@@ -22,6 +22,10 @@ import {
     getUserIdsAndNamesByReferralCodesController,
     getUserProfile,
     deleteUser,
+    startAuth,
+    completOtp,
+    completeProfile,
+    findUserByReferralOwner,
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
@@ -47,6 +51,12 @@ router.post('/signup', signup);
 router.post("/find-by-phone", findUserByPhone);
 router.get("/getUserProfile", authMiddleware, getUserProfile);
 router.delete("/deleteUser", authMiddleware, deleteUser);
+
+
+router.post('/startAuth', startAuth);
+router.post('/completOtp', completOtp);
+router.post('/completeProfile', authMiddleware, completeProfile);
+router.post('/findUserByReferralOwner/:code', authMiddleware, findUserByReferralOwner);
 
 router.post('/verifyOtp', verifyOtp);
 router.post('/login', login);
