@@ -56,7 +56,7 @@ router.delete("/deleteUser", authMiddleware, deleteUser);
 router.post('/startAuth', startAuth);
 router.post('/completOtp', completOtp);
 router.post('/completeProfile', authMiddleware, completeProfile);
-router.post('/findUserByReferralOwner/:code', authMiddleware, findUserByReferralOwner);
+router.get('/findUserByReferralOwner/:code', authMiddleware, findUserByReferralOwner);
 
 router.post('/verifyOtp', verifyOtp);
 router.post('/login', login);
