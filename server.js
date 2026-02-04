@@ -68,7 +68,10 @@ app.use(express.urlencoded({ limit: "50mb", extended: true })); // For
 app.get('/', (req, res) => {
   res.send('inshop is Running Smoothly!');
 });
-
+app.use(
+  "/exports",
+  express.static(path.join(process.cwd(), "exports"))
+);
 
 app.use('/admin', adminRouter);
 app.use('/api/usermanagement', usermanagement);
