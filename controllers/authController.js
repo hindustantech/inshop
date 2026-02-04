@@ -673,7 +673,7 @@ export const startAuth = async (req, res) => {
 
     /* ---------- Save WhatsApp UID ---------- */
     const otpResponse = await sendWhatsAppOtp(phone);
-
+    logger.info(`OTP send response for phone ${phone}: ${JSON.stringify(otpResponse)}`);
 
     if (!otpResponse.success) {
       await User.findByIdAndDelete(user._id); // rollback
@@ -684,8 +684,8 @@ export const startAuth = async (req, res) => {
     // Store WhatsApp UID
 
 
-    await User.updateOne(
-      { _id: user._id },
+    await User.findByIdAndUpdate(
+      user._id,
       { whatsapp_uid: otpResponse.data }
     );
 
@@ -733,7 +733,7 @@ export const completOtp = async (req, res) => {
 
     // 2. Verify OTP
     const verifyResponse = await verifyWhatsAppOtp(user.whatsapp_uid, otp);
-
+    logger.info(`OTP verification response for user ${userId}: ${JSON.stringify(verifyResponse)}`);
     if (!verifyResponse.success) {
       return res.status(400).json({ message: "Invalid OTP", error: verifyResponse.error });
     }
