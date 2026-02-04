@@ -152,10 +152,6 @@ import mongoose from "mongoose";
 //     }
 // };
 
-import mongoose from "mongoose";
-import User from "../models/User.js";
-import PatnerProfile from "../models/PatnerProfile.js";
-import { uploadToCloudinary } from "../utils/cloudinary.js";
 
 export const createOrUpdateProfile = async (req, res) => {
     const session = await mongoose.startSession();
