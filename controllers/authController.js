@@ -742,7 +742,10 @@ export const completOtp = async (req, res) => {
     const updated = await User.findOneAndUpdate(
       {
         _id: userId,
-        $or: [{ deviceId: null }, { deviceId }],
+        $or: [
+          { deviceId: null },        // First time login
+          { deviceId: deviceId },    // Same device re-login
+        ],
       },
       {
         $set: {
@@ -766,7 +769,7 @@ export const completOtp = async (req, res) => {
       updated.type
     );
 
-    logger.info(`Login success for user ${userId}`,  {
+    logger.info(`Login success for user ${userId}`, {
       id: updated._id,
       phone: updated.phone,
       type: updated.type,
