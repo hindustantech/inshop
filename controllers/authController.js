@@ -11,9 +11,8 @@ import notification from '../models/notification.js';
 import ReferralUsage from '../models/ReferralUsage.js'
 import mongoose from "mongoose";
 import logger from '../utils/logger.js';
-import { Parser } from "json2csv";
 
-
+import { Parser } from 'json2csv';
 
 
 
@@ -30,8 +29,8 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
 
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
@@ -180,6 +179,41 @@ export const exportUsersByLocation = async (req, res) => {
       success: false,
       message: "Internal server error",
     });
+  }
+};
+// Controller function to get user IDs and names by referral codes
+// Controller
+export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {
+  try {
+    const { referralCodes } = req.query; // use query params for GET
+
+    if (!referralCodes) {
+      return res.status(400).json({ success: false, message: 'No referral codes provided' });
+    }
+
+    // Ensure it's an array
+    // If only one code is sent, it will be a string
+    const codesArray = Array.isArray(referralCodes) ? referralCodes : referralCodes.split(',');
+
+    // Query users with the given referral codes
+    const users = await User.find({ referalCode: { $in: codesArray } }, '_id name referalCode');
+
+    if (!users || users.length === 0) {
+      return res.status(404).json({ success: false, message: 'No users found for these referral codes' });
+    }
+
+    // Map referral codes to user info
+    const result = users.map(user => ({
+      userId: user._id.toString(),
+      name: user.name,
+      referralCode: user.referalCode
+    }));
+
+    res.status(200).json({ success: true, users: result });
+
+  } catch (error) {
+
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
