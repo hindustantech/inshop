@@ -23,11 +23,36 @@ import logger from '../utils/logger.js';
  *  lng
  *  radius (in KM)
  */
+
+/* ---------------------------------------
+   Haversine Distance (KM)
+--------------------------------------- */
+const getDistanceInKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Earth radius (KM)
+
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // KM
+};
+
+/* ---------------------------------------
+   Export Controller
+--------------------------------------- */
 export const exportUsersByLocation = async (req, res) => {
   try {
     const { lat, lng, radius = 5 } = req.query;
 
-    /* ---------------- Validation ---------------- */
+    /* ---------- Validation ---------- */
 
     if (!lat || !lng) {
       return res.status(400).json({
@@ -36,29 +61,33 @@ export const exportUsersByLocation = async (req, res) => {
       });
     }
 
-    const latitude = parseFloat(lat);
-    const longitude = parseFloat(lng);
-    const radiusKm = parseFloat(radius);
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+    const radiusKm = Number(radius);
 
-    if (isNaN(latitude) || isNaN(longitude)) {
+    if (
+      isNaN(latitude) ||
+      isNaN(longitude) ||
+      isNaN(radiusKm)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid coordinates",
+        message: "Invalid coordinates or radius",
       });
     }
 
-    /* ---------------- Convert KM → Meter ---------------- */
+    /* ---------- KM → Meter ---------- */
 
     const radiusInMeters = radiusKm * 1000;
 
-    /* ---------------- Geo Query ---------------- */
+    /* ---------- Geo Query ---------- */
 
     const users = await User.find({
       latestLocation: {
         $near: {
           $geometry: {
             type: "Point",
-            coordinates: [longitude, latitude], // [lng, lat]
+            coordinates: [longitude, latitude],
           },
           $maxDistance: radiusInMeters,
         },
@@ -74,39 +103,86 @@ export const exportUsersByLocation = async (req, res) => {
       });
     }
 
-    /* ---------------- Export to CSV ---------------- */
+    /* ---------- Calculate Distance Per User ---------- */
+
+    const usersWithDistance = users.map((u) => {
+      const [userLng, userLat] =
+        u.latestLocation.coordinates;
+
+      const distanceKm = getDistanceInKm(
+        latitude,
+        longitude,
+        userLat,
+        userLng
+      );
+
+      return {
+        ...u,
+        distanceKm: Number(distanceKm.toFixed(2)), // 2 decimal
+      };
+    });
+
+    /* ---------- CSV ---------- */
 
     const csvHeader =
-      "UID,Name,Phone,Email,Type,Latitude,Longitude,CreatedAt\n";
+      "UID,Name,Phone,Email,Type,Latitude,Longitude,Distance(KM),CreatedAt\n";
 
-    const csvRows = users.map((u) => {
+    const csvRows = usersWithDistance.map((u) => {
       const [lng, lat] = u.latestLocation.coordinates;
 
-      return `${u.uid},${u.name || ""},${u.phone || ""},${u.email || ""},${u.type
-        },${lat},${lng},${u.createdAt}`;
+      return `${u.uid},${u.name || ""},${u.phone || ""},${u.email || ""
+        },${u.type},${lat},${lng},${u.distanceKm},${u.createdAt
+        }`;
     });
 
     const csvContent = csvHeader + csvRows.join("\n");
 
-    /* ---------------- File Path ---------------- */
+    /* ---------- Save File ---------- */
 
     const fileName = `users_export_${Date.now()}.csv`;
-    const filePath = path.join("exports", fileName);
+    const dirPath = path.join(process.cwd(), "exports");
+    const filePath = path.join(dirPath, fileName);
 
-    if (!fs.existsSync("exports")) {
-      fs.mkdirSync("exports");
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
     }
 
     fs.writeFileSync(filePath, csvContent);
 
-    /* ---------------- Response ---------------- */
+    /* ---------- Stats ---------- */
+
+    const distances = usersWithDistance.map(
+      (u) => u.distanceKm
+    );
+
+    const minDistance = Math.min(...distances);
+    const maxDistance = Math.max(...distances);
+    const avgDistance =
+      distances.reduce((a, b) => a + b, 0) /
+      distances.length;
+
+    /* ---------- Response ---------- */
 
     return res.status(200).json({
       success: true,
-      count: users.length,
-      radius: `${radiusKm} KM`,
+
+      /* Counts */
+      totalUsers: usersWithDistance.length,
+
+      /* Radius */
+      searchRadius: `${radiusKm} KM`,
+
+      /* Distance Stats */
+      minDistanceKm: Number(minDistance.toFixed(2)),
+      maxDistanceKm: Number(maxDistance.toFixed(2)),
+      avgDistanceKm: Number(avgDistance.toFixed(2)),
+
+      /* File */
       file: fileName,
       downloadUrl: `/exports/${fileName}`,
+
+      /* Optional Preview (first 10 users) */
+      preview: usersWithDistance.slice(0, 10),
     });
   } catch (error) {
     console.error("Export Error:", error);
