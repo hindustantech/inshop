@@ -753,7 +753,7 @@ export const completOtp = async (req, res) => {
       },
       { new: true }
     );
-
+    logger.info(`Device binding result for user ${userId}: ${updated ? 'Success' : 'Failed'}`,updated);
     if (!updated) {
       return res.status(409).json({
         message: "Device already bound",
@@ -762,8 +762,8 @@ export const completOtp = async (req, res) => {
 
     // 4. JWT
     const token = generateToken(
-      updated._id,
-      updated.type
+      user._id,
+      user.type
     );
 
     return res.json({
@@ -771,9 +771,9 @@ export const completOtp = async (req, res) => {
       token,
 
       user: {
-        id: updated._id,
-        phone: updated.phone, 
-        type: updated.type,
+        id: user._id,
+        phone: user.phone, 
+        type: user.type,
         isVerified: true,
       },
     });
