@@ -762,8 +762,8 @@ export const completOtp = async (req, res) => {
 
     // 4. JWT
     const token = generateToken(
-      user._id,
-      user.type
+      updated._id,
+      updated.type
     );
 
     return res.json({
@@ -771,9 +771,9 @@ export const completOtp = async (req, res) => {
       token,
 
       user: {
-        id: user._id,
-        phone: user.phone, 
-        type: user.type,
+        id: updated._id,
+        phone: updated.phone, 
+        type: updated.type,
         isVerified: true,
       },
     });
