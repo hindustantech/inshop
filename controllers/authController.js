@@ -686,7 +686,7 @@ export const startAuth = async (req, res) => {
 
     await User.updateOne(
       { _id: user._id },
-      { whatsapp_uid: otpResp.data }
+      { whatsapp_uid: otpResponse.data }
     );
 
     /* ---------- Response ---------- */
