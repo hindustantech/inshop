@@ -682,7 +682,18 @@ export const startAuth = async (req, res) => {
     }
 
     /* ---------- Save WhatsApp UID ---------- */
+    const otpResponse = await sendWhatsAppOtp(phone);
 
+
+    if (!otpResponse.success) {
+      await User.findByIdAndDelete(newUser._id); // rollback
+
+      return res.status(500).json({ message: 'Failed to send OTP', error: otpResponse.error });
+    }
+
+    // Store WhatsApp UID
+
+    await newUser.save();
     await User.updateOne(
       { _id: user._id },
       { whatsapp_uid: otpResp.data }
@@ -731,15 +742,10 @@ export const completOtp = async (req, res) => {
     }
 
     // 2. Verify OTP
-    const verify = await verifyWhatsAppOtp(
-      user.whatsapp_uid,
-      otp
-    );
-
-    if (!verify.success) {
-      return res.status(400).json({
-        message: "Invalid OTP",
-      });
+    const verifyResponse = await verifyWhatsAppOtp(user.whatsapp_uid, otp);
+    
+    if (!verifyResponse.success) {
+      return res.status(400).json({ message: "Invalid OTP", error: verifyResponse.error });
     }
 
     // 3. Bind device atomically
