@@ -43,7 +43,7 @@ router.get('/getuserbyreferal', getUserIdsAndNamesByReferralCodesController);
 router.post('/UpdateManualAddress', authMiddleware, UpdateManualAddress);
 
 router.get('/getProfile', authMiddleware, getProfile);
-router.post('/exportUsersByLocation', exportUsersByLocation);
+router.get('/exportUsersByLocation', exportUsersByLocation);
 
 router.get('/updateProfileImage', authMiddleware, upload.single('profileImage'), updateProfileImage);
 
