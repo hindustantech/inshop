@@ -772,7 +772,7 @@ export const completOtp = async (req, res) => {
 
       user: {
         id: updated._id,
-        phone: updated.phone,
+        phone: updated.phone, 
         type: updated.type,
         isVerified: true,
       },
