@@ -754,11 +754,11 @@ export const completOtp = async (req, res) => {
       { new: true }
     );
 
-    // if (!updated) {
-    //   return res.status(409).json({
-    //     message: "Device already bound",
-    //   });
-    // }
+    if (!updated) {
+      return res.status(409).json({
+        message: "Device already bound",
+      });
+    }
 
     // 4. JWT
     const token = generateToken(
