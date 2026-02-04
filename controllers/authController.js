@@ -13,6 +13,111 @@ import mongoose from "mongoose";
 import logger from '../utils/logger.js';
 
 
+
+
+
+/**
+ * Export users based on location radius
+ * Query Params:
+ *  lat
+ *  lng
+ *  radius (in KM)
+ */
+export const exportUsersByLocation = async (req, res) => {
+  try {
+    const { lat, lng, radius = 5 } = req.query;
+
+    /* ---------------- Validation ---------------- */
+
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: "lat and lng are required",
+      });
+    }
+
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
+    const radiusKm = parseFloat(radius);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid coordinates",
+      });
+    }
+
+    /* ---------------- Convert KM → Meter ---------------- */
+
+    const radiusInMeters = radiusKm * 1000;
+
+    /* ---------------- Geo Query ---------------- */
+
+    const users = await User.find({
+      latestLocation: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [longitude, latitude], // [lng, lat]
+          },
+          $maxDistance: radiusInMeters,
+        },
+      },
+    })
+      .select("uid name phone email type latestLocation createdAt")
+      .lean();
+
+    if (!users.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No users found in this radius",
+      });
+    }
+
+    /* ---------------- Export to CSV ---------------- */
+
+    const csvHeader =
+      "UID,Name,Phone,Email,Type,Latitude,Longitude,CreatedAt\n";
+
+    const csvRows = users.map((u) => {
+      const [lng, lat] = u.latestLocation.coordinates;
+
+      return `${u.uid},${u.name || ""},${u.phone || ""},${u.email || ""},${u.type
+        },${lat},${lng},${u.createdAt}`;
+    });
+
+    const csvContent = csvHeader + csvRows.join("\n");
+
+    /* ---------------- File Path ---------------- */
+
+    const fileName = `users_export_${Date.now()}.csv`;
+    const filePath = path.join("exports", fileName);
+
+    if (!fs.existsSync("exports")) {
+      fs.mkdirSync("exports");
+    }
+
+    fs.writeFileSync(filePath, csvContent);
+
+    /* ---------------- Response ---------------- */
+
+    return res.status(200).json({
+      success: true,
+      count: users.length,
+      radius: `${radiusKm} KM`,
+      file: fileName,
+      downloadUrl: `/exports/${fileName}`,
+    });
+  } catch (error) {
+    console.error("Export Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
+
 // Controller function to get user IDs and names by referral codes
 // Controller
 export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {

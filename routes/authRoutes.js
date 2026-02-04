@@ -26,6 +26,7 @@ import {
     completOtp,
     completeProfile,
     findUserByReferralOwner,
+    exportUsersByLocation,
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
@@ -42,6 +43,7 @@ router.get('/getuserbyreferal', getUserIdsAndNamesByReferralCodesController);
 router.post('/UpdateManualAddress', authMiddleware, UpdateManualAddress);
 
 router.get('/getProfile', authMiddleware, getProfile);
+router.post('/exportUsersByLocation', exportUsersByLocation);
 
 router.get('/updateProfileImage', authMiddleware, upload.single('profileImage'), updateProfileImage);
 
