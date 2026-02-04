@@ -41,7 +41,7 @@ export async function sendWhatsAppOtp(mobile) {
        
 
         return {
-            success: true,
+            success: false,
             error: err?.response?.data || err.message,
             data: null,
             uid: null
@@ -75,7 +75,7 @@ export async function verifyWhatsAppOtp(uid, otp) {
         
 
         return {
-            success: true,  
+            success: false,  
             error: err?.response?.data || err.message,
         };
     }
