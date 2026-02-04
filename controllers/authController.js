@@ -11,53 +11,42 @@ import notification from '../models/notification.js';
 import ReferralUsage from '../models/ReferralUsage.js'
 import mongoose from "mongoose";
 import logger from '../utils/logger.js';
+import { Parser } from "json2csv";
 
 
 
 
 
-/**
- * Export users based on location radius
- * Query Params:
- *  lat
- *  lng
- *  radius (in KM)
- */
 
-/* ---------------------------------------
-   Haversine Distance (KM)
---------------------------------------- */
-const getDistanceInKm = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; // Earth radius (KM)
+/* -------------------------------
+   Distance Calculator (KM)
+-------------------------------- */
+const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371;
 
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
 
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) *
-    Math.sin(dLon / 2);
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c; // KM
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 
-/* ---------------------------------------
-   Export Controller
---------------------------------------- */
+/* -------------------------------
+   Export Users (JSON → CSV)
+-------------------------------- */
 export const exportUsersByLocation = async (req, res) => {
   try {
     const { lat, lng, radius = 5 } = req.query;
 
-    /* ---------- Validation ---------- */
-
     if (!lat || !lng) {
       return res.status(400).json({
         success: false,
-        message: "lat and lng are required",
+        message: "lat and lng required",
       });
     }
 
@@ -65,22 +54,17 @@ export const exportUsersByLocation = async (req, res) => {
     const longitude = Number(lng);
     const radiusKm = Number(radius);
 
-    if (
-      isNaN(latitude) ||
-      isNaN(longitude) ||
-      isNaN(radiusKm)
-    ) {
+    if (isNaN(latitude) || isNaN(longitude)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid coordinates or radius",
+        message: "Invalid coordinates",
       });
     }
 
-    /* ---------- KM → Meter ---------- */
+    /* Convert KM → Meter */
+    const maxDistance = radiusKm * 1000;
 
-    const radiusInMeters = radiusKm * 1000;
-
-    /* ---------- Geo Query ---------- */
+    /* ---------------- GEO QUERY ---------------- */
 
     const users = await User.find({
       latestLocation: {
@@ -89,7 +73,7 @@ export const exportUsersByLocation = async (req, res) => {
             type: "Point",
             coordinates: [longitude, latitude],
           },
-          $maxDistance: radiusInMeters,
+          $maxDistance: maxDistance,
         },
       },
     })
@@ -99,134 +83,103 @@ export const exportUsersByLocation = async (req, res) => {
     if (!users.length) {
       return res.status(404).json({
         success: false,
-        message: "No users found in this radius",
+        message: "No users found",
       });
     }
 
-    /* ---------- Calculate Distance Per User ---------- */
+    /* ---------------- Prepare Export Data ---------------- */
 
-    const usersWithDistance = users.map((u) => {
-      const [userLng, userLat] =
-        u.latestLocation.coordinates;
+    const exportData = users.map((u) => {
+      const [lng2, lat2] = u.latestLocation.coordinates;
 
-      const distanceKm = getDistanceInKm(
+      const distanceKm = getDistanceKm(
         latitude,
         longitude,
-        userLat,
-        userLng
+        lat2,
+        lng2
       );
 
       return {
-        ...u,
-        distanceKm: Number(distanceKm.toFixed(2)), // 2 decimal
+        UID: u.uid,
+        Name: u.name || "",
+        Phone: u.phone || "",
+        Email: u.email || "",
+        Type: u.type,
+        Latitude: lat2,
+        Longitude: lng2,
+        DistanceKM: Number(distanceKm.toFixed(2)),
+        CreatedAt: u.createdAt,
       };
     });
 
-    /* ---------- CSV ---------- */
+    /* ---------------- JSON → CSV ---------------- */
 
-    const csvHeader =
-      "UID,Name,Phone,Email,Type,Latitude,Longitude,Distance(KM),CreatedAt\n";
+    const fields = [
+      "UID",
+      "Name",
+      "Phone",
+      "Email",
+      "Type",
+      "Latitude",
+      "Longitude",
+      "DistanceKM",
+      "CreatedAt",
+    ];
 
-    const csvRows = usersWithDistance.map((u) => {
-      const [lng, lat] = u.latestLocation.coordinates;
+    const parser = new Parser({ fields });
+    const csv = parser.parse(exportData);
 
-      return `${u.uid},${u.name || ""},${u.phone || ""},${u.email || ""
-        },${u.type},${lat},${lng},${u.distanceKm},${u.createdAt
-        }`;
-    });
+    /* ---------------- Save File ---------------- */
 
-    const csvContent = csvHeader + csvRows.join("\n");
+    const exportDir = path.join(process.cwd(), "exports");
 
-    /* ---------- Save File ---------- */
-
-    const fileName = `users_export_${Date.now()}.csv`;
-    const dirPath = path.join(process.cwd(), "exports");
-    const filePath = path.join(dirPath, fileName);
-
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
+    if (!fs.existsSync(exportDir)) {
+      fs.mkdirSync(exportDir, { recursive: true });
     }
 
-    fs.writeFileSync(filePath, csvContent);
+    const fileName = `users_export_${Date.now()}.csv`;
+    const filePath = path.join(exportDir, fileName);
 
-    /* ---------- Stats ---------- */
+    fs.writeFileSync(filePath, csv, "utf8");
 
-    const distances = usersWithDistance.map(
-      (u) => u.distanceKm
+    /* ---------------- Stats ---------------- */
+
+    const distances = exportData.map(
+      (u) => u.DistanceKM
     );
 
-    const minDistance = Math.min(...distances);
-    const maxDistance = Math.max(...distances);
-    const avgDistance =
-      distances.reduce((a, b) => a + b, 0) /
-      distances.length;
-
-    /* ---------- Response ---------- */
+    /* ---------------- Response ---------------- */
 
     return res.status(200).json({
       success: true,
 
-      /* Counts */
-      totalUsers: usersWithDistance.length,
+      totalUsers: exportData.length,
 
-      /* Radius */
       searchRadius: `${radiusKm} KM`,
 
-      /* Distance Stats */
-      minDistanceKm: Number(minDistance.toFixed(2)),
-      maxDistanceKm: Number(maxDistance.toFixed(2)),
-      avgDistanceKm: Number(avgDistance.toFixed(2)),
+      minDistanceKm: Math.min(...distances),
+      maxDistanceKm: Math.max(...distances),
 
-      /* File */
+      avgDistanceKm: Number(
+        (
+          distances.reduce((a, b) => a + b, 0) /
+          distances.length
+        ).toFixed(2)
+      ),
+
       file: fileName,
+
       downloadUrl: `/exports/${fileName}`,
 
-      /* Optional Preview (first 10 users) */
-      preview: usersWithDistance.slice(0, 10),
+      preview: exportData.slice(0, 20),
     });
-  } catch (error) {
-    console.error("Export Error:", error);
+  } catch (err) {
+    console.error("Export Error:", err);
 
     res.status(500).json({
       success: false,
-      message: "Internal Server Error",
+      message: "Internal server error",
     });
-  }
-};
-
-// Controller function to get user IDs and names by referral codes
-// Controller
-export const getUserIdsAndNamesByReferralCodesController = async (req, res) => {
-  try {
-    const { referralCodes } = req.query; // use query params for GET
-
-    if (!referralCodes) {
-      return res.status(400).json({ success: false, message: 'No referral codes provided' });
-    }
-
-    // Ensure it's an array
-    // If only one code is sent, it will be a string
-    const codesArray = Array.isArray(referralCodes) ? referralCodes : referralCodes.split(',');
-
-    // Query users with the given referral codes
-    const users = await User.find({ referalCode: { $in: codesArray } }, '_id name referalCode');
-
-    if (!users || users.length === 0) {
-      return res.status(404).json({ success: false, message: 'No users found for these referral codes' });
-    }
-
-    // Map referral codes to user info
-    const result = users.map(user => ({
-      userId: user._id.toString(),
-      name: user.name,
-      referralCode: user.referalCode
-    }));
-
-    res.status(200).json({ success: true, users: result });
-
-  } catch (error) {
-
-    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
