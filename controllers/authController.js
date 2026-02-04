@@ -669,17 +669,7 @@ export const startAuth = async (req, res) => {
       });
     }
 
-    /* ---------- Send OTP ---------- */
 
-    const otpResp = await sendWhatsAppOtp(cleanPhone);
-
-    if (!otpResp.success) {
-      if (isNew) await User.findByIdAndDelete(user._id);
-
-      return res.status(500).json({
-        message: "OTP send failed",
-      });
-    }
 
     /* ---------- Save WhatsApp UID ---------- */
     const otpResponse = await sendWhatsAppOtp(phone);
