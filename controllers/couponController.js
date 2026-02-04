@@ -4738,7 +4738,7 @@ export const transferCoupon = async (req, res) => {
       throw new Error("Coupon is inactive or expired");
     }
 
-    if (coupon.is_spacial_copun || !coupon.isTransferable) {
+    if (!coupon.isTransferable) {
       throw new Error("spacial coupon is not Transferable");
     }
 
