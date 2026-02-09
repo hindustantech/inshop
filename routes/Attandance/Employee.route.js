@@ -43,7 +43,7 @@ router.post(
  * POST /api/employees/find-by-phone
  */
 router.post(
-    "/find-by-phone",
+    "/find-by-phone-employee",
     authMiddleware,
     findbyPhone
 );
