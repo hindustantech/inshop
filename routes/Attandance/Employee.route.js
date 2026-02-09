@@ -10,7 +10,7 @@ import {
     getAllEmployees,
     getEmpDetails,
     getEmpByUserId
-} from "../../controllers/Attandance/Employee.js";
+} from "../../controllers/attandance/Employee.js";
 
 /* ===============================
    Middlewares

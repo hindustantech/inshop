@@ -10,7 +10,7 @@ import {
     deleteHoliday,
     getAllHolidays,
     getHolidayById
-} from "../../controllers/Attandance/Holiday.js";
+} from "../../controllers/attandance/Holiday.js";
 
 
 /* ===============================

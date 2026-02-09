@@ -13,7 +13,7 @@ import {
     getDailyAttendance,
     getRangeSummary,
     exportAttendanceCSV
-} from "../../controllers/Attandance/Attandance.js";
+} from "../../controllers/attandance/Attandance.js";
 
 /* ===============================
    Middlewares
