@@ -117,7 +117,7 @@ app.use('/api/wallet', wallet);
 app.use('/api/planRoutes', planRoutes);
 app.use('/api/scanTounluck', scanTounluck);
 
-// payment route
+// payment 
 app.use('/api/paymentroute', paymentroute);
 app.use('/api/comment', comment);
 app.use('/api/support', supports);
