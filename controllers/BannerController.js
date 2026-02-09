@@ -819,7 +819,7 @@ export const getUserNearestBanners = async (req, res) => {
       radius = 100000,
       search = '',
       page = 1,
-      limit = 50,
+      limit = 100,
       manualCode,
       lat,
       lng,
