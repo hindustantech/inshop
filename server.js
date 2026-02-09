@@ -84,8 +84,8 @@ app.use('/api/adRoute', adroute);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/agencypatner', agencypatner);
 // app.use('/api/holiday', holiday);
-app.use('/api/attendance', attandance);
-app.use('/api/employee', employee);
+// app.use('/api/attendance', attandance);
+// app.use('/api/employee', employee);
 // API routes
 app.use("/api/gift-hampers", giftHamperRoutes);
 app.use("/api/corporateRoutes", corporateRoutes);
