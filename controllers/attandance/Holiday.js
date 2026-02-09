@@ -1,4 +1,4 @@
-import Holiday from "../../models/Attandance/Holiday.js";
+import Holiday from "../../models/Attendance/Holiday.js";
 import mongoose from "mongoose";
 
 
