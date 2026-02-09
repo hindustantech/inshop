@@ -43,6 +43,11 @@ import scanTounluck from './routes/unlockRoute.js'
 import giftHamperRoutes from './routes/GiftHamper.route.js';
 import corporateRoutes from './routes/corperate.js'
 import appsettingroutes from './routes/appsetting.js'
+
+
+import holiday from './routes/Attandance/Holiday.js'
+import attandance from './routes/Attandance/Attandance.js'
+import employee from './routes/Attandance/Employee.route.js'
 // import './cron/referralSummary.cron.js'
 // import './controllers/crronjob.js'
 dotenv.config();
@@ -78,6 +83,9 @@ app.use('/api/usermanagement', usermanagement);
 app.use('/api/adRoute', adroute);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/agencypatner', agencypatner);
+app.use('/api/holiday', holiday);
+app.use('/api/attendance', attandance);
+app.use('/api/employee', employee);
 // API routes
 app.use("/api/gift-hampers", giftHamperRoutes);
 app.use("/api/corporateRoutes", corporateRoutes);
