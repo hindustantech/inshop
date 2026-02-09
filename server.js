@@ -46,8 +46,8 @@ import appsettingroutes from './routes/appsetting.js'
 
 
 // import holiday from './routes/Attandance/Holiday.js'
-import attandance from './routes/Attandance/Attandance.js'
-import employee from './routes/Attandance/Employee.route.js'
+// import attandance from './routes/Attandance/Attandance.js'
+// import employee from './routes/Attandance/Employee.route.js'
 // import './cron/referralSummary.cron.js'
 // import './controllers/crronjob.js'
 dotenv.config();
