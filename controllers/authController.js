@@ -1330,10 +1330,23 @@ const login = async (req, res) => {
       });
     }
 
+
     // ✅ 2. Find user by phone
     const user = await User.findOne({ phone });
     if (!user) {
       return res.status(400).json({ message: 'Invalid phone number or password' });
+    }
+
+    if (user.isVerified === false) {
+      return res.status(403).json({
+        message: 'Account not verified. Please complete OTP verification.'
+      });
+    }
+    
+    if (user.suspend === true) {
+      return res.status(403).json({
+        message: 'Account suspended. Contact support.'
+      });
     }
 
     // ✅ 3. Compare password
