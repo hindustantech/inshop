@@ -21,9 +21,10 @@ const WHATSAPP_TEMPLATE_NAME = process.env.WHATSAPP_TEMPLATE_NAME;
 export async function sendWhatsAppOtp(mobile) {
     const number = mobile;
     try {
-       
 
-        const url = `https://smsmediaapi.hellopatna.com/api/whatsapp-cloud-api/send-auth-api?apikey=${WHATSAPP_API_KEY}&mobile=${number}&templatename=${WHATSAPP_TEMPLATE_NAME}`;
+
+        // const url = `https://smsmediaapi.hellopatna.com/api/whatsapp-cloud-api/send-auth-api?apikey=${WHATSAPP_API_KEY}&mobile=${number}&templatename=${WHATSAPP_TEMPLATE_NAME}`;
+        const url = `https://smsmediaapi.patronservices.in/api/whatsapp-cloud-api/send-auth-api?apikey=${WHATSAPP_API_KEY}&mobile=${number}&templatename=${WHATSAPP_TEMPLATE_NAME}`;
 
         const resp = await axios.get(url, {
             headers: { Accept: "application/json" },
@@ -38,7 +39,7 @@ export async function sendWhatsAppOtp(mobile) {
             data: responseData,
         };
     } catch (err) {
-       
+
 
         return {
             success: false,
@@ -54,7 +55,7 @@ export async function sendWhatsAppOtp(mobile) {
 // Verify OTP
 export async function verifyWhatsAppOtp(uid, otp) {
     try {
-       
+
 
         const url = `${WHATSAPP_VERIFY}?apikey=${WHATSAPP_API_KEY}&uid=${uid}&otp=${otp}`;
 
@@ -64,18 +65,18 @@ export async function verifyWhatsAppOtp(uid, otp) {
         });
 
         const data = resp?.data || {};
-       
-       
+
+
 
         return {
             success: true,
             data,
         };
     } catch (err) {
-        
+
 
         return {
-            success: false,  
+            success: false,
             error: err?.response?.data || err.message,
         };
     }
