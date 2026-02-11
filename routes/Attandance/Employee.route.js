@@ -9,7 +9,8 @@ import {
     findbyPhone,
     getAllEmployees,
     getEmpDetails,
-    getEmpByUserId
+    getEmpByUserId,
+    findbyReferralCode
 } from "../../controllers/attandance/Employee.js";
 
 /* ===============================
@@ -46,6 +47,11 @@ router.post(
     "/find-by-phone-employee",
     authMiddleware,
     findbyPhone
+);
+router.post(
+    "/find-by-Referral-Code",
+    authMiddleware,
+    findbyReferralCode
 );
 
 /**

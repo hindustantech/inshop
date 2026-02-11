@@ -210,6 +210,35 @@ export const findbyPhone = async (req, res) => {
     }
 }
 
+export const findbyReferralCode = async (req, res) => {
+    const { referalCode } = req.body;
+    try {
+        
+        const user = await User.findOne({ referalCode });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            })
+        }   
+
+        return res.status(200).json({
+            success: true,
+            message: "Employee found",
+            data: user
+        })
+    }
+        catch (error) {
+        console.error("FindByReferralCode Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message,
+        });
+    }
+}
+
+
 
 /* --------------------------------------------------
    GET ALL EMPLOYEES WITH PAGINATION
