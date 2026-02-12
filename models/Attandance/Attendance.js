@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 
 const attendanceSchema = new mongoose.Schema({
 
+
     /* ===========================
        Organization Mapping
     ============================ */
@@ -22,6 +23,7 @@ const attendanceSchema = new mongoose.Schema({
         index: true
     },
 
+
     /* ===========================
        Date & Shift
     ============================ */
@@ -34,16 +36,70 @@ const attendanceSchema = new mongoose.Schema({
 
     shift: {
         name: String,
+
         startTime: String, // "09:00"
-        endTime: String    // "18:00"
+        endTime: String,   // "18:00"
+
+        shiftMinutes: {
+            type: Number,
+            default: 0
+        }
     },
+
 
     /* ===========================
        Punch Timing
     ============================ */
 
-    punchIn: Date,
-    punchOut: Date,
+    punchIn: {
+        type: Date,
+        index: true
+    },
+
+    punchOut: {
+        type: Date,
+        index: true
+    },
+
+
+    /* ===========================
+       Punch History (Audit Trail)
+    ============================ */
+
+    punchHistory: [
+        {
+            punchOut: {
+                type: Date,
+                required: true
+            },
+
+            geoLocation: Object,
+
+            deviceInfo: Object,
+
+            source: {
+                type: String,
+                enum: ["mobile", "web", "biometric", "admin"],
+                default: "mobile"
+            },
+
+            createdAt: {
+                type: Date,
+                default: Date.now
+            }
+        }
+    ],
+
+
+    lastPunchAt: {
+        type: Date,
+        index: true
+    },
+
+
+    /* ===========================
+       Breaks
+    ============================ */
 
     breaks: [
         {
@@ -53,12 +109,19 @@ const attendanceSchema = new mongoose.Schema({
         }
     ],
 
+
     /* ===========================
        Work Calculation
     ============================ */
 
     workSummary: {
+
         totalMinutes: {
+            type: Number,
+            default: 0
+        },
+
+        payableMinutes: {
             type: Number,
             default: 0
         },
@@ -79,6 +142,7 @@ const attendanceSchema = new mongoose.Schema({
         }
     },
 
+
     /* ===========================
        Attendance Status
     ============================ */
@@ -91,13 +155,23 @@ const attendanceSchema = new mongoose.Schema({
             "leave",
             "holiday",
             "half_day",
-            "week_off"
+            "week_off",
+            "pending_approval",
+            "rejected"
         ],
         default: "present"
     },
 
+
+    approvalStatus: {
+        type: String,
+        enum: ["pending", "approved", "rejected"],
+        default: "approved"
+    },
+
+
     /* ===========================
-       Location (GeoJSON - REQUIRED)
+       Location (GeoJSON)
     ============================ */
 
     geoLocation: {
@@ -109,13 +183,11 @@ const attendanceSchema = new mongoose.Schema({
         },
 
         coordinates: {
-            type: [Number], // [longitude, latitude]
+            type: [Number],
             required: true
         },
 
-        accuracy: {
-            type: Number // meters
-        },
+        accuracy: Number,
 
         verified: {
             type: Boolean,
@@ -127,8 +199,8 @@ const attendanceSchema = new mongoose.Schema({
             enum: ["gps", "network", "manual"],
             default: "gps"
         }
-
     },
+
 
     /* ===========================
        Device Binding
@@ -151,11 +223,33 @@ const attendanceSchema = new mongoose.Schema({
         appVersion: String
     },
 
+
     /* ===========================
        Audit & Review
     ============================ */
 
     remarks: String,
+
+
+    editLogs: [
+        {
+            editedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User"
+            },
+
+            reason: String,
+
+            oldValue: Object,
+            newValue: Object,
+
+            editedAt: {
+                type: Date,
+                default: Date.now
+            }
+        }
+    ],
+
 
     isAutoMarked: {
         type: Boolean,
@@ -177,20 +271,35 @@ const attendanceSchema = new mongoose.Schema({
    Indexes (CRITICAL)
 =========================== */
 
-// Prevent duplicate attendance
+// Prevent duplicate attendance (per day)
 attendanceSchema.index(
     { companyId: 1, employeeId: 1, date: 1 },
     { unique: true }
 );
 
-// Geo Spatial Index
+
+// Geo Spatial
 attendanceSchema.index({
     geoLocation: "2dsphere"
 });
 
-// Device Index (fraud detection)
+
+// Device Fraud
 attendanceSchema.index({
     "deviceInfo.deviceId": 1
+});
+
+
+// Fast Reports
+attendanceSchema.index({
+    employeeId: 1,
+    date: -1
+});
+
+
+attendanceSchema.index({
+    status: 1,
+    approvalStatus: 1
 });
 
 
