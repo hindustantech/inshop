@@ -64,7 +64,7 @@ export const markAttendance = async (req, res) => {
            1. Extract Auth + Body
         -------------------------------- */
 
-        const userId = req.user._id;
+        const u_id = req.user._id;
 
         const {
             date,
@@ -117,7 +117,7 @@ export const markAttendance = async (req, res) => {
         -------------------------------- */
 
         const employee = await Employee.findOne({
-            userId,
+            u_id,
             employmentStatus: "active"
         }).session(session);
 
