@@ -14,6 +14,8 @@ import {
     getRangeSummary,
     exportAttendanceCSV,
     getEmployeeAttendanceSummary,
+    getEmployeeMonthlyCards,
+    getCompanyTodayAttendance
 } from "../../controllers/attandance/Attandance.js";
 
 /* ===============================

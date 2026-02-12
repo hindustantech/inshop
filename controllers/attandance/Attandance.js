@@ -776,6 +776,390 @@ export const markAttendance = async (req, res) => {
 
 
 
+
+
+
+export const getCompanyTodayAttendance = async (req, res) => {
+
+    try {
+
+        /* ===========================
+           Auth Context
+        ============================ */
+
+        const companyId = req.user._id;
+
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 50;
+        const skip = (page - 1) * limit;
+
+        /* ===========================
+           Date
+        ============================ */
+
+        const today = normalizeToUTCDate();
+
+        /* ===========================
+           Active Employees
+        ============================ */
+
+        const employees = await Employee.find({
+            companyId,
+            employmentStatus: "active"
+        })
+            .select("_id empCode name phone email")
+            .lean();
+
+        if (!employees.length) {
+            return res.status(404).json({
+                success: false,
+                message: "No active employees found"
+            });
+        }
+
+        const employeeIds = employees.map(e => e._id);
+
+        /* ===========================
+           Attendance Records
+        ============================ */
+
+        const attendanceList = await Attendance.find({
+            companyId,
+            employeeId: { $in: employeeIds },
+            date: today
+        })
+            .select(`
+                employeeId
+                status
+                punchIn
+                punchOut
+                workSummary
+                isSuspicious
+                geoLocation.verified
+            `)
+            .lean();
+
+        /* ===========================
+           Map Attendance
+        ============================ */
+
+        const attendanceMap = new Map();
+
+        attendanceList.forEach(record => {
+            attendanceMap.set(
+                record.employeeId.toString(),
+                record
+            );
+        });
+
+        /* ===========================
+           Merge (Employee + Attendance)
+        ============================ */
+
+        const result = employees
+            .slice(skip, skip + limit)
+            .map(emp => {
+
+                const record =
+                    attendanceMap.get(emp._id.toString());
+
+                return {
+
+                    employeeId: emp._id,
+                    empCode: emp.empCode,
+                    name: emp.name,
+                    phone: emp.phone,
+                    email: emp.email,
+
+                    date: today,
+
+                    status: record?.status || "absent",
+
+                    punchIn: record?.punchIn || null,
+                    punchOut: record?.punchOut || null,
+
+                    flags: {
+
+                        isLate:
+                            (record?.workSummary?.lateMinutes || 0) > 0,
+
+                        isEarlyLeave:
+                            (record?.workSummary?.earlyLeaveMinutes || 0) > 0,
+
+                        isOvertime:
+                            (record?.workSummary?.overtimeMinutes || 0) > 0,
+
+                        isSuspicious:
+                            record?.isSuspicious || false,
+
+                        geoVerified:
+                            record?.geoLocation?.verified || false
+                    },
+
+                    workSummary: record?.workSummary || {
+                        totalMinutes: 0,
+                        payableMinutes: 0,
+                        overtimeMinutes: 0,
+                        lateMinutes: 0,
+                        earlyLeaveMinutes: 0
+                    }
+                };
+            });
+
+        /* ===========================
+           Response
+        ============================ */
+
+        return res.status(200).json({
+
+            success: true,
+
+            companyId,
+
+            date: today,
+
+            pagination: {
+                page,
+                limit,
+                totalEmployees: employees.length,
+                totalPages: Math.ceil(employees.length / limit)
+            },
+
+            data: result
+        });
+
+    } catch (error) {
+
+        console.error("Company Today Attendance Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch company attendance"
+        });
+    }
+};
+
+
+
+
+
+/* ======================================================
+   GET: Monthly Employee Card Summary (IST Based)
+====================================================== */
+
+export const getEmployeeMonthlyCards = async (req, res) => {
+
+    try {
+
+        /* ===========================
+           Auth Context
+        ============================ */
+
+        const companyId = req.user._id;
+
+        /* ===========================
+           IST Date Handling
+        ============================ */
+
+        // IST Offset = +5:30
+        const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+
+        // Current IST Time
+        const nowIST = new Date(Date.now() + IST_OFFSET);
+
+        // Month Start (IST)
+        const monthStart = new Date(
+            nowIST.getFullYear(),
+            nowIST.getMonth(),
+            1,
+            0, 0, 0, 0
+        );
+
+        // Today End (IST)
+        const todayEnd = new Date(
+            nowIST.getFullYear(),
+            nowIST.getMonth(),
+            nowIST.getDate(),
+            23, 59, 59, 999
+        );
+
+        /* ===========================
+           Convert IST → UTC (DB stores UTC)
+        ============================ */
+
+        const startUTC = new Date(monthStart.getTime() - IST_OFFSET);
+        const endUTC = new Date(todayEnd.getTime() - IST_OFFSET);
+
+        /* ===========================
+           Aggregation Pipeline
+        ============================ */
+
+        const data = await Attendance.aggregate([
+
+            /* Filter */
+            {
+                $match: {
+                    companyId: new mongoose.Types.ObjectId(companyId),
+                    date: {
+                        $gte: startUTC,
+                        $lte: endUTC
+                    }
+                }
+            },
+
+            /* Group By Employee */
+            {
+                $group: {
+
+                    _id: "$employeeId",
+
+                    presentDays: {
+                        $sum: {
+                            $cond: [
+                                { $eq: ["$status", "present"] },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+
+                    absentDays: {
+                        $sum: {
+                            $cond: [
+                                { $eq: ["$status", "absent"] },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+
+                    totalWorkMinutes: {
+                        $sum: "$workSummary.totalMinutes"
+                    },
+
+                    workingDays: {
+                        $sum: {
+                            $cond: [
+                                { $eq: ["$status", "present"] },
+                                1,
+                                0
+                            ]
+                        }
+                    }
+                }
+            },
+
+            /* Join Employee */
+            {
+                $lookup: {
+                    from: "employees",
+                    localField: "_id",
+                    foreignField: "_id",
+                    as: "employee"
+                }
+            },
+
+            { $unwind: "$employee" },
+
+            /* Calculate Avg Time */
+            {
+                $addFields: {
+
+                    avgMinutes: {
+                        $cond: [
+                            { $gt: ["$workingDays", 0] },
+                            {
+                                $divide: [
+                                    "$totalWorkMinutes",
+                                    "$workingDays"
+                                ]
+                            },
+                            0
+                        ]
+                    }
+                }
+            },
+
+            /* Final Shape */
+            {
+                $project: {
+
+                    _id: 0,
+
+                    employeeId: "$_id",
+
+                    name: "$employee.name",
+
+                    phone: "$employee.phone",
+
+                    present: "$presentDays",
+
+                    absent: "$absentDays",
+
+                    avgMinutes: {
+                        $round: ["$avgMinutes", 0]
+                    }
+                }
+            },
+
+            /* Sort */
+            {
+                $sort: {
+                    avgMinutes: -1
+                }
+            }
+        ]);
+
+        /* ===========================
+           Format Time (HH:mm)
+        ============================ */
+
+        const formatted = data.map(emp => {
+
+            const hours = Math.floor(emp.avgMinutes / 60);
+            const minutes = emp.avgMinutes % 60;
+
+            return {
+                ...emp,
+                avgTime: `${hours}h ${minutes}m`
+            };
+        });
+
+        /* ===========================
+           Response
+        ============================ */
+
+        return res.status(200).json({
+
+            success: true,
+
+            timezone: "Asia/Kolkata",
+
+            month: nowIST.toLocaleString("en-IN", { month: "long" }),
+
+            year: nowIST.getFullYear(),
+
+            period: {
+                from: monthStart,
+                to: todayEnd
+            },
+
+            totalEmployees: formatted.length,
+
+            data: formatted
+        });
+
+    } catch (error) {
+
+        console.error("Monthly Cards Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to load employee summary"
+        });
+    }
+};
+
 /**
  * @desc   Get Employee Monthly Attendance
  * @route  GET /api/attendance/monthly
@@ -946,7 +1330,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
            1. Auth
         ============================ */
 
-        const userId = req.user?._id;
+        const userId = req.query.userId;
 
         if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
             return res.status(401).json({
