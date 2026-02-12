@@ -845,6 +845,16 @@ export const startAuth = async (req, res) => {
       });
     }
 
+    if (user.suspend) {
+      return res.status(403).json({
+        message: "Account suspended",
+      });
+    }
+    if (user.isVerified) {
+      return res.status(400).json({
+        message: "User already verified. Please login.",
+      });
+    }
 
 
     /* ---------- Save WhatsApp UID ---------- */
@@ -1342,7 +1352,7 @@ const login = async (req, res) => {
         message: 'Account not verified. Please complete OTP verification.'
       });
     }
-    
+
     if (user.suspend === true) {
       return res.status(403).json({
         message: 'Account suspended. Contact support.'

@@ -25,8 +25,8 @@ export const createEmployee = async (req, res) => {
         /* ---------------------------------------------
            1. Authorization
         ---------------------------------------------- */
-        const companyId = req.user?._id;
-        const userRole = req.user?.role;
+        const companyId = req.user?._id || req.user?.id;
+        const userRole = req.user?.role ||req.user?.type;
 
         if (!companyId) {
             return res.status(401).json({
@@ -35,7 +35,7 @@ export const createEmployee = async (req, res) => {
             });
         }
 
-        if (!["admin", "partner", "super_admin"].includes(userRole)) {
+        if (!['partner','admin', 'super_admin'].includes(userRole)) {
             return res.status(403).json({
                 success: false,
                 message: "Access denied",
