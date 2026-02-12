@@ -117,7 +117,7 @@ export const markAttendance = async (req, res) => {
         -------------------------------- */
 
         const employee = await Employee.findOne({
-            u_id,
+            userId: u_id,
             employmentStatus: "active"
         }).session(session);
 
