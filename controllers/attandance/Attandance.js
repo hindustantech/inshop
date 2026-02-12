@@ -1,4 +1,5 @@
-import Employee from "../../models/Attandance/Employee.js ";
+import Employee from "../../models/Attandance/Employee.js";
+// import Employee from "../../models/Attandance/Employee.js";
 import Attendance from "../../models/Attandance/Attendance.js";
 import Holiday from "../../models/Attandance/Holiday.js";
 import Payroll from "../../models/Attandance/Payroll.js";
@@ -95,7 +96,7 @@ export const markAttendance = async (req, res) => {
         // 2) Verify token
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        if (!decoded || !decoded.id) {
+        if (!decoded || !decoded.userId) {
             return res.status(401).json({ message: 'Invalid or expired token' });
         }
 
