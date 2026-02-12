@@ -896,18 +896,23 @@ export const getAttendance = async (req, res) => {
 
 
 
-
 /* ================================
-   Helper: Format Time
+   Helper: Format Time (IST)
 ================================ */
 const formatTime = (date) => {
     if (!date) return "-";
 
-    return new Date(date).toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true
-    });
+    try {
+        return new Date(date).toLocaleTimeString("en-IN", {
+            timeZone: "Asia/Kolkata",   // Force IST
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true
+        });
+    } catch (err) {
+        console.error("formatTime error:", err);
+        return "-";
+    }
 };
 
 
@@ -915,7 +920,7 @@ const formatTime = (date) => {
    Helper: Minutes → Hr Min
 ================================ */
 const formatMinutes = (minutes) => {
-    if (!minutes || minutes <= 0) return "-";
+    if (!Number.isFinite(minutes) || minutes <= 0) return "-";
 
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
@@ -928,6 +933,11 @@ const formatMinutes = (minutes) => {
    GET: Employee Monthly Attendance (Dashboard)
 ================================================= */
 
+
+/* =================================================
+   GET: Employee Attendance Summary + CSV
+================================================= */
+
 export const getEmployeeAttendanceSummary = async (req, res) => {
 
     try {
@@ -936,15 +946,9 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
            1. Auth
         ============================ */
 
-        const userId = req.user._id;
-        if (!mongoose.Types.ObjectId.isValid(userId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid user id"
-            });
-        }
+        const userId = req.user?._id;
 
-        if (!userId) {
+        if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
             return res.status(401).json({
                 success: false,
                 message: "Unauthorized"
@@ -960,7 +964,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         const year = Number(req.query.year);
         const format = req.query.format; // csv | json
 
-        if (!month || !year || month < 1 || month > 12) {
+        if (!month || !year || month < 1 || month > 12 || year < 2000) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid month/year"
@@ -969,7 +973,25 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
 
 
         /* ============================
-           3. Employee
+           3. Block Future Months
+        ============================ */
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (
+            year > today.getFullYear() ||
+            (year === today.getFullYear() && month > today.getMonth() + 1)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Future month not allowed"
+            });
+        }
+
+
+        /* ============================
+           4. Employee
         ============================ */
 
         const employee = await Employee.findOne({
@@ -988,14 +1010,14 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
 
 
         /* ============================
-           4. Date Range
+           5. Date Range
         ============================ */
 
         const { start, end } = buildMonthRange(year, month);
 
 
         /* ============================
-           5. Attendance
+           6. Attendance
         ============================ */
 
         const records = await Attendance.find({
@@ -1007,10 +1029,8 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
 
 
         /* ============================
-           6. Calendar Map
+           7. Build Lookup Map
         ============================ */
-
-        const daysInMonth = new Date(year, month, 0).getDate();
 
         const map = new Map();
 
@@ -1021,23 +1041,40 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
 
 
         /* ============================
-           7. Build Report
+           8. Calculate Loop Range
+        ============================ */
+
+        const isCurrentMonth =
+            today.getFullYear() === year &&
+            today.getMonth() + 1 === month;
+
+        const lastDay = isCurrentMonth
+            ? today.getDate() // till today
+            : new Date(year, month, 0).getDate(); // full month
+
+
+        const todayKey = today.toISOString().split("T")[0];
+        const yesterdayKey = new Date(today.getTime() - 86400000)
+            .toISOString()
+            .split("T")[0];
+
+
+        /* ============================
+           9. Build Report
         ============================ */
 
         let presentDays = 0;
         let absentDays = 0;
         let totalMinutes = 0;
 
-        const todayKey = new Date().toISOString().split("T")[0];
-        const yesterdayKey = new Date(Date.now() - 86400000)
-            .toISOString().split("T")[0];
-
         const report = [];
 
 
-        for (let i = daysInMonth; i >= 1; i--) {
+        for (let i = lastDay; i >= 1; i--) {
 
             const date = new Date(year, month - 1, i);
+            date.setHours(0, 0, 0, 0);
+
             const key = date.toISOString().split("T")[0];
 
             let label = date.toLocaleDateString("en-IN", {
@@ -1051,9 +1088,23 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
             const rec = map.get(key);
 
 
-            /* ----- Absent ----- */
+            /* ---------- No Record ---------- */
             if (!rec) {
 
+                // Today without punch → Pending
+                if (key === todayKey) {
+
+                    report.push({
+                        Date: "Today",
+                        TimeIn: "Pending",
+                        TimeOut: "-",
+                        TotalHours: "-"
+                    });
+
+                    continue;
+                }
+
+                // Past day → Absent
                 absentDays++;
 
                 report.push({
@@ -1067,7 +1118,25 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
             }
 
 
-            /* ----- Present ----- */
+            /* ---------- Holiday / Week Off ---------- */
+
+            if (
+                rec.status === "holiday" ||
+                rec.status === "week_off"
+            ) {
+
+                report.push({
+                    Date: label,
+                    TimeIn: rec.status === "holiday" ? "Holiday" : "Week Off",
+                    TimeOut: "-",
+                    TotalHours: "-"
+                });
+
+                continue;
+            }
+
+
+            /* ---------- Present ---------- */
 
             if (rec.status === "present") presentDays++;
 
@@ -1087,19 +1156,14 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
 
 
         /* ============================
-           8. CSV Export Mode
+           10. CSV Export
         ============================ */
 
         if (format === "csv") {
 
-            const fields = [
-                "Date",
-                "TimeIn",
-                "TimeOut",
-                "TotalHours"
-            ];
-
-            const parser = new Parser({ fields });
+            const parser = new Parser({
+                fields: ["Date", "TimeIn", "TimeOut", "TotalHours"]
+            });
 
             const csv = parser.parse(report);
 
@@ -1107,11 +1171,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 `attendance_${employee.empCode}_${month}_${year}.csv`;
 
 
-            res.setHeader(
-                "Content-Type",
-                "text/csv"
-            );
-
+            res.setHeader("Content-Type", "text/csv");
             res.setHeader(
                 "Content-Disposition",
                 `attachment; filename="${fileName}"`
@@ -1122,13 +1182,17 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
 
 
         /* ============================
-           9. JSON Mode
+           11. Summary
         ============================ */
 
         const avgMinutes = presentDays
             ? Math.round(totalMinutes / presentDays)
             : 0;
 
+
+        /* ============================
+           12. JSON Response
+        ============================ */
 
         return res.status(200).json({
 
@@ -1145,7 +1209,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 avgPerDay: formatMinutes(avgMinutes),
                 presentDays,
                 absentDays,
-                totalWorkingDays: daysInMonth
+                totalShownDays: lastDay
             },
 
             records: report
@@ -1153,11 +1217,11 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
 
     } catch (error) {
 
-        console.error("Attendance Export Error:", error);
+        console.error("Attendance Summary Error:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Failed to load attendance"
+            message: "Internal server error"
         });
     }
 };
