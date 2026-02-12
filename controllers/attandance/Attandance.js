@@ -6,7 +6,9 @@ import Payroll from "../../models/Attandance/Payroll.js";
 import mongoose from "mongoose";
 import { normalizeToUTCDate, buildDateRange } from "./utils/date.utils.js";
 import { Parser } from "json2csv";
-import moment from "moment";
+// import moment from "moment";
+import moment from "moment-timezone";
+
 import jwt from "jsonwebtoken";
 import User from "../../models/userModel.js";
 
