@@ -2069,45 +2069,72 @@ export const getRangeSummary = async (req, res) => {
 
 
 
-//  * Export Attendance to CSV
-//  * Supports:
-//  *  - Monthly
-//  *  - Custom Date Range
-//  */
+
+
+/* ======================================================
+   EXPORT: Attendance CSV (IST SAFE)
+====================================================== */
+
 export const exportAttendanceCSV = async (req, res) => {
+
     try {
+
         const companyId = req.user._id;
+
+        /* ================================
+           Force IST Timezone
+        ================================= */
+
+        moment.tz.setDefault("Asia/Kolkata");
 
         const {
             startDate,
             endDate,
-            month,   // format: YYYY-MM (optional)
-            year     // optional
+            month,   // YYYY-MM
+            year
         } = req.query;
 
-        let fromDate;
-        let toDate;
+        let fromDateIST;
+        let toDateIST;
 
         /* ================================
-           Date Filter Logic
+           Date Filter (IST)
         ================================= */
 
-        // Case 1: Monthly Export
+        // Monthly
         if (month) {
-            fromDate = moment(month, "YYYY-MM").startOf("month").toDate();
-            toDate = moment(month, "YYYY-MM").endOf("month").toDate();
+
+            fromDateIST = moment
+                .tz(month, "YYYY-MM", "Asia/Kolkata")
+                .startOf("month");
+
+            toDateIST = moment
+                .tz(month, "YYYY-MM", "Asia/Kolkata")
+                .endOf("month");
         }
 
-        // Case 2: Custom Date Range
+        // Custom Range
         else if (startDate && endDate) {
-            fromDate = new Date(startDate);
-            toDate = new Date(endDate);
+
+            fromDateIST = moment
+                .tz(startDate, "YYYY-MM-DD", "Asia/Kolkata")
+                .startOf("day");
+
+            toDateIST = moment
+                .tz(endDate, "YYYY-MM-DD", "Asia/Kolkata")
+                .endOf("day");
         }
 
-        // Case 3: Yearly
+        // Yearly
         else if (year) {
-            fromDate = moment(`${year}-01-01`).startOf("year").toDate();
-            toDate = moment(`${year}-12-31`).endOf("year").toDate();
+
+            fromDateIST = moment
+                .tz(`${year}-01-01`, "Asia/Kolkata")
+                .startOf("year");
+
+            toDateIST = moment
+                .tz(`${year}-12-31`, "Asia/Kolkata")
+                .endOf("year");
         }
 
         else {
@@ -2118,14 +2145,21 @@ export const exportAttendanceCSV = async (req, res) => {
         }
 
         /* ================================
+           Convert IST → UTC (DB Query)
+        ================================= */
+
+        const fromUTC = fromDateIST.clone().utc().toDate();
+        const toUTC = toDateIST.clone().utc().toDate();
+
+        /* ================================
            Fetch Attendance
         ================================= */
 
         const records = await Attendance.find({
             companyId,
             date: {
-                $gte: fromDate,
-                $lte: toDate
+                $gte: fromUTC,
+                $lte: toUTC
             }
         })
             .populate("employeeId", "name email phone")
@@ -2139,47 +2173,71 @@ export const exportAttendanceCSV = async (req, res) => {
         }
 
         /* ================================
-           Format for CSV (Readable)
+           Format CSV (IST Display)
         ================================= */
 
-        const formattedData = records.map((row) => {
+        const formattedData = records.map(row => {
 
+            /* Break Calculation (IST Safe) */
             const totalBreakMinutes = row.breaks?.reduce((acc, b) => {
+
                 if (b.start && b.end) {
-                    return acc + moment(b.end).diff(moment(b.start), "minutes");
+
+                    const start = moment(b.start).tz("Asia/Kolkata");
+                    const end = moment(b.end).tz("Asia/Kolkata");
+
+                    return acc + end.diff(start, "minutes");
                 }
+
                 return acc;
-            }, 0);
+
+            }, 0) || 0;
 
             return {
 
-                // Company & Employee
+                /* Employee */
                 CompanyID: row.companyId,
+
                 EmployeeName: row.employeeId?.name || "N/A",
                 EmployeeEmail: row.employeeId?.email || "N/A",
                 EmployeePhone: row.employeeId?.phone || "N/A",
 
-                // Date Info
-                Date: moment(row.date).format("DD-MMM-YYYY"),
-                Day: moment(row.date).format("dddd"),
-                Month: moment(row.date).format("MMMM"),
-                Year: moment(row.date).format("YYYY"),
+                /* Date (IST) */
+                Date: moment(row.date)
+                    .tz("Asia/Kolkata")
+                    .format("DD-MMM-YYYY"),
 
-                // Shift
+                Day: moment(row.date)
+                    .tz("Asia/Kolkata")
+                    .format("dddd"),
+
+                Month: moment(row.date)
+                    .tz("Asia/Kolkata")
+                    .format("MMMM"),
+
+                Year: moment(row.date)
+                    .tz("Asia/Kolkata")
+                    .format("YYYY"),
+
+                /* Shift */
                 ShiftName: row.shift?.name || "General",
                 ShiftStart: row.shift?.startTime || "",
                 ShiftEnd: row.shift?.endTime || "",
 
-                // Punch
+                /* Punch (IST) */
                 PunchIn: row.punchIn
-                    ? moment(row.punchIn).format("hh:mm A")
+                    ? moment(row.punchIn)
+                        .tz("Asia/Kolkata")
+                        .format("hh:mm A")
                     : "",
 
                 PunchOut: row.punchOut
-                    ? moment(row.punchOut).format("hh:mm A")
+                    ? moment(row.punchOut)
+                        .tz("Asia/Kolkata")
+                        .format("hh:mm A")
                     : "",
 
-                // Work Summary
+                /* Work */
                 TotalWorkMinutes: row.workSummary?.totalMinutes || 0,
                 OvertimeMinutes: row.workSummary?.overtimeMinutes || 0,
                 LateMinutes: row.workSummary?.lateMinutes || 0,
@@ -2187,28 +2245,33 @@ export const exportAttendanceCSV = async (req, res) => {
 
                 BreakMinutes: totalBreakMinutes,
 
-                // Status
+                /* Status */
                 Status: row.status,
 
-                // Location
+                /* Location */
                 Latitude: row.geoLocation?.coordinates?.[1] || "",
                 Longitude: row.geoLocation?.coordinates?.[0] || "",
                 LocationAccuracy: row.geoLocation?.accuracy || "",
                 LocationVerified: row.geoLocation?.verified ? "Yes" : "No",
 
-                // Device
+                /* Device */
                 DeviceID: row.deviceInfo?.deviceId || "",
                 Platform: row.deviceInfo?.platform || "",
                 AppVersion: row.deviceInfo?.appVersion || "",
                 IP: row.deviceInfo?.ip || "",
 
-                // Audit
+                /* Audit */
                 Remarks: row.remarks || "",
                 AutoMarked: row.isAutoMarked ? "Yes" : "No",
                 Suspicious: row.isSuspicious ? "Yes" : "No",
 
-                CreatedAt: moment(row.createdAt).format("DD-MMM-YYYY HH:mm"),
-                UpdatedAt: moment(row.updatedAt).format("DD-MMM-YYYY HH:mm")
+                CreatedAt: moment(row.createdAt)
+                    .tz("Asia/Kolkata")
+                    .format("DD-MMM-YYYY HH:mm"),
+
+                UpdatedAt: moment(row.updatedAt)
+                    .tz("Asia/Kolkata")
+                    .format("DD-MMM-YYYY HH:mm")
             };
         });
 
@@ -2220,10 +2283,11 @@ export const exportAttendanceCSV = async (req, res) => {
         const csv = parser.parse(formattedData);
 
         /* ================================
-           Download Settings
+           Download
         ================================= */
 
-        const fileName = `attendance_${moment(fromDate).format("YYYYMMDD")}_${moment(toDate).format("YYYYMMDD")}.csv`;
+        const fileName =
+            `attendance_${fromDateIST.format("YYYYMMDD")}_${toDateIST.format("YYYYMMDD")}.csv`;
 
         res.header("Content-Type", "text/csv");
         res.header("Content-Disposition", `attachment; filename=${fileName}`);
@@ -2231,6 +2295,7 @@ export const exportAttendanceCSV = async (req, res) => {
         return res.status(200).send(csv);
 
     } catch (error) {
+
         console.error("CSV Export Error:", error);
 
         return res.status(500).json({
@@ -2240,3 +2305,4 @@ export const exportAttendanceCSV = async (req, res) => {
         });
     }
 };
+
