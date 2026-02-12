@@ -12,7 +12,8 @@ import {
     getTodayAttendance,
     getDailyAttendance,
     getRangeSummary,
-    exportAttendanceCSV
+    exportAttendanceCSV,
+    getEmployeeAttendanceSummary,
 } from "../../controllers/attandance/Attandance.js";
 
 /* ===============================
@@ -58,6 +59,21 @@ router.get(
     "/summary",
     authMiddleware,
     getMonthlySummary
+);
+router.get(
+    "/employee-summary",
+    authMiddleware,
+    getEmployeeAttendanceSummary
+);
+
+/**
+ * Get Employee Attendance Summary
+ * GET /api/attendance/employee-summary
+ */
+router.get(
+    "/employee-summary",
+    authMiddleware,
+    getEmployeeAttendanceSummary
 );
 
 /**

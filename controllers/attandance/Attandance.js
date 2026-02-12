@@ -894,6 +894,269 @@ export const getAttendance = async (req, res) => {
 };
 
 
+
+
+
+/* ================================
+   Helper: Format Time
+================================ */
+const formatTime = (date) => {
+    if (!date) return "-";
+
+    return new Date(date).toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+    });
+};
+
+
+/* ================================
+   Helper: Minutes → Hr Min
+================================ */
+const formatMinutes = (minutes) => {
+    if (!minutes || minutes <= 0) return "-";
+
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+
+    return `${h}h ${m}m`;
+};
+
+
+/* =================================================
+   GET: Employee Monthly Attendance (Dashboard)
+================================================= */
+
+export const getEmployeeAttendanceSummary = async (req, res) => {
+
+    try {
+
+        /* ============================
+           1. Auth
+        ============================ */
+
+        const userId = req.user._id;
+
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+        }
+
+
+        /* ============================
+           2. Params
+        ============================ */
+
+        const month = Number(req.query.month);
+        const year = Number(req.query.year);
+        const format = req.query.format; // csv | json
+
+        if (!month || !year || month < 1 || month > 12) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid month/year"
+            });
+        }
+
+
+        /* ============================
+           3. Employee
+        ============================ */
+
+        const employee = await Employee.findOne({
+            userId,
+            employmentStatus: "active"
+        })
+            .select("_id empCode")
+            .lean();
+
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee not found"
+            });
+        }
+
+
+        /* ============================
+           4. Date Range
+        ============================ */
+
+        const { start, end } = buildMonthRange(year, month);
+
+
+        /* ============================
+           5. Attendance
+        ============================ */
+
+        const records = await Attendance.find({
+            employeeId: employee._id,
+            date: { $gte: start, $lte: end }
+        })
+            .sort({ date: -1 })
+            .lean();
+
+
+        /* ============================
+           6. Calendar Map
+        ============================ */
+
+        const daysInMonth = new Date(year, month, 0).getDate();
+
+        const map = new Map();
+
+        records.forEach(r => {
+            const key = r.date.toISOString().split("T")[0];
+            map.set(key, r);
+        });
+
+
+        /* ============================
+           7. Build Report
+        ============================ */
+
+        let presentDays = 0;
+        let absentDays = 0;
+        let totalMinutes = 0;
+
+        const todayKey = new Date().toISOString().split("T")[0];
+        const yesterdayKey = new Date(Date.now() - 86400000)
+            .toISOString().split("T")[0];
+
+        const report = [];
+
+
+        for (let i = daysInMonth; i >= 1; i--) {
+
+            const date = new Date(year, month - 1, i);
+            const key = date.toISOString().split("T")[0];
+
+            let label = date.toLocaleDateString("en-IN", {
+                day: "2-digit",
+                month: "short"
+            });
+
+            if (key === todayKey) label = "Today";
+            if (key === yesterdayKey) label = "Yesterday";
+
+            const rec = map.get(key);
+
+
+            /* ----- Absent ----- */
+            if (!rec) {
+
+                absentDays++;
+
+                report.push({
+                    Date: label,
+                    TimeIn: "Absent",
+                    TimeOut: "-",
+                    TotalHours: "-"
+                });
+
+                continue;
+            }
+
+
+            /* ----- Present ----- */
+
+            if (rec.status === "present") presentDays++;
+
+            const minutes = rec.workSummary?.totalMinutes || 0;
+
+            totalMinutes += minutes;
+
+            report.push({
+                Date: label,
+                TimeIn: formatTime(rec.punchIn),
+                TimeOut: rec.punchOut
+                    ? formatTime(rec.punchOut)
+                    : "-",
+                TotalHours: formatMinutes(minutes)
+            });
+        }
+
+
+        /* ============================
+           8. CSV Export Mode
+        ============================ */
+
+        if (format === "csv") {
+
+            const fields = [
+                "Date",
+                "TimeIn",
+                "TimeOut",
+                "TotalHours"
+            ];
+
+            const parser = new Parser({ fields });
+
+            const csv = parser.parse(report);
+
+            const fileName =
+                `attendance_${employee.empCode}_${month}_${year}.csv`;
+
+
+            res.setHeader(
+                "Content-Type",
+                "text/csv"
+            );
+
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${fileName}"`
+            );
+
+            return res.status(200).send(csv);
+        }
+
+
+        /* ============================
+           9. JSON Mode
+        ============================ */
+
+        const avgMinutes = presentDays
+            ? Math.round(totalMinutes / presentDays)
+            : 0;
+
+
+        return res.status(200).json({
+
+            success: true,
+
+            meta: {
+                employeeId: employee._id,
+                empCode: employee.empCode,
+                month,
+                year
+            },
+
+            summary: {
+                avgPerDay: formatMinutes(avgMinutes),
+                presentDays,
+                absentDays,
+                totalWorkingDays: daysInMonth
+            },
+
+            records: report
+        });
+
+    } catch (error) {
+
+        console.error("Attendance Export Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to load attendance"
+        });
+    }
+};
+
+
 /**
  * @desc   Get Monthly Attendance Summary (Payroll)
  * @route  GET /api/attendance/summary
