@@ -26,7 +26,7 @@ export const createEmployee = async (req, res) => {
            1. Authorization
         ---------------------------------------------- */
         const companyId = req.user?._id || req.user?.id;
-        const userRole = req.user?.role ||req.user?.type;
+        const userRole = req.user?.role || req.user?.type;
 
         if (!companyId) {
             return res.status(401).json({
@@ -35,7 +35,7 @@ export const createEmployee = async (req, res) => {
             });
         }
 
-        if (!['partner','admin', 'super_admin'].includes(userRole)) {
+        if (!['partner', 'admin', 'super_admin'].includes(userRole)) {
             return res.status(403).json({
                 success: false,
                 message: "Access denied",
@@ -213,14 +213,14 @@ export const findbyPhone = async (req, res) => {
 export const findbyReferralCode = async (req, res) => {
     const { referalCode } = req.body;
     try {
-        
+
         const user = await User.findOne({ referalCode });
         if (!user) {
             return res.status(404).json({
                 success: false,
                 message: "User not found"
             })
-        }   
+        }
 
         return res.status(200).json({
             success: true,
@@ -228,7 +228,7 @@ export const findbyReferralCode = async (req, res) => {
             data: user
         })
     }
-        catch (error) {
+    catch (error) {
         console.error("FindByReferralCode Error:", error);
         return res.status(500).json({
             success: false,
@@ -375,7 +375,7 @@ export const getEmpByUserId = async (req, res) => {
     try {
         const employee = await Employee.findOne({ userId }).populate("userId", "name email phone");
         if (!employee) {
-            return res.status(404).json({   
+            return res.status(404).json({
                 success: false,
                 message: "Employee not found"
             })
@@ -394,3 +394,59 @@ export const getEmpByUserId = async (req, res) => {
         });
     }
 }
+
+
+export const checkEmpButton = async (req, res) => {
+    const userId = req.user?._id;
+    try {
+        const employee = await Employee.findOne({ userId, employmentStatus: "active" });
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee not found"
+            })
+        }
+        return res.status(200).json({
+            success: true,
+            message: "Employee found",
+            data: {
+                showButton: true
+            }
+        })
+    }
+    catch (error) {
+        console.error("checkEmpButton Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message,
+        });
+    }
+}
+
+export  const delteEmployee = async (req, res) => {
+    const { empId } = req.params;
+    try {
+        const employee = await Employee.findByIdAndDelete(empId);
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee not found"
+            })
+        }
+        return res.status(200).json({
+            success: true,
+            message: "Employee deleted successfully",
+            data: employee
+        })
+    }
+    catch (error) {
+        console.error("deleteEmployee Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message,
+        });
+    }
+}
+

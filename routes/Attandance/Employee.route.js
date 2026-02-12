@@ -10,7 +10,9 @@ import {
     getAllEmployees,
     getEmpDetails,
     getEmpByUserId,
-    findbyReferralCode
+    findbyReferralCode,
+    checkEmpButton,
+    delteEmployee
 } from "../../controllers/attandance/Employee.js";
 
 /* ===============================
@@ -58,6 +60,21 @@ router.post(
  * Get All Employees (Paginated)
  * GET /api/employees
  */
+router.get(
+    "/",
+    authMiddleware,
+    getAllEmployees
+);
+router.delete(
+    "/delteEmployee/:empId",
+    authMiddleware,
+    delteEmployee
+);
+router.get(
+    "/checkEmpButton",
+    authMiddleware,
+    checkEmpButton
+);
 router.get(
     "/",
     authMiddleware,

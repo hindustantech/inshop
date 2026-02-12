@@ -52,6 +52,17 @@ router.get(
     authMiddleware,
     getAttendance
 );
+router.get(
+    "/employee-monthly-cards",
+    authMiddleware,
+    getEmployeeMonthlyCards
+);
+
+router.get(
+    "/company-today",
+    authMiddleware,
+    getCompanyTodayAttendance
+);
 
 /**
  * Get Monthly Salary Summary
