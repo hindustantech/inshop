@@ -101,7 +101,7 @@ export const markAttendance = async (req, res) => {
         }
 
         // 3) Fetch user from DB
-        const user = await User.findById(decoded.id).select('-password -otp -__v');
+        const user = await User.findById(decoded.userId).select('-password -otp -__v');
         if (!user) {
             return res.status(401).json({ message: 'User not found, authorization denied' });
         }
