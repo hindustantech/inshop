@@ -958,10 +958,6 @@ export const getCompanyTodayAttendance = async (req, res) => {
  */
 // controllers/attendanceReportController.js
 
-import mongoose from "mongoose";
-import Attendance from "../models/Attendance.js";
-import Employee from "../models/Employee.js";
-import User from "../models/User.js";
 
 /**
  * Get Employee Monthly Attendance Summary
