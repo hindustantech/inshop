@@ -979,17 +979,51 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             ? new Date(endDate)
             : new Date();
 
-        // Set end to end of day
         end.setHours(23, 59, 59, 999);
+
+        console.log('Date Range:', { start, end, companyId: companyId.toString() });
 
 
         /* ============================
-           3. Aggregation Pipeline
+           3. Debug: Check Data Exists
+        ============================ */
+
+        const attendanceCount = await Attendance.countDocuments({
+            companyId: new mongoose.Types.ObjectId(companyId),
+            date: { $gte: start, $lte: end }
+        });
+
+        console.log('Attendance records found:', attendanceCount);
+
+        if (attendanceCount === 0) {
+            // Check if any attendance exists for this company at all
+            const totalAttendance = await Attendance.countDocuments({
+                companyId: new mongoose.Types.ObjectId(companyId)
+            });
+
+            console.log('Total attendance for company:', totalAttendance);
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    period: { start, end },
+                    totalEmployees: 0,
+                    report: [],
+                    message: totalAttendance === 0
+                        ? 'No attendance records found for this company'
+                        : 'No attendance records in selected date range'
+                }
+            });
+        }
+
+
+        /* ============================
+           4. Aggregation Pipeline
         ============================ */
 
         const report = await Attendance.aggregate([
 
-            /* Step 1: Match Company + Date Range */
+            /* Match Company + Date */
             {
                 $match: {
                     companyId: new mongoose.Types.ObjectId(companyId),
@@ -997,31 +1031,64 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
+            /* Debug stage - log what we have so far */
+            {
+                $addFields: {
+                    debug_companyId: "$companyId",
+                    debug_employeeId: "$employeeId",
+                    debug_date: "$date"
+                }
+            },
 
-            /* Step 2: Lookup Employee Details */
+            /* Join Employee */
             {
                 $lookup: {
                     from: "employees",
-                    localField: "employeeId",
-                    foreignField: "userId",
+                    let: { empId: "$employeeId" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $eq: ["$userId", "$$empId"]
+                                }
+                            }
+                        }
+                    ],
                     as: "employeeData"
                 }
             },
 
+            /* Check if employee found */
             {
-                $unwind: {
-                    path: "$employeeData",
-                    preserveNullAndEmptyArrays: false
+                $addFields: {
+                    hasEmployee: {
+                        $gt: [{ $size: "$employeeData" }, 0]
+                    }
                 }
             },
 
+            /* Unwind employee (skip if not found) */
+            {
+                $unwind: {
+                    path: "$employeeData",
+                    preserveNullAndEmptyArrays: true
+                }
+            },
 
-            /* Step 3: Lookup User Details */
+            /* Join User */
             {
                 $lookup: {
                     from: "users",
-                    localField: "employeeId",
-                    foreignField: "_id",
+                    let: { userId: "$employeeId" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $eq: ["$_id", "$$userId"]
+                                }
+                            }
+                        }
+                    ],
                     as: "userData"
                 }
             },
@@ -1029,12 +1096,18 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             {
                 $unwind: {
                     path: "$userData",
-                    preserveNullAndEmptyArrays: false
+                    preserveNullAndEmptyArrays: true
                 }
             },
 
+            /* Filter: Only keep records where we found employee data */
+            {
+                $match: {
+                    "userData._id": { $exists: true }
+                }
+            },
 
-            /* Step 4: Group by Employee */
+            /* Group by Employee */
             {
                 $group: {
                     _id: "$employeeId",
@@ -1044,8 +1117,9 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     phone: { $first: "$userData.phone" },
                     empCode: { $first: "$employeeData.empCode" },
                     department: { $first: "$employeeData.jobInfo.department" },
+                    designation: { $first: "$employeeData.jobInfo.designation" },
 
-                    // Working Days (present or half_day with approved status)
+                    // Working Days
                     workingDays: {
                         $sum: {
                             $cond: [
@@ -1055,6 +1129,33 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                                         { $eq: ["$approvalStatus", "approved"] }
                                     ]
                                 },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+
+                    // Present Days (all approved present status)
+                    presentDays: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $eq: ["$status", "present"] },
+                                        { $eq: ["$approvalStatus", "approved"] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+
+                    // Half Days
+                    halfDays: {
+                        $sum: {
+                            $cond: [
+                                { $eq: ["$status", "half_day"] },
                                 1,
                                 0
                             ]
@@ -1083,10 +1184,36 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    // Total Minutes Worked
+                    // Total Minutes
                     totalMinutes: {
                         $sum: {
-                            $ifNull: ["$workSummary.totalMinutes", 0]
+                            $cond: [
+                                { $ifNull: ["$workSummary.totalMinutes", false] },
+                                "$workSummary.totalMinutes",
+                                0
+                            ]
+                        }
+                    },
+
+                    // Overtime Minutes
+                    overtimeMinutes: {
+                        $sum: {
+                            $cond: [
+                                { $ifNull: ["$workSummary.overtimeMinutes", false] },
+                                "$workSummary.overtimeMinutes",
+                                0
+                            ]
+                        }
+                    },
+
+                    // Late Minutes
+                    lateMinutes: {
+                        $sum: {
+                            $cond: [
+                                { $ifNull: ["$workSummary.lateMinutes", false] },
+                                "$workSummary.lateMinutes",
+                                0
+                            ]
                         }
                     },
 
@@ -1108,26 +1235,21 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    // Total Days with records
-                    totalDays: { $sum: 1 }
+                    // Total attendance records
+                    totalRecords: { $sum: 1 }
                 }
             },
 
-
-            /* Step 5: Calculate Average Working Hours */
+            /* Calculate Averages */
             {
                 $addFields: {
+                    // Average working hours per working day
                     avgWorkingHours: {
                         $cond: {
                             if: { $gt: ["$workingDays", 0] },
                             then: {
                                 $round: [
-                                    {
-                                        $divide: [
-                                            "$totalMinutes",
-                                            { $multiply: ["$workingDays", 60] }
-                                        ]
-                                    },
+                                    { $divide: ["$totalMinutes", { $multiply: ["$workingDays", 60] }] },
                                     2
                                 ]
                             },
@@ -1135,18 +1257,25 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    // Total hours worked (for reference)
+                    // Total hours worked
                     totalHours: {
                         $round: [
                             { $divide: ["$totalMinutes", 60] },
+                            2
+                        ]
+                    },
+
+                    // Overtime hours
+                    overtimeHours: {
+                        $round: [
+                            { $divide: ["$overtimeMinutes", 60] },
                             2
                         ]
                     }
                 }
             },
 
-
-            /* Step 6: Project Final Output */
+            /* Project Output */
             {
                 $project: {
                     _id: 0,
@@ -1155,27 +1284,37 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     phone: 1,
                     empCode: 1,
                     department: 1,
+                    designation: 1,
+
+                    // Attendance Summary
+                    presentDays: 1,
+                    halfDays: 1,
                     workingDays: 1,
                     absentDays: 1,
                     leaveDays: 1,
                     exceptionDays: 1,
-                    totalDays: 1,
+                    totalRecords: 1,
+
+                    // Time Summary
                     totalHours: 1,
-                    avgWorkingHours: 1
+                    avgWorkingHours: 1,
+                    overtimeHours: 1,
+                    lateMinutes: 1
                 }
             },
 
-
-            /* Step 7: Sort by Name */
+            /* Sort */
             {
                 $sort: { name: 1 }
             }
 
         ]);
 
+        console.log('Report generated:', report.length, 'employees');
+
 
         /* ============================
-           4. Response
+           5. Response
         ============================ */
 
         res.status(200).json({
@@ -1193,15 +1332,78 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
     } catch (error) {
 
         console.error("Monthly Report Error:", error);
+        console.error("Error Stack:", error.stack);
 
         res.status(500).json({
             success: false,
             message: "Failed to fetch monthly report",
-            error: error.message
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 };
 
+
+
+export const debugAttendanceData = async (req, res) => {
+    try {
+        const companyId = req.user._id;
+
+        // 1. Check raw attendance records
+        const attendanceRecords = await Attendance.find({
+            companyId: new mongoose.Types.ObjectId(companyId)
+        })
+            .limit(5)
+            .lean();
+
+        console.log('Sample Attendance Records:', JSON.stringify(attendanceRecords, null, 2));
+
+        // 2. Check employees
+        const employees = await Employee.find({
+            companyId: new mongoose.Types.ObjectId(companyId)
+        })
+            .limit(5)
+            .lean();
+
+        console.log('Sample Employees:', JSON.stringify(employees, null, 2));
+
+        // 3. Check users
+        const employeeIds = employees.map(e => e.userId);
+        const users = await User.find({
+            _id: { $in: employeeIds }
+        })
+            .limit(5)
+            .lean();
+
+        console.log('Sample Users:', JSON.stringify(users, null, 2));
+
+        // 4. Count documents
+        const counts = {
+            totalAttendance: await Attendance.countDocuments({ companyId }),
+            totalEmployees: await Employee.countDocuments({ companyId }),
+            attendanceWithEmployeeId: await Attendance.countDocuments({
+                companyId,
+                employeeId: { $exists: true, $ne: null }
+            })
+        };
+
+        console.log('Document Counts:', counts);
+
+        res.json({
+            success: true,
+            data: {
+                counts,
+                sampleAttendance: attendanceRecords,
+                sampleEmployees: employees,
+                sampleUsers: users
+            }
+        });
+
+    } catch (error) {
+        console.error('Debug Error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
 /**
  * @desc   Get Employee Monthly Attendance
  * @route  GET /api/attendance/monthly

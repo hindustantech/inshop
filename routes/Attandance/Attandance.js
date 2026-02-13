@@ -15,7 +15,8 @@ import {
     exportAttendanceCSV,
     getEmployeeAttendanceSummary,
     getEmployeeSimpleMonthlySummary,
-    getCompanyTodayAttendance
+    getCompanyTodayAttendance,
+    debugAttendanceData
 } from "../../controllers/attandance/Attandance.js";
 
 /* ===============================
@@ -56,6 +57,11 @@ router.get(
     "/employee-monthly-cards",
     authMiddleware,
     getEmployeeSimpleMonthlySummary
+);
+router.get(
+    "/debugAttendanceData",
+    authMiddleware,
+    debugAttendanceData
 );
 
 router.get(
