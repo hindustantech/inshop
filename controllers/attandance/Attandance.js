@@ -951,7 +951,6 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 export const getEmployeeSimpleMonthlySummary = async (req, res) => {
     try {
-
         /* ============================
            1. Auth & Validation
         ============================ */
@@ -965,7 +964,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 message: "Invalid company id"
             });
         }
-
 
         /* ============================
            2. Date Range
@@ -981,49 +979,13 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
         end.setHours(23, 59, 59, 999);
 
-        console.log('Date Range:', { start, end, companyId: companyId.toString() });
-
-
         /* ============================
-           3. Debug: Check Data Exists
-        ============================ */
-
-        const attendanceCount = await Attendance.countDocuments({
-            companyId: new mongoose.Types.ObjectId(companyId),
-            date: { $gte: start, $lte: end }
-        });
-
-        console.log('Attendance records found:', attendanceCount);
-
-        if (attendanceCount === 0) {
-            // Check if any attendance exists for this company at all
-            const totalAttendance = await Attendance.countDocuments({
-                companyId: new mongoose.Types.ObjectId(companyId)
-            });
-
-            console.log('Total attendance for company:', totalAttendance);
-
-            return res.status(200).json({
-                success: true,
-                data: {
-                    period: { start, end },
-                    totalEmployees: 0,
-                    report: [],
-                    message: totalAttendance === 0
-                        ? 'No attendance records found for this company'
-                        : 'No attendance records in selected date range'
-                }
-            });
-        }
-
-
-        /* ============================
-           4. Aggregation Pipeline
+           3. Aggregation Pipeline
         ============================ */
 
         const report = await Attendance.aggregate([
 
-            /* Match Company + Date */
+            // Stage 1: Match company and date range
             {
                 $match: {
                     companyId: new mongoose.Types.ObjectId(companyId),
@@ -1031,111 +993,59 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            /* Debug stage - log what we have so far */
-            {
-                $addFields: {
-                    debug_companyId: "$companyId",
-                    debug_employeeId: "$employeeId",
-                    debug_date: "$date"
-                }
-            },
-
-            /* Join Employee */
+            // Stage 2: Join with Employee collection
+            // Attendance.employeeId = Employee.userId
             {
                 $lookup: {
                     from: "employees",
-                    let: { empId: "$employeeId" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $eq: ["$userId", "$$empId"]
-                                }
-                            }
-                        }
-                    ],
-                    as: "employeeData"
+                    localField: "employeeId",
+                    foreignField: "userId",
+                    as: "employee"
                 }
             },
 
-            /* Check if employee found */
-            {
-                $addFields: {
-                    hasEmployee: {
-                        $gt: [{ $size: "$employeeData" }, 0]
-                    }
-                }
-            },
-
-            /* Unwind employee (skip if not found) */
+            // Stage 3: Unwind employee (required since we need employee data)
             {
                 $unwind: {
-                    path: "$employeeData",
-                    preserveNullAndEmptyArrays: true
+                    path: "$employee",
+                    preserveNullAndEmptyArrays: false  // Skip records without employee
                 }
             },
 
-            /* Join User */
+            // Stage 4: Join with User collection
+            // Employee.userId = User._id
             {
                 $lookup: {
                     from: "users",
-                    let: { userId: "$employeeId" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $eq: ["$_id", "$$userId"]
-                                }
-                            }
-                        }
-                    ],
-                    as: "userData"
+                    localField: "employee.userId",
+                    foreignField: "_id",
+                    as: "user"
                 }
             },
 
+            // Stage 5: Unwind user
             {
                 $unwind: {
-                    path: "$userData",
-                    preserveNullAndEmptyArrays: true
+                    path: "$user",
+                    preserveNullAndEmptyArrays: false  // Skip records without user
                 }
             },
 
-            /* Filter: Only keep records where we found employee data */
-            {
-                $match: {
-                    "userData._id": { $exists: true }
-                }
-            },
-
-            /* Group by Employee */
+            // Stage 6: Group by employee
             {
                 $group: {
-                    _id: "$employeeId",
+                    _id: "$employee.userId",
 
-                    // Employee Info
-                    name: { $first: "$userData.name" },
-                    phone: { $first: "$userData.phone" },
-                    empCode: { $first: "$employeeData.empCode" },
-                    department: { $first: "$employeeData.jobInfo.department" },
-                    designation: { $first: "$employeeData.jobInfo.designation" },
+                    // Employee Information
+                    name: { $first: "$user.name" },
+                    phone: { $first: "$user.phone" },
+                    email: { $first: "$user.email" },
+                    empCode: { $first: "$employee.empCode" },
+                    department: { $first: "$employee.jobInfo.department" },
+                    designation: { $first: "$employee.jobInfo.designation" },
+                    joiningDate: { $first: "$employee.jobInfo.joiningDate" },
 
-                    // Working Days
-                    workingDays: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $in: ["$status", ["present", "half_day"]] },
-                                        { $eq: ["$approvalStatus", "approved"] }
-                                    ]
-                                },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Present Days (all approved present status)
+                    // Attendance Summary
                     presentDays: {
                         $sum: {
                             $cond: [
@@ -1151,18 +1061,21 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    // Half Days
                     halfDays: {
                         $sum: {
                             $cond: [
-                                { $eq: ["$status", "half_day"] },
+                                {
+                                    $and: [
+                                        { $eq: ["$status", "half_day"] },
+                                        { $eq: ["$approvalStatus", "approved"] }
+                                    ]
+                                },
                                 1,
                                 0
                             ]
                         }
                     },
 
-                    // Absent Days
                     absentDays: {
                         $sum: {
                             $cond: [
@@ -1173,7 +1086,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    // Leave Days
                     leaveDays: {
                         $sum: {
                             $cond: [
@@ -1184,40 +1096,40 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    // Total Minutes
+                    // Working Days (Present + Half Days)
+                    workingDays: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $in: ["$status", ["present", "half_day"]] },
+                                        { $eq: ["$approvalStatus", "approved"] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+
+                    // Time Summary
                     totalMinutes: {
-                        $sum: {
-                            $cond: [
-                                { $ifNull: ["$workSummary.totalMinutes", false] },
-                                "$workSummary.totalMinutes",
-                                0
-                            ]
-                        }
+                        $sum: { $ifNull: ["$workSummary.totalMinutes", 0] }
                     },
 
-                    // Overtime Minutes
                     overtimeMinutes: {
-                        $sum: {
-                            $cond: [
-                                { $ifNull: ["$workSummary.overtimeMinutes", false] },
-                                "$workSummary.overtimeMinutes",
-                                0
-                            ]
-                        }
+                        $sum: { $ifNull: ["$workSummary.overtimeMinutes", 0] }
                     },
 
-                    // Late Minutes
                     lateMinutes: {
-                        $sum: {
-                            $cond: [
-                                { $ifNull: ["$workSummary.lateMinutes", false] },
-                                "$workSummary.lateMinutes",
-                                0
-                            ]
-                        }
+                        $sum: { $ifNull: ["$workSummary.lateMinutes", 0] }
                     },
 
-                    // Exception Days
+                    earlyLeaveMinutes: {
+                        $sum: { $ifNull: ["$workSummary.earlyLeaveMinutes", 0] }
+                    },
+
+                    // Exception Tracking
                     exceptionDays: {
                         $sum: {
                             $cond: [
@@ -1235,29 +1147,19 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    // Total attendance records
-                    totalRecords: { $sum: 1 }
+                    // Total Records
+                    totalRecords: { $sum: 1 },
+
+                    // First and Last Attendance
+                    firstAttendanceDate: { $min: "$date" },
+                    lastAttendanceDate: { $max: "$date" }
                 }
             },
 
-            /* Calculate Averages */
+            // Stage 7: Calculate derived fields
             {
                 $addFields: {
-                    // Average working hours per working day
-                    avgWorkingHours: {
-                        $cond: {
-                            if: { $gt: ["$workingDays", 0] },
-                            then: {
-                                $round: [
-                                    { $divide: ["$totalMinutes", { $multiply: ["$workingDays", 60] }] },
-                                    2
-                                ]
-                            },
-                            else: 0
-                        }
-                    },
-
-                    // Total hours worked
+                    // Convert minutes to hours
                     totalHours: {
                         $round: [
                             { $divide: ["$totalMinutes", 60] },
@@ -1265,56 +1167,198 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         ]
                     },
 
-                    // Overtime hours
                     overtimeHours: {
                         $round: [
                             { $divide: ["$overtimeMinutes", 60] },
                             2
                         ]
+                    },
+
+                    // Average working hours per working day
+                    avgWorkingHours: {
+                        $cond: {
+                            if: { $gt: ["$workingDays", 0] },
+                            then: {
+                                $round: [
+                                    { $divide: ["$totalHours", "$workingDays"] },
+                                    2
+                                ]
+                            },
+                            else: 0
+                        }
+                    },
+
+                    // Attendance percentage
+                    attendancePercentage: {
+                        $cond: {
+                            if: { $gt: ["$workingDays", 0] },
+                            then: {
+                                $round: [
+                                    {
+                                        $multiply: [
+                                            { $divide: ["$presentDays", "$workingDays"] },
+                                            100
+                                        ]
+                                    },
+                                    1
+                                ]
+                            },
+                            else: 0
+                        }
+                    },
+
+                    // Format dates
+                    joiningDateFormatted: {
+                        $dateToString: {
+                            format: "%Y-%m-%d",
+                            date: "$joiningDate"
+                        }
+                    },
+
+                    firstAttendanceDateFormatted: {
+                        $dateToString: {
+                            format: "%Y-%m-%d",
+                            date: "$firstAttendanceDate"
+                        }
+                    },
+
+                    lastAttendanceDateFormatted: {
+                        $dateToString: {
+                            format: "%Y-%m-%d",
+                            date: "$lastAttendanceDate"
+                        }
                     }
                 }
             },
 
-            /* Project Output */
+            // Stage 8: Final projection
             {
                 $project: {
                     _id: 0,
                     userId: "$_id",
                     name: 1,
                     phone: 1,
+                    email: 1,
                     empCode: 1,
                     department: 1,
                     designation: 1,
+                    joiningDate: "$joiningDateFormatted",
 
                     // Attendance Summary
-                    presentDays: 1,
-                    halfDays: 1,
-                    workingDays: 1,
-                    absentDays: 1,
-                    leaveDays: 1,
-                    exceptionDays: 1,
-                    totalRecords: 1,
+                    summary: {
+                        presentDays: 1,
+                        halfDays: 1,
+                        absentDays: 1,
+                        leaveDays: 1,
+                        workingDays: 1,
+                        exceptionDays: 1,
+                        attendancePercentage: 1,
+                        totalRecords: 1
+                    },
 
                     // Time Summary
-                    totalHours: 1,
-                    avgWorkingHours: 1,
-                    overtimeHours: 1,
-                    lateMinutes: 1
+                    timeSummary: {
+                        totalHours: 1,
+                        avgWorkingHours: 1,
+                        overtimeHours: 1,
+                        lateMinutes: 1,
+                        earlyLeaveMinutes: 1
+                    },
+
+                    // Date Range
+                    dateRange: {
+                        firstAttendance: "$firstAttendanceDateFormatted",
+                        lastAttendance: "$lastAttendanceDateFormatted"
+                    }
                 }
             },
 
-            /* Sort */
+            // Stage 9: Sort by name
             {
                 $sort: { name: 1 }
             }
-
         ]);
 
-        console.log('Report generated:', report.length, 'employees');
+        /* ============================
+           4. Calculate Summary Statistics
+        ============================ */
 
+        const summary = {
+            totalEmployees: report.length,
+            totalPresentDays: 0,
+            totalHalfDays: 0,
+            totalAbsentDays: 0,
+            totalLeaveDays: 0,
+            totalWorkingDays: 0,
+            totalExceptionDays: 0,
+            totalHours: 0,
+            totalOvertimeHours: 0
+        };
+
+        // Aggregate summary statistics
+        report.forEach(emp => {
+            summary.totalPresentDays += emp.summary.presentDays || 0;
+            summary.totalHalfDays += emp.summary.halfDays || 0;
+            summary.totalAbsentDays += emp.summary.absentDays || 0;
+            summary.totalLeaveDays += emp.summary.leaveDays || 0;
+            summary.totalWorkingDays += emp.summary.workingDays || 0;
+            summary.totalExceptionDays += emp.summary.exceptionDays || 0;
+            summary.totalHours += emp.timeSummary.totalHours || 0;
+            summary.totalOvertimeHours += emp.timeSummary.overtimeHours || 0;
+        });
+
+        // Round summary totals
+        summary.totalHours = Math.round(summary.totalHours * 100) / 100;
+        summary.totalOvertimeHours = Math.round(summary.totalOvertimeHours * 100) / 100;
 
         /* ============================
-           5. Response
+           5. Handle Empty Results
+        ============================ */
+
+        if (report.length === 0) {
+            // Check if company has any employees
+            const employeeCount = await Employee.countDocuments({
+                companyId: new mongoose.Types.ObjectId(companyId)
+            });
+
+            // Check if company has any attendance
+            const attendanceCount = await Attendance.countDocuments({
+                companyId: new mongoose.Types.ObjectId(companyId)
+            });
+
+            let message = 'No data found';
+
+            if (employeeCount === 0) {
+                message = 'No employees found for this company';
+            } else if (attendanceCount === 0) {
+                message = 'No attendance records found for this company';
+            } else {
+                message = 'No attendance records in the selected date range';
+            }
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    period: {
+                        start,
+                        end,
+                        formatted: {
+                            start: start.toISOString().split('T')[0],
+                            end: end.toISOString().split('T')[0]
+                        }
+                    },
+                    summary: {
+                        totalEmployees: 0,
+                        ...summary,
+                        message
+                    },
+                    report: []
+                }
+            });
+        }
+
+        /* ============================
+           6. Success Response
         ============================ */
 
         res.status(200).json({
@@ -1322,15 +1366,21 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             data: {
                 period: {
                     start,
-                    end
+                    end,
+                    formatted: {
+                        start: start.toISOString().split('T')[0],
+                        end: end.toISOString().split('T')[0]
+                    }
                 },
-                totalEmployees: report.length,
+                summary: {
+                    totalEmployees: report.length,
+                    ...summary
+                },
                 report
             }
         });
 
     } catch (error) {
-
         console.error("Monthly Report Error:", error);
         console.error("Error Stack:", error.stack);
 
@@ -1342,7 +1392,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         });
     }
 };
-
 
 
 export const debugAttendanceData = async (req, res) => {
