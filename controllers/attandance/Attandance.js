@@ -2487,3 +2487,193 @@ export const exportAttendanceCSV = async (req, res) => {
     }
 };
 
+
+
+
+
+
+export const exportCompanyAttendanceToExcel = async (req, res) => {
+    try {
+
+        /* ===============================
+           1. AUTH & VALIDATION
+        =============================== */
+
+        const companyId = req.user._id; // From JWT Middleware
+
+        if (!mongoose.Types.ObjectId.isValid(companyId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Company ID"
+            });
+        }
+
+
+        /* ===============================
+           2. FILTER (Optional Date Range)
+        =============================== */
+
+        const { startDate, endDate } = req.query;
+
+        let matchQuery = {
+            companyId: new mongoose.Types.ObjectId(companyId)
+        };
+
+        if (startDate && endDate) {
+            matchQuery.date = {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate)
+            };
+        }
+
+
+        /* ===============================
+           3. FETCH DATA (Optimized)
+        =============================== */
+
+        const records = await Attendance.aggregate([
+
+            { $match: matchQuery },
+
+            /* Join Employee */
+            {
+                $lookup: {
+                    from: "employees",
+                    localField: "employeeId",
+                    foreignField: "_id",
+                    as: "employee"
+                }
+            },
+
+            { $unwind: "$employee" },
+
+            /* Projection (Report Fields) */
+            {
+                $project: {
+
+                    _id: 0,
+
+                    employeeId: "$employee._id",
+                    employeeName: "$employee.name",
+                    employeeEmail: "$employee.email",
+
+                    date: 1,
+
+                    punchIn: 1,
+                    punchOut: 1,
+
+                    totalMinutes: "$workSummary.totalMinutes",
+                    payableMinutes: "$workSummary.payableMinutes",
+                    overtimeMinutes: "$workSummary.overtimeMinutes",
+
+                    status: 1,
+                    approvalStatus: 1,
+
+                    deviceId: "$deviceInfo.deviceId",
+
+                    createdAt: 1
+                }
+            },
+
+            { $sort: { date: -1 } }
+
+        ]);
+
+
+        if (!records || records.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No attendance records found"
+            });
+        }
+
+
+        /* ===============================
+           4. FORMAT DATA
+        =============================== */
+
+        const formattedData = records.map((item) => {
+
+            return {
+
+                Employee_ID: item.employeeId,
+                Employee_Name: item.employeeName || "-",
+                Employee_Email: item.employeeEmail || "-",
+
+                Date: formatDate(item.date),
+
+                Punch_In: formatTime(item.punchIn),
+                Punch_Out: formatTime(item.punchOut),
+
+                Total_Minutes: item.totalMinutes || 0,
+                Payable_Minutes: item.payableMinutes || 0,
+                Overtime_Minutes: item.overtimeMinutes || 0,
+
+                Status: item.status,
+                Approval_Status: item.approvalStatus,
+
+                Device_ID: item.deviceId || "-",
+
+                Created_At: formatDateTime(item.createdAt)
+            };
+        });
+
+
+        /* ===============================
+           5. JSON → CSV
+        =============================== */
+
+        const fields = Object.keys(formattedData[0]);
+
+        const json2csvParser = new Parser({ fields });
+
+        const csv = json2csvParser.parse(formattedData);
+
+
+        /* ===============================
+           6. DOWNLOAD RESPONSE
+        =============================== */
+
+        const fileName = `attendance_report_${Date.now()}.csv`;
+
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${fileName}"`
+        );
+
+        return res.status(200).send(csv);
+
+    }
+    catch (error) {
+
+        console.error("Attendance Export Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to export attendance",
+            error: error.message
+        });
+    }
+};
+
+
+
+/* =====================================================
+   HELPERS
+===================================================== */
+
+const formatDate = (date) => {
+    if (!date) return "-";
+
+    return new Date(date).toLocaleDateString("en-IN");
+};
+
+
+
+
+const formatDateTime = (date) => {
+    if (!date) return "-";
+
+    return new Date(date).toLocaleString("en-IN");
+};
