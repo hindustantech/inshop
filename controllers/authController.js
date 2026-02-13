@@ -374,7 +374,7 @@ export const getProfile = async (req, res) => {
     }
 
     const user = await User.findById(userId)
-      .select('name phone profileImage couponCount type referalCode referredBy')
+      .select('name phone email profileImage couponCount type referalCode referredBy')
       .lean();
 
     if (!user) {
