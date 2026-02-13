@@ -950,360 +950,397 @@ export const getCompanyTodayAttendance = async (req, res) => {
 ====================================================== */
 
 export const getEmployeeMonthlyCards = async (req, res) => {
-    try {
-        const companyId = req.user._id;
+  try {
+    const companyId = req.user._id;
 
-        // IST Offset = +5:30
-        const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    // IST Offset = +5:30
+    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+    
+    // Current IST Time
+    const nowIST = new Date(Date.now() + IST_OFFSET);
+    
+    // Month Start (IST)
+    const monthStart = new Date(
+      nowIST.getFullYear(),
+      nowIST.getMonth(),
+      1,
+      0, 0, 0, 0
+    );
+    
+    // Today End (IST)
+    const todayEnd = new Date(
+      nowIST.getFullYear(),
+      nowIST.getMonth(),
+      nowIST.getDate(),
+      23, 59, 59, 999
+    );
 
-        // Current IST Time
-        const nowIST = new Date(Date.now() + IST_OFFSET);
+    // Convert IST → UTC (DB stores UTC)
+    const startUTC = new Date(monthStart.getTime() - IST_OFFSET);
+    const endUTC = new Date(todayEnd.getTime() - IST_OFFSET);
 
-        // Month Start (IST)
-        const monthStart = new Date(
-            nowIST.getFullYear(),
-            nowIST.getMonth(),
-            1,
-            0, 0, 0, 0
-        );
+    // Get total working days in month
+    const totalDaysInMonth = todayEnd.getDate();
+    
+    const data = await Attendance.aggregate([
+      // Filter attendance records
+      {
+        $match: {
+          companyId: new mongoose.Types.ObjectId(companyId),
+          date: {
+            $gte: startUTC,
+            $lte: endUTC
+          }
+        }
+      },
 
-        // Today End (IST)
-        const todayEnd = new Date(
-            nowIST.getFullYear(),
-            nowIST.getMonth(),
-            nowIST.getDate(),
-            23, 59, 59, 999
-        );
-
-        // Convert IST → UTC (DB stores UTC)
-        const startUTC = new Date(monthStart.getTime() - IST_OFFSET);
-        const endUTC = new Date(todayEnd.getTime() - IST_OFFSET);
-
-        // Get total working days in month (excluding weekends/holidays if needed)
-        const totalDaysInMonth = todayEnd.getDate();
-
-        const data = await Attendance.aggregate([
-            // Filter attendance records
-            {
-                $match: {
-                    companyId: new mongoose.Types.ObjectId(companyId),
-                    date: {
-                        $gte: startUTC,
-                        $lte: endUTC
-                    }
-                }
-            },
-
-            // Group by employee
-            {
-                $group: {
-                    _id: "$employeeId",
-
-                    // Present days (including half days)
-                    presentDays: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $in: ["$status", ["present", "half_day"]]
-                                },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Half days
-                    halfDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$status", "half_day"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Absent days (explicitly marked absent)
-                    absentDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$status", "absent"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Total work minutes
-                    totalWorkMinutes: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $in: ["$status", ["present", "half_day"]]
-                                },
-                                "$workSummary.totalMinutes",
-                                0
-                            ]
-                        }
-                    },
-
-                    // Late minutes
-                    totalLateMinutes: {
-                        $sum: "$workSummary.lateMinutes"
-                    },
-
-                    // Early leave minutes
-                    totalEarlyLeaveMinutes: {
-                        $sum: "$workSummary.earlyLeaveMinutes"
-                    },
-
-                    // Count for average calculation (full days = 1, half days = 0.5)
-                    weightedWorkDays: {
-                        $sum: {
-                            $switch: {
-                                branches: [
-                                    {
-                                        case: { $eq: ["$status", "present"] },
-                                        then: 1
-                                    },
-                                    {
-                                        case: { $eq: ["$status", "half_day"] },
-                                        then: 0.5
-                                    }
-                                ],
-                                default: 0
-                            }
-                        }
-                    }
-                }
-            },
-
-            // Join with employee details
-            {
-                $lookup: {
-                    from: "employees",
-                    localField: "_id",
-                    foreignField: "userId",
-                    as: "employee"
-                }
-            },
-
-            { $unwind: "$employee" },
-
-            // Calculate all metrics
-            {
-                $addFields: {
-                    // Calculate actual absent days (total days - days with attendance)
-                    actualAbsentDays: {
-                        $max: [
-                            0,
-                            {
-                                $subtract: [
-                                    totalDaysInMonth,
-                                    {
-                                        $add: [
-                                            "$presentDays"
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-
-                    // Average minutes per working day
-                    avgMinutes: {
-                        $cond: [
-                            { $gt: ["$weightedWorkDays", 0] },
-                            {
-                                $round: [
-                                    {
-                                        $divide: [
-                                            "$totalWorkMinutes",
-                                            "$weightedWorkDays"
-                                        ]
-                                    },
-                                    0
-                                ]
-                            },
-                            0
-                        ]
-                    },
-
-                    // Expected minutes (based on shift hours)
-                    expectedMinutes: {
-                        $multiply: [
-                            "$weightedWorkDays",
-                            9 * 60 // 9 hours shift in minutes
-                        ]
-                    },
-
-                    // Early departure count
-                    earlyDepartureCount: {
-                        $cond: [
-                            { $gt: ["$totalEarlyLeaveMinutes", 30] }, // More than 30 mins early
-                            1,
-                            0
-                        ]
-                    }
-                }
-            },
-
-            // Final projection
-            {
-                $project: {
-                    _id: 0,
-                    employeeId: "$_id",
-                    name: "$employee.name",
-                    phone: "$employee.phone",
-                    empCode: "$employee.empCode",
-                    designation: "$employee.jobInfo.designation",
-                    department: "$employee.jobInfo.department",
-
-                    // Attendance summary
-                    present: "$presentDays",
-                    halfDays: { $ifNull: ["$halfDays", 0] },
-                    absent: "$actualAbsentDays",
-
-                    // Time metrics
-                    totalWorkMinutes: 1,
-                    avgMinutes: 1,
-                    totalLateMinutes: 1,
-                    totalEarlyLeaveMinutes: 1,
-
-                    // Efficiency metrics
-                    efficiency: {
-                        $cond: [
-                            { $gt: ["$expectedMinutes", 0] },
-                            {
-                                $round: [
-                                    {
-                                        $multiply: [
-                                            {
-                                                $divide: [
-                                                    "$totalWorkMinutes",
-                                                    "$expectedMinutes"
-                                                ]
-                                            },
-                                            100
-                                        ]
-                                    },
-                                    1
-                                ]
-                            },
-                            0
-                        ]
-                    }
-                }
-            },
-
-            // Sort by average minutes
-            {
-                $sort: {
-                    avgMinutes: -1
-                }
+      // Group by employee
+      {
+        $group: {
+          _id: "$employeeId",
+          
+          // Present days (including half days)
+          presentDays: {
+            $sum: {
+              $cond: [
+                { 
+                  $in: ["$status", ["present", "half_day"]] 
+                },
+                1,
+                0
+              ]
             }
-        ]);
-
-        // Get employees with no attendance records
-        const employeesWithAttendance = data.map(d => d.employeeId);
-
-        const employeesWithoutAttendance = await Employee.aggregate([
-            {
-                $match: {
-                    companyId: new mongoose.Types.ObjectId(companyId),
-                    employmentStatus: "active",
-                    userId: {
-                        $nin: employeesWithAttendance
-                    }
-                }
-            },
-            {
-                $project: {
-                    employeeId: "$userId",
-                    name: 1,
-                    phone: 1,
-                    empCode: 1,
-                    designation: "$jobInfo.designation",
-                    department: "$jobInfo.department",
-                    present: 0,
-                    halfDays: 0,
-                    absent: totalDaysInMonth, // All days absent
-                    totalWorkMinutes: 0,
-                    avgMinutes: 0,
-                    totalLateMinutes: 0,
-                    totalEarlyLeaveMinutes: 0,
-                    efficiency: 0
-                }
+          },
+          
+          // Half days
+          halfDays: {
+            $sum: {
+              $cond: [
+                { $eq: ["$status", "half_day"] },
+                1,
+                0
+              ]
             }
-        ]);
+          },
+          
+          // Absent days (explicitly marked absent)
+          absentDays: {
+            $sum: {
+              $cond: [
+                { $eq: ["$status", "absent"] },
+                1,
+                0
+              ]
+            }
+          },
+          
+          // Total work minutes
+          totalWorkMinutes: {
+            $sum: {
+              $cond: [
+                { 
+                  $in: ["$status", ["present", "half_day"]] 
+                },
+                "$workSummary.totalMinutes",
+                0
+              ]
+            }
+          },
+          
+          // Late minutes
+          totalLateMinutes: {
+            $sum: "$workSummary.lateMinutes"
+          },
+          
+          // Early leave minutes
+          totalEarlyLeaveMinutes: {
+            $sum: "$workSummary.earlyLeaveMinutes"
+          },
+          
+          // Count for average calculation (full days = 1, half days = 0.5)
+          weightedWorkDays: {
+            $sum: {
+              $switch: {
+                branches: [
+                  { 
+                    case: { $eq: ["$status", "present"] }, 
+                    then: 1 
+                  },
+                  { 
+                    case: { $eq: ["$status", "half_day"] }, 
+                    then: 0.5 
+                  }
+                ],
+                default: 0
+              }
+            }
+          }
+        }
+      },
 
-        // Combine both arrays
-        const allEmployees = [...data, ...employeesWithoutAttendance];
+      // Join with employee details
+      {
+        $lookup: {
+          from: "employees",
+          localField: "_id",
+          foreignField: "userId",
+          as: "employee"
+        }
+      },
+      
+      { $unwind: "$employee" },
 
-        // Format time and add metrics
-        const formatted = allEmployees.map(emp => {
-            const hours = Math.floor(emp.avgMinutes / 60);
-            const minutes = emp.avgMinutes % 60;
+      // Calculate all metrics
+      {
+        $addFields: {
+          // Calculate actual absent days (total days - days with attendance)
+          actualAbsentDays: {
+            $max: [
+              0,
+              {
+                $subtract: [
+                  totalDaysInMonth,
+                  "$presentDays"
+                ]
+              }
+            ]
+          },
+          
+          // Average minutes per working day
+          avgMinutes: {
+            $cond: [
+              { $gt: ["$weightedWorkDays", 0] },
+              {
+                $round: [
+                  { 
+                    $divide: [
+                      "$totalWorkMinutes", 
+                      "$weightedWorkDays"
+                    ] 
+                  },
+                  0
+                ]
+              },
+              0
+            ]
+          },
+          
+          // Expected minutes (based on shift hours - 9 hours = 540 minutes)
+          expectedMinutes: {
+            $multiply: [
+              "$weightedWorkDays",
+              540 // 9 hours * 60 minutes
+            ]
+          }
+        }
+      },
 
-            // Calculate attendance percentage
-            const attendancePercentage = totalDaysInMonth > 0
-                ? Math.round((emp.present / totalDaysInMonth) * 100)
-                : 0;
+      // Final projection - USE ONLY INCLUSION (1) OR EXCLUSION (0), NOT BOTH
+      {
+        $project: {
+          // Include all fields we want, explicitly set to 1
+          _id: 0,
+          employeeId: "$_id",
+          name: "$employee.name",
+          phone: "$employee.phone",
+          empCode: "$employee.empCode",
+          designation: "$employee.jobInfo.designation",
+          department: "$employee.jobInfo.department",
+          present: "$presentDays",
+          halfDays: 1,
+          absent: "$actualAbsentDays",
+          totalWorkMinutes: 1,
+          avgMinutes: 1,
+          totalLateMinutes: 1,
+          totalEarlyLeaveMinutes: 1,
+          weightedWorkDays: 1,
+          
+          // Calculate efficiency
+          efficiency: {
+            $cond: [
+              { $gt: ["$expectedMinutes", 0] },
+              {
+                $round: [
+                  {
+                    $multiply: [
+                      { 
+                        $divide: [
+                          "$totalWorkMinutes", 
+                          "$expectedMinutes"
+                        ] 
+                      },
+                      100
+                    ]
+                  },
+                  1
+                ]
+              },
+              0
+            ]
+          }
+        }
+      },
 
-            // Determine status badge
-            let status = "Good";
-            if (emp.present === 0) status = "No Attendance";
-            else if (emp.avgMinutes < 8 * 60) status = "Low Hours";
-            else if (emp.totalLateMinutes > 180) status = "Frequently Late";
-            else if (emp.totalEarlyLeaveMinutes > 180) status = "Early Departure";
+      // Sort by average minutes
+      {
+        $sort: {
+          avgMinutes: -1
+        }
+      }
+    ]);
 
-            return {
-                ...emp,
-                avgTime: `${hours}h ${minutes}m`,
-                attendancePercentage,
-                status,
-                totalDaysInMonth,
-
-                // Performance indicators
-                lateDays: Math.ceil(emp.totalLateMinutes / 30), // Approximate days late
-                earlyDepartureDays: Math.ceil(emp.totalEarlyLeaveMinutes / 30),
-
-                // Formatted times
-                formattedTotalWorkTime: formatMinutes(emp.totalWorkMinutes),
-                formattedLateTime: formatMinutes(emp.totalLateMinutes),
-                formattedEarlyTime: formatMinutes(emp.totalEarlyLeaveMinutes)
-            };
-        });
-
-        return res.status(200).json({
-            success: true,
-            timezone: "Asia/Kolkata",
-            month: nowIST.toLocaleString("en-IN", { month: "long" }),
-            year: nowIST.getFullYear(),
-            period: {
-                from: monthStart,
-                to: todayEnd,
-                totalDays: totalDaysInMonth
-            },
-            summary: {
-                totalEmployees: allEmployees.length,
-                employeesWithAttendance: data.length,
-                employeesWithoutAttendance: employeesWithoutAttendance.length,
-                totalPresentDays: data.reduce((sum, emp) => sum + emp.present, 0),
-                totalWorkHours: formatMinutes(data.reduce((sum, emp) => sum + emp.totalWorkMinutes, 0))
-            },
-            data: formatted
-        });
-
-    } catch (error) {
-        console.error("Monthly Cards Error:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to load employee summary",
-            error: error.message
-        });
+    // Get employees with no attendance records
+    const employeesWithAttendance = data.map(d => d.employeeId);
+    
+    let employeesWithoutAttendance = [];
+    if (employeesWithAttendance.length > 0) {
+      employeesWithoutAttendance = await Employee.aggregate([
+        {
+          $match: {
+            companyId: new mongoose.Types.ObjectId(companyId),
+            employmentStatus: "active",
+            userId: { 
+              $nin: employeesWithAttendance 
+            }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            employeeId: "$userId",
+            name: 1,
+            phone: 1,
+            empCode: 1,
+            designation: "$jobInfo.designation",
+            department: "$jobInfo.department",
+            present: { $literal: 0 },
+            halfDays: { $literal: 0 },
+            absent: { $literal: totalDaysInMonth },
+            totalWorkMinutes: { $literal: 0 },
+            avgMinutes: { $literal: 0 },
+            totalLateMinutes: { $literal: 0 },
+            totalEarlyLeaveMinutes: { $literal: 0 },
+            weightedWorkDays: { $literal: 0 },
+            efficiency: { $literal: 0 }
+          }
+        }
+      ]);
+    } else {
+      // If no employees have attendance, get all active employees
+      employeesWithoutAttendance = await Employee.aggregate([
+        {
+          $match: {
+            companyId: new mongoose.Types.ObjectId(companyId),
+            employmentStatus: "active"
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            employeeId: "$userId",
+            name: 1,
+            phone: 1,
+            empCode: 1,
+            designation: "$jobInfo.designation",
+            department: "$jobInfo.department",
+            present: { $literal: 0 },
+            halfDays: { $literal: 0 },
+            absent: { $literal: totalDaysInMonth },
+            totalWorkMinutes: { $literal: 0 },
+            avgMinutes: { $literal: 0 },
+            totalLateMinutes: { $literal: 0 },
+            totalEarlyLeaveMinutes: { $literal: 0 },
+            weightedWorkDays: { $literal: 0 },
+            efficiency: { $literal: 0 }
+          }
+        }
+      ]);
     }
+
+    // Combine both arrays
+    const allEmployees = [...data, ...employeesWithoutAttendance];
+
+    // Format time and add metrics
+    const formatted = allEmployees.map(emp => {
+      const hours = Math.floor(emp.avgMinutes / 60);
+      const minutes = emp.avgMinutes % 60;
+      
+      // Calculate attendance percentage
+      const attendancePercentage = totalDaysInMonth > 0 
+        ? Math.round((emp.present / totalDaysInMonth) * 100) 
+        : 0;
+      
+      // Determine status badge
+      let status = "Good";
+      if (emp.present === 0) status = "No Attendance";
+      else if (emp.avgMinutes < 8 * 60) status = "Low Hours";
+      else if (emp.totalLateMinutes > 180) status = "Frequently Late";
+      else if (emp.totalEarlyLeaveMinutes > 180) status = "Early Departure";
+      
+      return {
+        employeeId: emp.employeeId,
+        name: emp.name,
+        phone: emp.phone,
+        empCode: emp.empCode,
+        designation: emp.designation,
+        department: emp.department,
+        present: emp.present || 0,
+        halfDays: emp.halfDays || 0,
+        absent: emp.absent || 0,
+        avgMinutes: emp.avgMinutes || 0,
+        avgTime: `${hours}h ${minutes}m`,
+        totalWorkMinutes: emp.totalWorkMinutes || 0,
+        totalLateMinutes: emp.totalLateMinutes || 0,
+        totalEarlyLeaveMinutes: emp.totalEarlyLeaveMinutes || 0,
+        attendancePercentage,
+        status,
+        totalDaysInMonth,
+        efficiency: emp.efficiency || 0,
+        lateDays: Math.ceil((emp.totalLateMinutes || 0) / 30),
+        earlyDepartureDays: Math.ceil((emp.totalEarlyLeaveMinutes || 0) / 30),
+        formattedTotalWorkTime: formatMinutes(emp.totalWorkMinutes || 0),
+        formattedLateTime: formatMinutes(emp.totalLateMinutes || 0),
+        formattedEarlyTime: formatMinutes(emp.totalEarlyLeaveMinutes || 0)
+      };
+    });
+
+    // Calculate summary statistics
+    const summary = {
+      totalEmployees: allEmployees.length,
+      employeesWithAttendance: data.length,
+      employeesWithoutAttendance: employeesWithoutAttendance.length,
+      totalPresentDays: data.reduce((sum, emp) => sum + (emp.present || 0), 0),
+      totalHalfDays: data.reduce((sum, emp) => sum + (emp.halfDays || 0), 0),
+      totalWorkHours: formatMinutes(data.reduce((sum, emp) => sum + (emp.totalWorkMinutes || 0), 0)),
+      averageAttendancePercentage: allEmployees.length > 0 
+        ? Math.round(allEmployees.reduce((sum, emp) => sum + (emp.present || 0), 0) / allEmployees.length / totalDaysInMonth * 100) 
+        : 0
+    };
+
+    return res.status(200).json({
+      success: true,
+      timezone: "Asia/Kolkata",
+      month: nowIST.toLocaleString("en-IN", { month: "long" }),
+      year: nowIST.getFullYear(),
+      period: {
+        from: monthStart,
+        to: todayEnd,
+        totalDays: totalDaysInMonth
+      },
+      summary,
+      data: formatted
+    });
+
+  } catch (error) {
+    console.error("Monthly Cards Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load employee summary",
+      error: error.message
+    });
+  }
 };
+
 
 
 
