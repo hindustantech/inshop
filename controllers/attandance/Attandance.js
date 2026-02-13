@@ -943,99 +943,69 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 
 
-/**
- * Get Employee Monthly Attendance Summary
- * @route GET /api/reports/monthly-summary
- * @access Private (Company Admin/Manager)
- */
+
+
+/* ======================================================
+   GET: Monthly Employee Card Summary (IST Based)
+====================================================== */
+
+
 export const getEmployeeSimpleMonthlySummary = async (req, res) => {
     try {
+
         /* ============================
-           1. AUTHENTICATION & VALIDATION
+           1. Auth
         ============================ */
 
         const companyId = req.user._id;
+        const { startDate, endDate } = req.query;
 
         if (!mongoose.Types.ObjectId.isValid(companyId)) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid company ID format"
+                message: "Invalid company id"
             });
         }
 
-        const companyObjectId = new mongoose.Types.ObjectId(companyId);
 
         /* ============================
-           2. DATE RANGE HANDLING (Timezone Safe)
+           2. Date Range
         ============================ */
 
-        const { startDate, endDate } = req.query;
-
-        // Default to current month
-        const now = new Date();
         const start = startDate
             ? new Date(startDate)
-            : new Date(now.getFullYear(), now.getMonth(), 1);
+            : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
         const end = endDate
             ? new Date(endDate)
-            : new Date(now);
+            : new Date();
 
-        // Normalize dates for MongoDB query (UTC safe)
-        start.setUTCHours(0, 0, 0, 0);
-        end.setUTCHours(23, 59, 59, 999);
 
         /* ============================
-           3. CHECK FOR ACTIVE EMPLOYEES
-        ============================ */
-
-        const activeEmployeesCount = await Employee.countDocuments({
-            companyId: companyObjectId,
-            employmentStatus: "active"
-        });
-
-        /* ============================
-           4. AGGREGATION PIPELINE (FIXED)
+           3. Aggregation
         ============================ */
 
         const report = await Attendance.aggregate([
-            // Stage 1: Match attendance records for the company within date range
+
+            /* Match Company + Date */
             {
                 $match: {
-                    companyId: companyObjectId,
-                    date: {
-                        $gte: start,
-                        $lte: end
-                    }
+                    companyId: new mongoose.Types.ObjectId(companyId),
+                    date: { $gte: start, $lte: end }
                 }
             },
 
-            // Stage 2: Lookup employee with active status only
+
+            /* Join Employee (via userId) */
             {
                 $lookup: {
                     from: "employees",
-                    let: {
-                        empId: "$employeeId",
-                        compId: "$companyId"
-                    },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $and: [
-                                        { $eq: ["$userId", "$$empId"] },
-                                        { $eq: ["$companyId", "$$compId"] },
-                                        { $eq: ["$employmentStatus", "active"] }
-                                    ]
-                                }
-                            }
-                        }
-                    ],
+                    localField: "employeeId",   // = User._id
+                    foreignField: "userId",     // = User._id
                     as: "employee"
                 }
             },
 
-            // Stage 3: Keep only records with valid active employees
             {
                 $unwind: {
                     path: "$employee",
@@ -1043,7 +1013,8 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            // Stage 4: Lookup user details
+
+            /* Join User */
             {
                 $lookup: {
                     from: "users",
@@ -1053,28 +1024,25 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            // Stage 5: Unwind user
-            {
-                $unwind: {
-                    path: "$user",
-                    preserveNullAndEmptyArrays: false
-                }
-            },
+            { $unwind: "$user" },
 
-            // Stage 6: Group by employee
+
+            /* ============================
+               4. Group Per Employee
+            ============================ */
+
             {
                 $group: {
-                    _id: "$employeeId",
+                    _id: "$employeeId", // User ID
 
-                    // Employee Details
                     name: { $first: "$user.name" },
                     phone: { $first: "$user.phone" },
-                    email: { $first: "$user.email" },
+
                     empCode: { $first: "$employee.empCode" },
                     department: { $first: "$employee.jobInfo.department" },
-                    designation: { $first: "$employee.jobInfo.designation" },
 
-                    // Working Days (Present/Half-day with approval)
+
+                    /* Working Days */
                     workingDays: {
                         $sum: {
                             $cond: [
@@ -1090,39 +1058,8 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    // Present Days (Full day)
-                    presentDays: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $eq: ["$status", "present"] },
-                                        { $eq: ["$approvalStatus", "approved"] }
-                                    ]
-                                },
-                                1,
-                                0
-                            ]
-                        }
-                    },
 
-                    // Half Days
-                    halfDays: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $eq: ["$status", "half_day"] },
-                                        { $eq: ["$approvalStatus", "approved"] }
-                                    ]
-                                },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Absent Days
+                    /* Absent Days */
                     absentDays: {
                         $sum: {
                             $cond: [
@@ -1133,186 +1070,23 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    // Leave Days
-                    leaveDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$status", "leave"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
 
-                    // Holiday Days
-                    holidayDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$status", "holiday"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Week Off Days
-                    weekOffDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$status", "week_off"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Total Working Minutes
+                    /* Total Minutes */
                     totalMinutes: {
-                        $sum: {
-                            $ifNull: ["$workSummary.totalMinutes", 0]
-                        }
+                        $sum: "$workSummary.totalMinutes"
                     },
 
-                    // Total Payable Minutes
-                    payableMinutes: {
-                        $sum: {
-                            $ifNull: ["$workSummary.payableMinutes", 0]
-                        }
-                    },
 
-                    // Overtime Minutes
-                    overtimeMinutes: {
-                        $sum: {
-                            $ifNull: ["$workSummary.overtimeMinutes", 0]
-                        }
-                    },
-
-                    // Late Minutes
-                    lateMinutes: {
-                        $sum: {
-                            $ifNull: ["$workSummary.lateMinutes", 0]
-                        }
-                    },
-
-                    // Early Leave Minutes
-                    earlyLeaveMinutes: {
-                        $sum: {
-                            $ifNull: ["$workSummary.earlyLeaveMinutes", 0]
-                        }
-                    },
-
-                    // Exception Days
+                    /* Exception Days */
                     exceptionDays: {
                         $sum: {
                             $cond: [
                                 {
                                     $or: [
                                         { $eq: ["$isSuspicious", true] },
-                                        {
-                                            $gt: [
-                                                { $size: { $ifNull: ["$editLogs", []] } },
-                                                0
-                                            ]
-                                        },
+                                        { $gt: [{ $size: "$editLogs" }, 0] },
                                         { $eq: ["$approvalStatus", "pending"] },
                                         { $eq: ["$approvalStatus", "rejected"] }
-                                    ]
-                                },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Suspicious Days
-                    suspiciousDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$isSuspicious", true] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Edited Days
-                    editedDays: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $gt: [
-                                        { $size: { $ifNull: ["$editLogs", []] } },
-                                        0
-                                    ]
-                                },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Pending Approval Days
-                    pendingDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$approvalStatus", "pending"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Rejected Days
-                    rejectedDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$approvalStatus", "rejected"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Late Days (days with late arrival)
-                    lateDays: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $gt: [
-                                        { $ifNull: ["$workSummary.lateMinutes", 0] },
-                                        0
-                                    ]
-                                },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Early Leave Days
-                    earlyLeaveDays: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $gt: [
-                                        { $ifNull: ["$workSummary.earlyLeaveMinutes", 0] },
-                                        0
-                                    ]
-                                },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-
-                    // Overtime Days
-                    overtimeDays: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $gt: [
-                                        { $ifNull: ["$workSummary.overtimeMinutes", 0] },
-                                        0
                                     ]
                                 },
                                 1,
@@ -1323,30 +1097,18 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            // Stage 7: Calculate averages and additional metrics
+
+            /* ============================
+               5. Average Hours
+            ============================ */
+
             {
                 $addFields: {
-                    // Total Working Hours
-                    totalWorkingHours: {
-                        $round: [
-                            { $divide: ["$totalMinutes", 60] },
-                            2
-                        ]
-                    },
-
-                    // Total Payable Hours
-                    totalPayableHours: {
-                        $round: [
-                            { $divide: ["$payableMinutes", 60] },
-                            2
-                        ]
-                    },
-
-                    // Average Working Hours (per working day)
                     avgWorkingHours: {
-                        $cond: [
-                            { $gt: ["$workingDays", 0] },
-                            {
+                        $cond: {
+                            if: { $gt: ["$workingDays", 0] },
+
+                            then: {
                                 $round: [
                                     {
                                         $divide: [
@@ -1357,694 +1119,70 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                                     2
                                 ]
                             },
-                            0
-                        ]
-                    },
 
-                    // Average Payable Hours (per working day)
-                    avgPayableHours: {
-                        $cond: [
-                            { $gt: ["$workingDays", 0] },
-                            {
-                                $round: [
-                                    {
-                                        $divide: [
-                                            "$payableMinutes",
-                                            { $multiply: ["$workingDays", 60] }
-                                        ]
-                                    },
-                                    2
-                                ]
-                            },
-                            0
-                        ]
-                    },
-
-                    // Overtime Hours
-                    overtimeHours: {
-                        $round: [
-                            { $divide: ["$overtimeMinutes", 60] },
-                            2
-                        ]
-                    },
-
-                    // Late Hours
-                    lateHours: {
-                        $round: [
-                            { $divide: ["$lateMinutes", 60] },
-                            2
-                        ]
-                    },
-
-                    // Early Leave Hours
-                    earlyLeaveHours: {
-                        $round: [
-                            { $divide: ["$earlyLeaveMinutes", 60] },
-                            2
-                        ]
-                    },
-
-                    // Attendance Rate (%)
-                    attendanceRate: {
-                        $cond: [
-                            {
-                                $gt: [
-                                    { $add: ["$workingDays", "$absentDays", "$leaveDays"] },
-                                    0
-                                ]
-                            },
-                            {
-                                $round: [
-                                    {
-                                        $multiply: [
-                                            {
-                                                $divide: [
-                                                    "$workingDays",
-                                                    {
-                                                        $add: [
-                                                            "$workingDays",
-                                                            "$absentDays",
-                                                            "$leaveDays"
-                                                        ]
-                                                    }
-                                                ]
-                                            },
-                                            100
-                                        ]
-                                    },
-                                    1
-                                ]
-                            },
-                            0
-                        ]
-                    },
-
-                    // Punctuality Rate (%)
-                    punctualityRate: {
-                        $cond: [
-                            { $gt: ["$workingDays", 0] },
-                            {
-                                $round: [
-                                    {
-                                        $multiply: [
-                                            {
-                                                $divide: [
-                                                    {
-                                                        $subtract: [
-                                                            "$workingDays",
-                                                            { $add: ["$lateDays", "$earlyLeaveDays"] }
-                                                        ]
-                                                    },
-                                                    "$workingDays"
-                                                ]
-                                            },
-                                            100
-                                        ]
-                                    },
-                                    1
-                                ]
-                            },
-                            0
-                        ]
-                    },
-
-                    // Performance Score (0-100)
-                    performanceScore: {
-                        $cond: [
-                            { $gt: ["$workingDays", 0] },
-                            {
-                                $round: [
-                                    {
-                                        $max: [
-                                            0,
-                                            {
-                                                $subtract: [
-                                                    100,
-                                                    {
-                                                        $add: [
-                                                            {
-                                                                $multiply: [
-                                                                    {
-                                                                        $divide: [
-                                                                            { $ifNull: ["$lateDays", 0] },
-                                                                            "$workingDays"
-                                                                        ]
-                                                                    },
-                                                                    15
-                                                                ]
-                                                            },
-                                                            {
-                                                                $multiply: [
-                                                                    {
-                                                                        $divide: [
-                                                                            { $ifNull: ["$earlyLeaveDays", 0] },
-                                                                            "$workingDays"
-                                                                        ]
-                                                                    },
-                                                                    10
-                                                                ]
-                                                            },
-                                                            {
-                                                                $multiply: [
-                                                                    {
-                                                                        $divide: [
-                                                                            { $ifNull: ["$exceptionDays", 0] },
-                                                                            "$workingDays"
-                                                                        ]
-                                                                    },
-                                                                    20
-                                                                ]
-                                                            },
-                                                            {
-                                                                $multiply: [
-                                                                    {
-                                                                        $divide: [
-                                                                            { $ifNull: ["$absentDays", 0] },
-                                                                            {
-                                                                                $add: [
-                                                                                    "$workingDays",
-                                                                                    "$absentDays",
-                                                                                    "$leaveDays"
-                                                                                ]
-                                                                            }
-                                                                        ]
-                                                                    },
-                                                                    30
-                                                                ]
-                                                            }
-                                                        ]
-                                                    }
-                                                ]
-                                            }
-                                        ]
-                                    },
-                                    0
-                                ]
-                            },
-                            0
-                        ]
+                            else: 0
+                        }
                     }
                 }
             },
 
-            // Stage 8: Format output (INCLUSION ONLY - NO EXCLUSION)
-            {
-                $project: {
-                    // Employee Information (Include all fields we need)
-                    userId: "$_id",
-                    name: 1,
-                    phone: 1,
-                    email: 1,
-                    empCode: 1,
-                    department: 1,
-                    designation: 1,
 
-                    // Attendance Summary
-                    workingDays: 1,
-                    presentDays: 1,
-                    halfDays: 1,
-                    absentDays: 1,
-                    leaveDays: 1,
-                    holidayDays: 1,
-                    weekOffDays: 1,
+            /* ============================
+               6. Output
+            ============================ */
 
-                    // Exception Summary
-                    exceptionDays: 1,
-                    suspiciousDays: 1,
-                    editedDays: 1,
-                    pendingDays: 1,
-                    rejectedDays: 1,
-
-                    // Time Metrics
-                    totalWorkingHours: 1,
-                    totalPayableHours: 1,
-                    avgWorkingHours: 1,
-                    avgPayableHours: 1,
-                    overtimeHours: 1,
-                    lateHours: 1,
-                    earlyLeaveHours: 1,
-
-                    // Day Counts
-                    lateDays: 1,
-                    earlyLeaveDays: 1,
-                    overtimeDays: 1,
-
-                    // Performance Metrics
-                    attendanceRate: 1,
-                    punctualityRate: 1,
-                    performanceScore: 1,
-
-                    // Raw minutes (optional - for calculations)
-                    totalMinutes: 1,
-                    payableMinutes: 1,
-                    overtimeMinutes: 1,
-                    lateMinutes: 1,
-                    earlyLeaveMinutes: 1
-                }
-            },
-
-            // Stage 9: Sorting
-            {
-                $sort: {
-                    name: 1,
-                    department: 1
-                }
-            }
-        ]);
-
-        /* ============================
-           5. ENRICH WITH EMPLOYEES WITH NO ATTENDANCE
-        ============================ */
-
-        // Get employees with attendance records
-        const employeesWithAttendance = report.map(r => r.userId.toString());
-
-        // Get active employees without any attendance records
-        const employeesWithoutAttendance = await Employee.aggregate([
-            {
-                $match: {
-                    companyId: companyObjectId,
-                    employmentStatus: "active"
-                }
-            },
-            {
-                $lookup: {
-                    from: "users",
-                    localField: "userId",
-                    foreignField: "_id",
-                    as: "user"
-                }
-            },
-            {
-                $unwind: "$user"
-            },
-            {
-                $match: {
-                    "userId": {
-                        $nin: employeesWithAttendance.map(id => new mongoose.Types.ObjectId(id))
-                    }
-                }
-            },
             {
                 $project: {
                     _id: 0,
-                    userId: "$userId",
-                    name: "$user.name",
-                    phone: "$user.phone",
-                    email: "$user.email",
+
+                    userId: "$_id",
+
+                    name: 1,
+                    phone: 1,
+
                     empCode: 1,
-                    department: "$jobInfo.department",
-                    designation: "$jobInfo.designation",
+                    department: 1,
 
-                    // Zero values for employees with no attendance
-                    workingDays: 0,
-                    presentDays: 0,
-                    halfDays: 0,
-                    absentDays: 0,
-                    leaveDays: 0,
-                    holidayDays: 0,
-                    weekOffDays: 0,
+                    workingDays: 1,
+                    absentDays: 1,
+                    exceptionDays: 1,
 
-                    exceptionDays: 0,
-                    suspiciousDays: 0,
-                    editedDays: 0,
-                    pendingDays: 0,
-                    rejectedDays: 0,
-
-                    totalWorkingHours: 0,
-                    totalPayableHours: 0,
-                    avgWorkingHours: 0,
-                    avgPayableHours: 0,
-                    overtimeHours: 0,
-                    lateHours: 0,
-                    earlyLeaveHours: 0,
-
-                    lateDays: 0,
-                    earlyLeaveDays: 0,
-                    overtimeDays: 0,
-
-                    attendanceRate: 0,
-                    punctualityRate: 0,
-                    performanceScore: 0,
-
-                    totalMinutes: 0,
-                    payableMinutes: 0,
-                    overtimeMinutes: 0,
-                    lateMinutes: 0,
-                    earlyLeaveMinutes: 0
+                    avgWorkingHours: 1
                 }
-            }
+            },
+
+            { $sort: { name: 1 } }
+
         ]);
 
-        // Combine both arrays
-        const completeReport = [...report, ...employeesWithoutAttendance];
-
-        // Sort combined report by name
-        completeReport.sort((a, b) => {
-            if (!a.name) return 1;
-            if (!b.name) return -1;
-            return a.name.localeCompare(b.name);
-        });
 
         /* ============================
-           6. CALCULATE SUMMARY STATISTICS
-        ============================ */
-
-        // Calculate total days in period
-        const totalDaysInPeriod = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-
-        const summary = {
-            totalEmployees: completeReport.length,
-            activeEmployees: activeEmployeesCount,
-            employeesWithAttendance: report.length,
-            employeesWithoutAttendance: employeesWithoutAttendance.length,
-            totalDaysInPeriod,
-
-            // Overall Statistics
-            totalWorkingDays: completeReport.reduce((sum, emp) => sum + (emp.workingDays || 0), 0),
-            totalPresentDays: completeReport.reduce((sum, emp) => sum + (emp.presentDays || 0), 0),
-            totalHalfDays: completeReport.reduce((sum, emp) => sum + (emp.halfDays || 0), 0),
-            totalAbsentDays: completeReport.reduce((sum, emp) => sum + (emp.absentDays || 0), 0),
-            totalLeaveDays: completeReport.reduce((sum, emp) => sum + (emp.leaveDays || 0), 0),
-            totalExceptionDays: completeReport.reduce((sum, emp) => sum + (emp.exceptionDays || 0), 0),
-
-            // Time Statistics
-            totalWorkingHours: completeReport.reduce((sum, emp) => sum + (emp.totalWorkingHours || 0), 0).toFixed(2),
-            totalOvertimeHours: completeReport.reduce((sum, emp) => sum + (emp.overtimeHours || 0), 0).toFixed(2),
-
-            // Average Statistics
-            avgAttendanceRate: completeReport.length > 0
-                ? (completeReport.reduce((sum, emp) => sum + (emp.attendanceRate || 0), 0) / completeReport.length).toFixed(1)
-                : 0,
-            avgWorkingHoursPerEmployee: completeReport.length > 0
-                ? (completeReport.reduce((sum, emp) => sum + (emp.totalWorkingHours || 0), 0) / completeReport.length).toFixed(2)
-                : 0,
-            avgPerformanceScore: completeReport.length > 0
-                ? (completeReport.reduce((sum, emp) => sum + (emp.performanceScore || 0), 0) / completeReport.length).toFixed(0)
-                : 0
-        };
-
-        /* ============================
-           7. GET DEPARTMENT BREAKDOWN
-        ============================ */
-
-        const departmentBreakdown = await getDepartmentBreakdown(companyObjectId, start, end);
-        summary.departmentBreakdown = departmentBreakdown;
-
-        /* ============================
-           8. RESPONSE
+           4. Response
         ============================ */
 
         res.status(200).json({
             success: true,
-            message: completeReport.length > 0
-                ? "Monthly attendance report generated successfully"
-                : "No attendance records found for the specified period",
+
             data: {
-                period: {
-                    start: start.toISOString(),
-                    end: end.toISOString(),
-                    days: totalDaysInPeriod,
-                    month: start.toLocaleString('default', { month: 'long' }),
-                    year: start.getFullYear()
-                },
-                summary,
-                report: completeReport
+                period: { start, end },
+
+                totalEmployees: report.length,
+
+                report
             }
         });
 
     } catch (error) {
-        console.error("Monthly Report Error:", {
-            message: error.message,
-            stack: error.stack,
-            query: req.query,
-            user: req.user?._id
-        });
+
+        console.error("Monthly Report Error:", error);
 
         res.status(500).json({
             success: false,
-            message: "Failed to generate monthly attendance report",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            message: "Failed to fetch report",
+            error: error.message
         });
     }
 };
-
-/**
- * Get Department Breakdown Statistics
- * @private Helper Function
- */
-async function getDepartmentBreakdown(companyId, startDate, endDate) {
-    try {
-        const departmentStats = await Attendance.aggregate([
-            {
-                $match: {
-                    companyId: companyId,
-                    date: { $gte: startDate, $lte: endDate }
-                }
-            },
-            {
-                $lookup: {
-                    from: "employees",
-                    localField: "employeeId",
-                    foreignField: "userId",
-                    as: "employee"
-                }
-            },
-            {
-                $unwind: "$employee"
-            },
-            {
-                $match: {
-                    "employee.employmentStatus": "active",
-                    "employee.companyId": companyId
-                }
-            },
-            {
-                $group: {
-                    _id: "$employee.jobInfo.department",
-                    employeeCount: { $addToSet: "$employeeId" },
-                    totalWorkingDays: {
-                        $sum: {
-                            $cond: [
-                                {
-                                    $and: [
-                                        { $in: ["$status", ["present", "half_day"]] },
-                                        { $eq: ["$approvalStatus", "approved"] }
-                                    ]
-                                },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-                    totalPresentDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$status", "present"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-                    totalHalfDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$status", "half_day"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-                    totalAbsentDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$status", "absent"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-                    totalLeaveDays: {
-                        $sum: {
-                            $cond: [
-                                { $eq: ["$status", "leave"] },
-                                1,
-                                0
-                            ]
-                        }
-                    },
-                    totalMinutes: {
-                        $sum: {
-                            $ifNull: ["$workSummary.totalMinutes", 0]
-                        }
-                    },
-                    totalOvertimeMinutes: {
-                        $sum: {
-                            $ifNull: ["$workSummary.overtimeMinutes", 0]
-                        }
-                    }
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    department: { $ifNull: ["$_id", "Unassigned"] },
-                    employeeCount: { $size: "$employeeCount" },
-                    totalWorkingDays: 1,
-                    totalPresentDays: 1,
-                    totalHalfDays: 1,
-                    totalAbsentDays: 1,
-                    totalLeaveDays: 1,
-                    totalWorkingHours: {
-                        $round: [
-                            { $divide: ["$totalMinutes", 60] },
-                            1
-                        ]
-                    },
-                    totalOvertimeHours: {
-                        $round: [
-                            { $divide: ["$totalOvertimeMinutes", 60] },
-                            1
-                        ]
-                    },
-                    attendanceRate: {
-                        $cond: [
-                            {
-                                $gt: [
-                                    { $add: ["$totalWorkingDays", "$totalAbsentDays", "$totalLeaveDays"] },
-                                    0
-                                ]
-                            },
-                            {
-                                $round: [
-                                    {
-                                        $multiply: [
-                                            {
-                                                $divide: [
-                                                    "$totalWorkingDays",
-                                                    {
-                                                        $add: [
-                                                            "$totalWorkingDays",
-                                                            "$totalAbsentDays",
-                                                            "$totalLeaveDays"
-                                                        ]
-                                                    }
-                                                ]
-                                            },
-                                            100
-                                        ]
-                                    },
-                                    1
-                                ]
-                            },
-                            0
-                        ]
-                    }
-                }
-            },
-            {
-                $sort: { department: 1 }
-            }
-        ]);
-
-        return departmentStats;
-    } catch (error) {
-        console.error("Department breakdown error:", error);
-        return [];
-    }
-}
-
-/**
- * Export Report as CSV
- * @route GET /api/reports/monthly-summary/export
- * @access Private
- */
-export const exportMonthlyReportCSV = async (req, res) => {
-    try {
-        // Get the report data first
-        const reportResponse = await getEmployeeSimpleMonthlySummary(req, res, true);
-
-        if (!reportResponse || !reportResponse.data) {
-            throw new Error("Failed to generate report data");
-        }
-
-        const { report, period } = reportResponse.data;
-
-        // Generate CSV headers
-        let csv = 'Employee Code,Employee Name,Department,Designation,';
-        csv += 'Working Days,Present Days,Half Days,Absent Days,Leave Days,';
-        csv += 'Exception Days,Total Hours,Avg Hours,Overtime Hours,';
-        csv += 'Attendance Rate(%),Performance Score\n';
-
-        // Add data rows
-        report.forEach(emp => {
-            csv += `${emp.empCode || 'N/A'},`;
-            csv += `"${emp.name || 'N/A'}",`;
-            csv += `${emp.department || 'N/A'},`;
-            csv += `${emp.designation || 'N/A'},`;
-            csv += `${emp.workingDays || 0},`;
-            csv += `${emp.presentDays || 0},`;
-            csv += `${emp.halfDays || 0},`;
-            csv += `${emp.absentDays || 0},`;
-            csv += `${emp.leaveDays || 0},`;
-            csv += `${emp.exceptionDays || 0},`;
-            csv += `${emp.totalWorkingHours || 0},`;
-            csv += `${emp.avgWorkingHours || 0},`;
-            csv += `${emp.overtimeHours || 0},`;
-            csv += `${emp.attendanceRate || 0},`;
-            csv += `${emp.performanceScore || 0}\n`;
-        });
-
-        // Set response headers
-        const filename = `attendance-report-${period.month}-${period.year}.csv`;
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-
-        res.status(200).send(csv);
-
-    } catch (error) {
-        console.error("CSV Export Error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to export report as CSV",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-};
-
-// Helper function to allow internal calls for CSV export
-const getEmployeeSimpleMonthlySummary = async (req, res, internal = false) => {
-    if (internal) {
-        // Clone the request for internal use
-        const internalReq = { ...req };
-        const internalRes = {
-            status: () => ({
-                json: (data) => data
-            })
-        };
-
-        // Store original json method
-        const originalJson = res.json;
-
-        // Override json to capture response
-        let responseData;
-        res.json = (data) => {
-            responseData = data;
-            return data;
-        };
-
-        await exports.getEmployeeSimpleMonthlySummary(internalReq, internalRes);
-
-        // Restore original json
-        res.json = originalJson;
-
-        return responseData;
-    }
-};
-
-
-
 
 /**
  * @desc   Get Employee Monthly Attendance
