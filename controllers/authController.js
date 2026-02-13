@@ -850,9 +850,9 @@ export const startAuth = async (req, res) => {
         message: "Account suspended",
       });
     }
-    if (user.isVerified) {
+    if (!user.isVerified) {
       return res.status(400).json({
-        message: "User already verified. Please login.",
+        message: "User not  verified.",
       });
     }
 
