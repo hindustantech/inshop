@@ -952,11 +952,24 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 
 
+
+
 export const getEmployeeSimpleMonthlySummary = async (req, res) => {
     try {
 
         const companyId = req.user._id;
         const { startDate, endDate } = req.query;
+
+        if (!mongoose.Types.ObjectId.isValid(companyId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Company"
+            });
+        }
+
+        /* ============================
+           Date Range
+        ============================ */
 
         const start = startDate
             ? new Date(startDate)
@@ -965,6 +978,10 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         const end = endDate
             ? new Date(endDate)
             : new Date();
+
+        /* ============================
+           Aggregation
+        ============================ */
 
         const report = await Attendance.aggregate([
 
@@ -976,17 +993,33 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            /* Lookup User */
+            /* Attendance → Employee */
+            {
+                $lookup: {
+                    from: "employees",
+                    localField: "employeeId",   // User ID
+                    foreignField: "userId",     // User ID
+                    as: "employee"
+                }
+            },
+
+            {
+                $unwind: {
+                    path: "$employee",
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+
+            /* Employee → User */
             {
                 $lookup: {
                     from: "users",
-                    localField: "employeeId",
+                    localField: "employee.userId",
                     foreignField: "_id",
                     as: "user"
                 }
             },
 
-            /* SAFE Unwind */
             {
                 $unwind: {
                     path: "$user",
@@ -999,9 +1032,11 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 $group: {
                     _id: "$employeeId",
 
+                    /* User Info */
                     name: { $first: "$user.name" },
                     phone: { $first: "$user.phone" },
 
+                    /* Working Days */
                     totalWorkingDays: {
                         $sum: {
                             $cond: [
@@ -1017,16 +1052,23 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
+                    /* Absent */
                     totalAbsentDays: {
                         $sum: {
-                            $cond: [{ $eq: ["$status", "absent"] }, 1, 0]
+                            $cond: [
+                                { $eq: ["$status", "absent"] },
+                                1,
+                                0
+                            ]
                         }
                     },
 
+                    /* Total Minutes */
                     totalWorkingMinutes: {
                         $sum: "$workSummary.totalMinutes"
                     },
 
+                    /* Exceptions */
                     exceptionDays: {
                         $sum: {
                             $cond: [
@@ -1046,7 +1088,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            /* Avg */
+            /* Avg Hours */
             {
                 $addFields: {
                     avgWorkingHours: {
@@ -1069,7 +1111,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            /* Output */
+            /* Final */
             {
                 $project: {
                     _id: 0,
@@ -1091,22 +1133,37 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
         ]);
 
+        /* ============================
+           Total Employees
+        ============================ */
+
+        const totalEmployees = await mongoose.model("Employee").countDocuments({
+            companyId
+        });
+
+        /* ============================
+           Response
+        ============================ */
+
         res.status(200).json({
             success: true,
+
             data: {
                 period: { start, end },
-                totalEmployees: report.length,
+
+                totalEmployees,
+
                 report
             }
         });
 
     } catch (err) {
 
-        console.error(err);
+        console.error("Summary Error:", err);
 
         res.status(500).json({
             success: false,
-            message: "Monthly summary failed",
+            message: "Summary fetch failed",
             error: err.message
         });
     }
