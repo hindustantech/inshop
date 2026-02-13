@@ -967,9 +967,11 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             });
         }
 
+        const companyObjectId = new mongoose.Types.ObjectId(companyId);
+
 
         /* ============================
-           2. Date Range
+           2. Date Range (Normalized)
         ============================ */
 
         const start = startDate
@@ -980,6 +982,10 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             ? new Date(endDate)
             : new Date();
 
+        // Normalize (critical for reports)
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+
 
         /* ============================
            3. Aggregation
@@ -987,25 +993,41 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
         const report = await Attendance.aggregate([
 
-            /* Match Company + Date */
+            /* Match Attendance */
             {
                 $match: {
-                    companyId: new mongoose.Types.ObjectId(companyId),
+                    companyId: companyObjectId,
                     date: { $gte: start, $lte: end }
                 }
             },
 
 
-            /* Join Employee (via userId) */
+            /* Join Employee (Safe Join) */
             {
                 $lookup: {
                     from: "employees",
-                    localField: "employeeId",   // = User._id
-                    foreignField: "userId",     // = User._id
+                    let: { empId: "$employeeId", compId: "$companyId" },
+
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$userId", "$$empId"] },
+                                        { $eq: ["$companyId", "$$compId"] },
+                                        { $eq: ["$employmentStatus", "active"] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+
                     as: "employee"
                 }
             },
 
+
+            /* Keep only valid employees */
             {
                 $unwind: {
                     path: "$employee",
@@ -1028,12 +1050,12 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
 
             /* ============================
-               4. Group Per Employee
+               4. Group
             ============================ */
 
             {
                 $group: {
-                    _id: "$employeeId", // User ID
+                    _id: "$employeeId",
 
                     name: { $first: "$user.name" },
                     phone: { $first: "$user.phone" },
@@ -1042,7 +1064,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     department: { $first: "$employee.jobInfo.department" },
 
 
-                    /* Working Days */
                     workingDays: {
                         $sum: {
                             $cond: [
@@ -1059,7 +1080,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     },
 
 
-                    /* Absent Days */
                     absentDays: {
                         $sum: {
                             $cond: [
@@ -1071,20 +1091,20 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     },
 
 
-                    /* Total Minutes */
                     totalMinutes: {
-                        $sum: "$workSummary.totalMinutes"
+                        $sum: {
+                            $ifNull: ["$workSummary.totalMinutes", 0]
+                        }
                     },
 
 
-                    /* Exception Days */
                     exceptionDays: {
                         $sum: {
                             $cond: [
                                 {
                                     $or: [
                                         { $eq: ["$isSuspicious", true] },
-                                        { $gt: [{ $size: "$editLogs" }, 0] },
+                                        { $gt: [{ $size: { $ifNull: ["$editLogs", []] } }, 0] },
                                         { $eq: ["$approvalStatus", "pending"] },
                                         { $eq: ["$approvalStatus", "rejected"] }
                                     ]
@@ -1099,16 +1119,15 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
 
             /* ============================
-               5. Average Hours
+               5. Average
             ============================ */
 
             {
                 $addFields: {
                     avgWorkingHours: {
-                        $cond: {
-                            if: { $gt: ["$workingDays", 0] },
-
-                            then: {
+                        $cond: [
+                            { $gt: ["$workingDays", 0] },
+                            {
                                 $round: [
                                     {
                                         $divide: [
@@ -1119,9 +1138,8 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                                     2
                                 ]
                             },
-
-                            else: 0
-                        }
+                            0
+                        ]
                     }
                 }
             },
@@ -1151,13 +1169,14 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
+
             { $sort: { name: 1 } }
 
         ]);
 
 
         /* ============================
-           4. Response
+           7. Response
         ============================ */
 
         res.status(200).json({
@@ -1183,6 +1202,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         });
     }
 };
+
 
 /**
  * @desc   Get Employee Monthly Attendance
