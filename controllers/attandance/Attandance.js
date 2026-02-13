@@ -467,10 +467,23 @@ export const markAttendance = async (req, res) => {
                 userLng
             );
 
-            if (distance <= employee.officeLocation.radius) {
-                geoVerified = true;
+
+            // Outside allowed radius
+            if (distance > employee.officeLocation.radius) {
+
+                return res.status(403).json({
+                    success: false,
+                    errorCode: "OUTSIDE_OFFICE_RADIUS",
+                    message: "You are not within the allowed office location range.",
+                    data: {
+                        allowedRadius: employee.officeLocation.radius,
+                        currentDistance: Math.round(distance),
+                        unit: "meters"
+                    }
+                });
+
             } else {
-                suspicious = true;
+                geoVerified = true;
             }
         }
 
