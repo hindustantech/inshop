@@ -951,6 +951,7 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 
 
+
 export const getEmployeeSimpleMonthlySummary = async (req, res) => {
     try {
 
@@ -988,13 +989,13 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
 
         /* =====================================
-           3. EMPLOYEE → ATTENDANCE PIPELINE
+           3. EMPLOYEE → ATTENDANCE AGGREGATION
         ===================================== */
 
         const report = await Employee.aggregate([
 
 
-            /* ---------- COMPANY FILTER ---------- */
+            /* ---------- COMPANY EMPLOYEES ---------- */
             {
                 $match: {
                     companyId: new mongoose.Types.ObjectId(companyId),
@@ -1003,7 +1004,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-            /* ---------- JOIN USER ---------- */
+            /* ---------- USER JOIN ---------- */
             {
                 $lookup: {
                     from: "users",
@@ -1016,7 +1017,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             { $unwind: "$user" },
 
 
-            /* ---------- JOIN ATTENDANCE ---------- */
+            /* ---------- ATTENDANCE JOIN ---------- */
             {
                 $lookup: {
                     from: "attendances",
@@ -1024,7 +1025,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     let: { empId: "$_id" },
 
                     pipeline: [
-
                         {
                             $match: {
                                 $expr: {
@@ -1036,7 +1036,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                                 }
                             }
                         }
-
                     ],
 
                     as: "attendance"
@@ -1044,7 +1043,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-            /* ---------- CALCULATE COUNTS ---------- */
+            /* ---------- COUNTS ---------- */
             {
                 $addFields: {
 
@@ -1073,16 +1072,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    absentDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendance",
-                                as: "a",
-                                cond: { $eq: ["$$a.status", "absent"] }
-                            }
-                        }
-                    },
-
                     leaveDays: {
                         $size: {
                             $filter: {
@@ -1092,7 +1081,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                             }
                         }
                     },
-
 
                     totalMinutes: {
                         $sum: "$attendance.workSummary.totalMinutes"
@@ -1132,7 +1120,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-            /* ---------- PROJECT ---------- */
+            /* ---------- FINAL FORMAT ---------- */
             {
                 $project: {
 
@@ -1145,6 +1133,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     phone: "$user.phone",
 
                     empCode: 1,
+
                     department: "$jobInfo.department",
                     designation: "$jobInfo.designation",
 
@@ -1160,9 +1149,11 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
                         presentDays: "$presentDays",
                         halfDays: "$halfDays",
-                        absentDays: "$absentDays",
                         leaveDays: "$leaveDays",
-                        workingDays: "$workingDays"
+                        workingDays: "$workingDays",
+
+                        // temporary (will override later)
+                        absentDays: { $literal: 0 }
                     },
 
 
@@ -1182,7 +1173,34 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
 
         /* =====================================
-           4. COMPANY SUMMARY
+           4. SIMPLE AUTO-ABSENT LOGIC
+        ===================================== */
+
+        const totalDays =
+            Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+
+        report.forEach(emp => {
+
+            const s = emp.summary;
+
+            const marked =
+                (s.presentDays || 0) +
+                (s.halfDays || 0) +
+                (s.leaveDays || 0);
+
+            let absent = totalDays - marked;
+
+            if (absent < 0) absent = 0;
+
+            // override
+            s.absentDays = absent;
+
+        });
+
+
+        /* =====================================
+           5. COMPANY SUMMARY
         ===================================== */
 
         const companySummary = {
@@ -1201,19 +1219,29 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
         report.forEach(emp => {
 
-            companySummary.totalPresent += emp.summary.presentDays;
-            companySummary.totalAbsent += emp.summary.absentDays;
-            companySummary.totalLeave += emp.summary.leaveDays;
-            companySummary.totalWorkingDays += emp.summary.workingDays;
+            const s = emp.summary;
+            const t = emp.timeSummary;
 
-            companySummary.totalHours += emp.timeSummary.totalHours;
-            companySummary.totalOvertime += emp.timeSummary.overtimeHours;
+            companySummary.totalPresent += s.presentDays;
+            companySummary.totalAbsent += s.absentDays;
+            companySummary.totalLeave += s.leaveDays;
+            companySummary.totalWorkingDays += s.workingDays;
+
+            companySummary.totalHours += t.totalHours;
+            companySummary.totalOvertime += t.overtimeHours;
 
         });
 
 
+        companySummary.totalHours =
+            Math.round(companySummary.totalHours * 100) / 100;
+
+        companySummary.totalOvertime =
+            Math.round(companySummary.totalOvertime * 100) / 100;
+
+
         /* =====================================
-           5. RESPONSE
+           6. RESPONSE
         ===================================== */
 
         return res.status(200).json({
@@ -1236,18 +1264,19 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         });
 
 
-    } catch (err) {
+    } catch (error) {
 
-        console.error("Monthly Summary Error:", err);
+        console.error("Monthly Summary Error:", error);
 
         return res.status(500).json({
             success: false,
             message: "Monthly report failed",
-            error: err.message
+            error: error.message
         });
 
     }
 };
+
 
 
 
