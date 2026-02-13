@@ -18,7 +18,7 @@ const attendanceSchema = new mongoose.Schema({
 
     employeeId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Employee",  // ← CHANGED FROM "User" TO "Employee"
+        ref: "Employee", 
         required: true,
         index: true
     },
