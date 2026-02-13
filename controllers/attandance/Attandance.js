@@ -949,27 +949,11 @@ export const getCompanyTodayAttendance = async (req, res) => {
    GET: Monthly Employee Card Summary (IST Based)
 ====================================================== */
 
-
-
-
-
-
 export const getEmployeeSimpleMonthlySummary = async (req, res) => {
     try {
 
         const companyId = req.user._id;
         const { startDate, endDate } = req.query;
-
-        if (!mongoose.Types.ObjectId.isValid(companyId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid Company"
-            });
-        }
-
-        /* ============================
-           Date Range
-        ============================ */
 
         const start = startDate
             ? new Date(startDate)
@@ -979,13 +963,11 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             ? new Date(endDate)
             : new Date();
 
-        /* ============================
-           Aggregation
-        ============================ */
-
         const report = await Attendance.aggregate([
 
-            /* Match */
+            /* =========================
+               1. Match Company + Date
+            ========================= */
             {
                 $match: {
                     companyId: new mongoose.Types.ObjectId(companyId),
@@ -993,12 +975,14 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            /* Attendance → Employee */
+            /* =========================
+               2. Join Employee
+            ========================= */
             {
                 $lookup: {
                     from: "employees",
-                    localField: "employeeId",   // User ID
-                    foreignField: "userId",     // User ID
+                    localField: "employeeId",   // Attendance.employeeId = User._id
+                    foreignField: "userId",     // Employee.userId = User._id
                     as: "employee"
                 }
             },
@@ -1006,11 +990,13 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             {
                 $unwind: {
                     path: "$employee",
-                    preserveNullAndEmptyArrays: true
+                    preserveNullAndEmptyArrays: false
                 }
             },
 
-            /* Employee → User */
+            /* =========================
+               3. Join User
+            ========================= */
             {
                 $lookup: {
                     from: "users",
@@ -1021,23 +1007,26 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
             {
-                $unwind: {
-                    path: "$user",
-                    preserveNullAndEmptyArrays: true
-                }
+                $unwind: "$user"
             },
 
-            /* Group */
+            /* =========================
+               4. Group Per Employee
+            ========================= */
             {
                 $group: {
-                    _id: "$employeeId",
+                    _id: "$employee._id", // Employee ID
 
-                    /* User Info */
+                    userId: { $first: "$user._id" },
+
                     name: { $first: "$user.name" },
                     phone: { $first: "$user.phone" },
 
+                    empCode: { $first: "$employee.empCode" },
+                    department: { $first: "$employee.jobInfo.department" },
+
                     /* Working Days */
-                    totalWorkingDays: {
+                    workingDays: {
                         $sum: {
                             $cond: [
                                 {
@@ -1053,7 +1042,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     },
 
                     /* Absent */
-                    totalAbsentDays: {
+                    absentDays: {
                         $sum: {
                             $cond: [
                                 { $eq: ["$status", "absent"] },
@@ -1064,12 +1053,12 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     },
 
                     /* Total Minutes */
-                    totalWorkingMinutes: {
+                    totalMinutes: {
                         $sum: "$workSummary.totalMinutes"
                     },
 
                     /* Exceptions */
-                    exceptionDays: {
+                    exceptions: {
                         $sum: {
                             $cond: [
                                 {
@@ -1088,18 +1077,21 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            /* Avg Hours */
+            /* =========================
+               5. Avg Hours
+            ========================= */
             {
                 $addFields: {
+
                     avgWorkingHours: {
                         $cond: {
-                            if: { $gt: ["$totalWorkingDays", 0] },
+                            if: { $gt: ["$workingDays", 0] },
                             then: {
                                 $round: [
                                     {
                                         $divide: [
-                                            "$totalWorkingMinutes",
-                                            { $multiply: ["$totalWorkingDays", 60] }
+                                            "$totalMinutes",
+                                            { $multiply: ["$workingDays", 60] }
                                         ]
                                     },
                                     2
@@ -1111,19 +1103,25 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            /* Final */
+            /* =========================
+               6. Final Shape
+            ========================= */
             {
                 $project: {
                     _id: 0,
 
                     employeeId: "$_id",
+                    userId: 1,
 
-                    name: { $ifNull: ["$name", "N/A"] },
-                    phone: { $ifNull: ["$phone", "N/A"] },
+                    name: 1,
+                    phone: 1,
 
-                    totalWorkingDays: 1,
-                    totalAbsentDays: 1,
-                    exceptionDays: 1,
+                    empCode: 1,
+                    department: 1,
+
+                    workingDays: 1,
+                    absentDays: 1,
+                    exceptions: 1,
 
                     avgWorkingHours: 1
                 }
@@ -1133,25 +1131,13 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
         ]);
 
-        /* ============================
-           Total Employees
-        ============================ */
-
-        const totalEmployees = await mongoose.model("Employee").countDocuments({
-            companyId
-        });
-
-        /* ============================
-           Response
-        ============================ */
-
         res.status(200).json({
             success: true,
 
             data: {
                 period: { start, end },
 
-                totalEmployees,
+                totalEmployees: report.length,
 
                 report
             }
@@ -1159,11 +1145,11 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
     } catch (err) {
 
-        console.error("Summary Error:", err);
+        console.error(err);
 
         res.status(500).json({
             success: false,
-            message: "Summary fetch failed",
+            message: "Monthly report failed",
             error: err.message
         });
     }
