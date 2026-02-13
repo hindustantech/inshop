@@ -1005,7 +1005,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             /* Join Employee (Safe Join) */
             {
                 $lookup: {
-                    from: "employees",
+                    from: "Employee",
                     let: { empId: "$employeeId", compId: "$companyId" },
 
                     pipeline: [
@@ -1022,7 +1022,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     ],
 
-                    as: "employee"
+                    as: "Employee"
                 }
             },
 
@@ -1030,7 +1030,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             /* Keep only valid employees */
             {
                 $unwind: {
-                    path: "$employee",
+                    path: "$Employee",
                     preserveNullAndEmptyArrays: false
                 }
             },
@@ -1039,14 +1039,14 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             /* Join User */
             {
                 $lookup: {
-                    from: "users",
+                    from: "User",
                     localField: "employeeId",
                     foreignField: "_id",
-                    as: "user"
+                    as: "User"
                 }
             },
 
-            { $unwind: "$user" },
+            { $unwind: "$User" },
 
 
             /* ============================
