@@ -951,26 +951,12 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 
 
-export const getEmployeeMonthlyCards = async (req, res) => {
-    try {
 
-        /* ============================
-           1. Auth & Params
-        ============================ */
+export const getEmployeeSimpleMonthlySummary = async (req, res) => {
+    try {
 
         const companyId = req.user._id;
         const { startDate, endDate } = req.query;
-
-        if (!mongoose.Types.ObjectId.isValid(companyId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid Company ID"
-            });
-        }
-
-        /* ============================
-           2. Date Range (Default: Month)
-        ============================ */
 
         const start = startDate
             ? new Date(startDate)
@@ -980,13 +966,9 @@ export const getEmployeeMonthlyCards = async (req, res) => {
             ? new Date(endDate)
             : new Date();
 
-        /* ============================
-           3. Aggregation Pipeline
-        ============================ */
-
         const report = await Attendance.aggregate([
 
-            /* Match Company + Date */
+            /* Match */
             {
                 $match: {
                     companyId: new mongoose.Types.ObjectId(companyId),
@@ -994,7 +976,7 @@ export const getEmployeeMonthlyCards = async (req, res) => {
                 }
             },
 
-            /* Join User Collection */
+            /* Lookup User */
             {
                 $lookup: {
                     from: "users",
@@ -1004,18 +986,22 @@ export const getEmployeeMonthlyCards = async (req, res) => {
                 }
             },
 
-            { $unwind: "$user" },
+            /* SAFE Unwind */
+            {
+                $unwind: {
+                    path: "$user",
+                    preserveNullAndEmptyArrays: true
+                }
+            },
 
-            /* Group By Employee */
+            /* Group */
             {
                 $group: {
                     _id: "$employeeId",
 
-                    /* User Info */
                     name: { $first: "$user.name" },
                     phone: { $first: "$user.phone" },
 
-                    /* Working Days */
                     totalWorkingDays: {
                         $sum: {
                             $cond: [
@@ -1031,23 +1017,16 @@ export const getEmployeeMonthlyCards = async (req, res) => {
                         }
                     },
 
-                    /* Absent */
                     totalAbsentDays: {
                         $sum: {
-                            $cond: [
-                                { $eq: ["$status", "absent"] },
-                                1,
-                                0
-                            ]
+                            $cond: [{ $eq: ["$status", "absent"] }, 1, 0]
                         }
                     },
 
-                    /* Total Minutes */
                     totalWorkingMinutes: {
                         $sum: "$workSummary.totalMinutes"
                     },
 
-                    /* Exceptions */
                     exceptionDays: {
                         $sum: {
                             $cond: [
@@ -1067,7 +1046,7 @@ export const getEmployeeMonthlyCards = async (req, res) => {
                 }
             },
 
-            /* Calculate Avg Hours */
+            /* Avg */
             {
                 $addFields: {
                     avgWorkingHours: {
@@ -1090,15 +1069,15 @@ export const getEmployeeMonthlyCards = async (req, res) => {
                 }
             },
 
-            /* Final Output */
+            /* Output */
             {
                 $project: {
                     _id: 0,
 
                     employeeId: "$_id",
 
-                    name: 1,
-                    phone: 1,
+                    name: { $ifNull: ["$name", "N/A"] },
+                    phone: { $ifNull: ["$phone", "N/A"] },
 
                     totalWorkingDays: 1,
                     totalAbsentDays: 1,
@@ -1108,41 +1087,30 @@ export const getEmployeeMonthlyCards = async (req, res) => {
                 }
             },
 
-            /* Sort By Name */
-            {
-                $sort: { name: 1 }
-            }
+            { $sort: { name: 1 } }
 
         ]);
 
-        /* ============================
-           4. Response
-        ============================ */
-
         res.status(200).json({
             success: true,
-
             data: {
                 period: { start, end },
-
                 totalEmployees: report.length,
-
                 report
             }
         });
 
-    } catch (error) {
+    } catch (err) {
 
-        console.error("Monthly Summary Error:", error);
+        console.error(err);
 
         res.status(500).json({
             success: false,
-            message: "Failed to fetch monthly summary",
-            error: error.message
+            message: "Monthly summary failed",
+            error: err.message
         });
     }
 };
-
 
 /**
  * @desc   Get Employee Monthly Attendance
