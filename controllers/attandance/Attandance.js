@@ -943,22 +943,6 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 
 
-
-
-/* ======================================================
-   GET: Monthly Employee Card Summary (IST Based)
-====================================================== */
-
-
-
-/**
- * Get Employee Monthly Attendance Summary
- * @route GET /api/reports/monthly-summary
- * @access Private (Company Admin/Manager)
- */
-// controllers/attendanceReportController.js
-
-
 /**
  * Get Employee Monthly Attendance Summary
  * @route GET /api/reports/monthly-summary
@@ -2028,6 +2012,37 @@ export const exportMonthlyReportCSV = async (req, res) => {
         });
     }
 };
+
+// Helper function to allow internal calls for CSV export
+const getEmployeeSimpleMonthlySummary = async (req, res, internal = false) => {
+    if (internal) {
+        // Clone the request for internal use
+        const internalReq = { ...req };
+        const internalRes = {
+            status: () => ({
+                json: (data) => data
+            })
+        };
+
+        // Store original json method
+        const originalJson = res.json;
+
+        // Override json to capture response
+        let responseData;
+        res.json = (data) => {
+            responseData = data;
+            return data;
+        };
+
+        await exports.getEmployeeSimpleMonthlySummary(internalReq, internalRes);
+
+        // Restore original json
+        res.json = originalJson;
+
+        return responseData;
+    }
+};
+
 
 
 
