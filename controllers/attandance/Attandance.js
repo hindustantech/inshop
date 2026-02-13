@@ -951,422 +951,77 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 
 
-
 export const getEmployeeMonthlyCards = async (req, res) => {
     try {
-        const {startDate, endDate, department, role, status } = req.query;
-        const companyId= req.user._id
-        // Build filter for employees
-        const employeeFilter = { companyId: new mongoose.Types.ObjectId(companyId) };
 
-        if (department) {
-            employeeFilter['jobInfo.department'] = department;
+        /* ============================
+           1. Auth & Params
+        ============================ */
+
+        const companyId = req.user._id;
+        const { startDate, endDate } = req.query;
+
+        if (!mongoose.Types.ObjectId.isValid(companyId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Company ID"
+            });
         }
 
-        if (role) {
-            employeeFilter.role = role;
-        }
+        /* ============================
+           2. Date Range (Default: Month)
+        ============================ */
 
-        if (status) {
-            employeeFilter.employmentStatus = status;
-        }
+        const start = startDate
+            ? new Date(startDate)
+            : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
-        // Set date range (default: current month)
-        const end = endDate ? new Date(endDate) : new Date();
-        const start = startDate ? new Date(startDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        const end = endDate
+            ? new Date(endDate)
+            : new Date();
 
-        // Aggregate pipeline
-        const employeeSummary = await Employee.aggregate([
-            // Match employees for the company
-            {
-                $match: employeeFilter
-            },
+        /* ============================
+           3. Aggregation Pipeline
+        ============================ */
 
-            // Lookup user details
-            {
-                $lookup: {
-                    from: "users",
-                    localField: "userId",
-                    foreignField: "_id",
-                    as: "userDetails"
-                }
-            },
+        const report = await Attendance.aggregate([
 
-            // Unwind user details
-            {
-                $unwind: {
-                    path: "$userDetails",
-                    preserveNullAndEmptyArrays: false
-                }
-            },
-
-            // Lookup attendance records for date range
-            {
-                $lookup: {
-                    from: "attendances",
-                    let: { employeeId: "$userId", companyId: "$companyId" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $and: [
-                                        { $eq: ["$employeeId", "$$employeeId"] },
-                                        { $eq: ["$companyId", "$$companyId"] },
-                                        { $gte: ["$date", start] },
-                                        { $lte: ["$date", end] }
-                                    ]
-                                }
-                            }
-                        }
-                    ],
-                    as: "attendanceRecords"
-                }
-            },
-
-            // Calculate attendance summary
-            {
-                $addFields: {
-                    // Total present days (approved attendance)
-                    totalPresentDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                cond: {
-                                    $and: [
-                                        { $eq: ["$$record.status", "present"] },
-                                        { $eq: ["$$record.approvalStatus", "approved"] }
-                                    ]
-                                }
-                            }
-                        }
-                    },
-
-                    // Total absent days
-                    totalAbsentDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                cond: { $eq: ["$$record.status", "absent"] }
-                            }
-                        }
-                    },
-
-                    // Total half days
-                    totalHalfDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                cond: { $eq: ["$$record.status", "half_day"] }
-                            }
-                        }
-                    },
-
-                    // Total leaves
-                    totalLeaves: {
-                        $size: {
-                            $filter: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                cond: { $eq: ["$$record.status", "leave"] }
-                            }
-                        }
-                    },
-
-                    // Total holidays
-                    totalHolidays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                cond: { $eq: ["$$record.status", "holiday"] }
-                            }
-                        }
-                    },
-
-                    // Total week offs
-                    totalWeekOffs: {
-                        $size: {
-                            $filter: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                cond: { $eq: ["$$record.status", "week_off"] }
-                            }
-                        }
-                    },
-
-                    // Pending approvals
-                    pendingApprovals: {
-                        $size: {
-                            $filter: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                cond: { $eq: ["$$record.approvalStatus", "pending"] }
-                            }
-                        }
-                    },
-
-                    // Total working minutes (from workSummary)
-                    totalWorkingMinutes: {
-                        $sum: {
-                            $map: {
-                                input: {
-                                    $filter: {
-                                        input: "$attendanceRecords",
-                                        as: "record",
-                                        cond: {
-                                            $in: ["$$record.status", ["present", "half_day"]]
-                                        }
-                                    }
-                                },
-                                as: "record",
-                                in: "$$record.workSummary.totalMinutes"
-                            }
-                        }
-                    },
-
-                    // Total overtime minutes
-                    totalOvertimeMinutes: {
-                        $sum: {
-                            $map: {
-                                input: {
-                                    $filter: {
-                                        input: "$attendanceRecords",
-                                        as: "record",
-                                        cond: {
-                                            $in: ["$$record.status", ["present", "half_day"]]
-                                        }
-                                    }
-                                },
-                                as: "record",
-                                in: "$$record.workSummary.overtimeMinutes"
-                            }
-                        }
-                    },
-
-                    // Total late minutes
-                    totalLateMinutes: {
-                        $sum: {
-                            $map: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                in: "$$record.workSummary.lateMinutes"
-                            }
-                        }
-                    },
-
-                    // Total early leave minutes
-                    totalEarlyLeaveMinutes: {
-                        $sum: {
-                            $map: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                in: "$$record.workSummary.earlyLeaveMinutes"
-                            }
-                        }
-                    },
-
-                    // Days with suspicious activity
-                    suspiciousDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                cond: { $eq: ["$$record.isSuspicious", true] }
-                            }
-                        }
-                    },
-
-                    // Days with manual edits
-                    editedDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendanceRecords",
-                                as: "record",
-                                cond: { $gt: [{ $size: "$$record.editLogs" }, 0] }
-                            }
-                        }
-                    }
-                }
-            },
-
-            // Calculate averages and formatted hours
-            {
-                $addFields: {
-                    // Total working days in period
-                    totalDaysInPeriod: {
-                        $size: "$attendanceRecords"
-                    },
-
-                    // Average working hours per present day
-                    avgWorkingHours: {
-                        $cond: {
-                            if: { $gt: ["$totalPresentDays", 0] },
-                            then: {
-                                $round: [
-                                    { $divide: ["$totalWorkingMinutes", 60] },
-                                    2
-                                ]
-                            },
-                            else: 0
-                        }
-                    },
-
-                    // Average working hours per day (including all days)
-                    avgDailyWorkingHours: {
-                        $cond: {
-                            if: { $gt: [{ $size: "$attendanceRecords" }, 0] },
-                            then: {
-                                $round: [
-                                    {
-                                        $divide: [
-                                            "$totalWorkingMinutes",
-                                            { $multiply: [{ $size: "$attendanceRecords" }, 60] }
-                                        ]
-                                    },
-                                    2
-                                ]
-                            },
-                            else: 0
-                        }
-                    },
-
-                    // Format working hours as HH:MM
-                    formattedTotalHours: {
-                        $concat: [
-                            { $toString: { $floor: { $divide: ["$totalWorkingMinutes", 60] } } },
-                            "h ",
-                            { $toString: { $mod: ["$totalWorkingMinutes", 60] } },
-                            "m"
-                        ]
-                    },
-
-                    // Format overtime hours as HH:MM
-                    formattedOvertimeHours: {
-                        $concat: [
-                            { $toString: { $floor: { $divide: ["$totalOvertimeMinutes", 60] } } },
-                            "h ",
-                            { $toString: { $mod: ["$totalOvertimeMinutes", 60] } },
-                            "m"
-                        ]
-                    },
-
-                    // Format late hours as HH:MM
-                    formattedLateHours: {
-                        $concat: [
-                            { $toString: { $floor: { $divide: ["$totalLateMinutes", 60] } } },
-                            "h ",
-                            { $toString: { $mod: ["$totalLateMinutes", 60] } },
-                            "m"
-                        ]
-                    },
-
-                    // Attendance percentage
-                    attendancePercentage: {
-                        $cond: {
-                            if: { $gt: [{ $size: "$attendanceRecords" }, 0] },
-                            then: {
-                                $round: [
-                                    {
-                                        $multiply: [
-                                            { $divide: ["$totalPresentDays", { $size: "$attendanceRecords" }] },
-                                            100
-                                        ]
-                                    },
-                                    1
-                                ]
-                            },
-                            else: 0
-                        }
-                    }
-                }
-            },
-
-            // Project final output
-            {
-                $project: {
-                    _id: 1,
-                    empCode: 1,
-                    role: 1,
-                    employmentStatus: 1,
-                    jobInfo: 1,
-
-                    // User details
-                    employeeName: "$userDetails.name",
-                    phone: "$userDetails.phone",
-                    email: "$userDetails.email",
-                    profileImage: "$userDetails.profileImage",
-                    uid: "$userDetails.uid",
-
-                    // Summary counts
-                    totalDaysInPeriod: 1,
-                    totalPresentDays: 1,
-                    totalAbsentDays: 1,
-                    totalHalfDays: 1,
-                    totalLeaves: 1,
-                    totalHolidays: 1,
-                    totalWeekOffs: 1,
-                    pendingApprovals: 1,
-                    suspiciousDays: 1,
-                    editedDays: 1,
-
-                    // Time calculations
-                    totalWorkingMinutes: 1,
-                    totalOvertimeMinutes: 1,
-                    totalLateMinutes: 1,
-                    totalEarlyLeaveMinutes: 1,
-
-                    // Formatted hours
-                    formattedTotalHours: 1,
-                    formattedOvertimeHours: 1,
-                    formattedLateHours: 1,
-
-                    // Averages
-                    avgWorkingHours: 1,
-                    avgDailyWorkingHours: 1,
-                    attendancePercentage: 1,
-
-                    // Latest attendance record
-                    latestAttendance: {
-                        $arrayElemAt: [
-                            {
-                                $sortArray: {
-                                    input: "$attendanceRecords",
-                                    sortBy: { date: -1 }
-                                }
-                            },
-                            0
-                        ]
-                    }
-                }
-            },
-
-            // Sort by employee name
-            {
-                $sort: { employeeName: 1 }
-            }
-        ]);
-
-        // Get overall statistics
-        const overallStats = await Attendance.aggregate([
+            /* Match Company + Date */
             {
                 $match: {
                     companyId: new mongoose.Types.ObjectId(companyId),
                     date: { $gte: start, $lte: end }
                 }
             },
+
+            /* Join User Collection */
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "employeeId",
+                    foreignField: "_id",
+                    as: "user"
+                }
+            },
+
+            { $unwind: "$user" },
+
+            /* Group By Employee */
             {
                 $group: {
-                    _id: null,
-                    totalAttendanceRecords: { $sum: 1 },
-                    totalPresentAcrossCompany: {
+                    _id: "$employeeId",
+
+                    /* User Info */
+                    name: { $first: "$user.name" },
+                    phone: { $first: "$user.phone" },
+
+                    /* Working Days */
+                    totalWorkingDays: {
                         $sum: {
                             $cond: [
                                 {
                                     $and: [
-                                        { $eq: ["$status", "present"] },
+                                        { $in: ["$status", ["present", "half_day"]] },
                                         { $eq: ["$approvalStatus", "approved"] }
                                     ]
                                 },
@@ -1375,57 +1030,118 @@ export const getEmployeeMonthlyCards = async (req, res) => {
                             ]
                         }
                     },
-                    totalAbsentAcrossCompany: {
-                        $sum: { $cond: [{ $eq: ["$status", "absent"] }, 1, 0] }
+
+                    /* Absent */
+                    totalAbsentDays: {
+                        $sum: {
+                            $cond: [
+                                { $eq: ["$status", "absent"] },
+                                1,
+                                0
+                            ]
+                        }
                     },
-                    totalHalfDaysAcrossCompany: {
-                        $sum: { $cond: [{ $eq: ["$status", "half_day"] }, 1, 0] }
-                    },
-                    totalLeavesAcrossCompany: {
-                        $sum: { $cond: [{ $eq: ["$status", "leave"] }, 1, 0] }
-                    },
-                    totalWorkingMinutesAcrossCompany: {
+
+                    /* Total Minutes */
+                    totalWorkingMinutes: {
                         $sum: "$workSummary.totalMinutes"
                     },
-                    totalOvertimeMinutesAcrossCompany: {
-                        $sum: "$workSummary.overtimeMinutes"
-                    },
-                    avgWorkingHoursAcrossCompany: {
-                        $avg: {
+
+                    /* Exceptions */
+                    exceptionDays: {
+                        $sum: {
                             $cond: [
-                                { $gt: ["$workSummary.totalMinutes", 0] },
-                                { $divide: ["$workSummary.totalMinutes", 60] },
+                                {
+                                    $or: [
+                                        { $eq: ["$isSuspicious", true] },
+                                        { $gt: [{ $size: "$editLogs" }, 0] },
+                                        { $eq: ["$approvalStatus", "pending"] },
+                                        { $eq: ["$approvalStatus", "rejected"] }
+                                    ]
+                                },
+                                1,
                                 0
                             ]
                         }
                     }
                 }
+            },
+
+            /* Calculate Avg Hours */
+            {
+                $addFields: {
+                    avgWorkingHours: {
+                        $cond: {
+                            if: { $gt: ["$totalWorkingDays", 0] },
+                            then: {
+                                $round: [
+                                    {
+                                        $divide: [
+                                            "$totalWorkingMinutes",
+                                            { $multiply: ["$totalWorkingDays", 60] }
+                                        ]
+                                    },
+                                    2
+                                ]
+                            },
+                            else: 0
+                        }
+                    }
+                }
+            },
+
+            /* Final Output */
+            {
+                $project: {
+                    _id: 0,
+
+                    employeeId: "$_id",
+
+                    name: 1,
+                    phone: 1,
+
+                    totalWorkingDays: 1,
+                    totalAbsentDays: 1,
+                    exceptionDays: 1,
+
+                    avgWorkingHours: 1
+                }
+            },
+
+            /* Sort By Name */
+            {
+                $sort: { name: 1 }
             }
+
         ]);
+
+        /* ============================
+           4. Response
+        ============================ */
 
         res.status(200).json({
             success: true,
+
             data: {
-                employees: employeeSummary,
-                summary: {
-                    dateRange: { start, end },
-                    totalEmployees: employeeSummary.length,
-                    overallStats: overallStats[0] || {},
-                    filters: { department, role, status }
-                }
+                period: { start, end },
+
+                totalEmployees: report.length,
+
+                report
             }
         });
 
     } catch (error) {
-        console.error("Error fetching employee summary:", error);
+
+        console.error("Monthly Summary Error:", error);
+
         res.status(500).json({
             success: false,
-            message: "Failed to fetch employee summary",
+            message: "Failed to fetch monthly summary",
             error: error.message
         });
     }
 };
-
 
 
 /**
