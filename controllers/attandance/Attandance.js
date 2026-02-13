@@ -954,8 +954,8 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 export const getEmployeeMonthlyCards = async (req, res) => {
     try {
-        const { companyId, startDate, endDate, department, role, status } = req.query;
-
+        const {startDate, endDate, department, role, status } = req.query;
+        const companyId= req.user._id
         // Build filter for employees
         const employeeFilter = { companyId: new mongoose.Types.ObjectId(companyId) };
 
