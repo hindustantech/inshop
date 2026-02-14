@@ -787,7 +787,7 @@ export const startAuth = async (req, res) => {
       });
     }
 
-    const allowed = ["user", "partner", "agency"];
+    const allowed = ["user", "partner", "agency", 'admin', 'super_admin'];
 
     if (!allowed.includes(type)) {
       return res.status(401).json({
@@ -850,7 +850,7 @@ export const startAuth = async (req, res) => {
         message: "Account suspended",
       });
     }
-   
+
 
 
     /* ---------- Save WhatsApp UID ---------- */
