@@ -850,11 +850,7 @@ export const startAuth = async (req, res) => {
         message: "Account suspended",
       });
     }
-    if (!user.isVerified) {
-      return res.status(400).json({
-        message: "User not  verified.",
-      });
-    }
+   
 
 
     /* ---------- Save WhatsApp UID ---------- */
