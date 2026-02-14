@@ -839,11 +839,11 @@ export const startAuth = async (req, res) => {
 
     /* ---------- Type Lock ---------- */
 
-    if (!isNew && user.type !== type) {
-      return res.status(403).json({
-        message: "Account type mismatch",
-      });
-    }
+    // if (!isNew && user.type !== type) {
+    //   return res.status(403).json({
+    //     message: "Account type mismatch",
+    //   });
+    // }
 
     if (user.suspend) {
       return res.status(403).json({
