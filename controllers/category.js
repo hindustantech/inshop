@@ -81,7 +81,7 @@ export const getCategories = async (req, res) => {
     const limit = Math.min(100, parseInt(req.query.limit) || 20);
     const search = req.query.search?.trim() || "";
 
-    const query = {};
+    let query = {};
 
     /* ---------------- Search Filter ---------------- */
     if (search) {
@@ -95,16 +95,27 @@ export const getCategories = async (req, res) => {
 
     /* ------------- Role Based Filter -------------- */
     if (!req.user || req.user.type !== "super_admin") {
-      query.isActive = true;
 
-      // Exclude occasion=true
-      query.occasion = { $ne: true };
+      const roleFilter = {
+        $and: [
+          { isActive: true },
+          {
+            $or: [
+              { occasion: false },
+              { occasion: { $exists: false } }
+            ]
+          }
+        ]
+      };
+
+      // Merge search + role filter safely
+      query = Object.keys(query).length
+        ? { $and: [query, roleFilter] }
+        : roleFilter;
     }
 
-    /* -------------- Pagination Logic -------------- */
     const skip = (page - 1) * limit;
 
-    /* ------------------ Database ------------------ */
     const [categories, total] = await Promise.all([
       Category.find(query)
         .sort({ createdAt: -1 })
@@ -115,7 +126,6 @@ export const getCategories = async (req, res) => {
       Category.countDocuments(query),
     ]);
 
-    /* ------------------ Response ------------------ */
     res.status(200).json({
       success: true,
       total,
@@ -124,6 +134,7 @@ export const getCategories = async (req, res) => {
       totalPages: Math.ceil(total / limit),
       categories,
     });
+
   } catch (error) {
     console.error("getCategories Error:", error);
 
@@ -134,6 +145,7 @@ export const getCategories = async (req, res) => {
     });
   }
 };
+
 
 
 export const getActiveOccasionCategories = async (req, res) => {
