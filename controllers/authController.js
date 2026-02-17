@@ -781,7 +781,7 @@ export const startAuth = async (req, res) => {
 
     /* ---------- Validation ---------- */
 
-    if (!phone || !deviceId || !type) {
+    if (!phone || !type) {
       return res.status(400).json({
         message: "phone, deviceId and type required",
       });
@@ -804,15 +804,7 @@ export const startAuth = async (req, res) => {
 
     const cleanPhone = phone.trim();
 
-    /* ---------- Device Check ---------- */
 
-    const deviceUser = await User.findOne({ deviceId });
-
-    if (deviceUser && deviceUser.phone !== cleanPhone) {
-      return res.status(409).json({
-        message: "Device already linked to another account",
-      });
-    }
 
     /* ---------- Find User ---------- */
 
@@ -839,12 +831,6 @@ export const startAuth = async (req, res) => {
 
     /* ---------- Type Lock ---------- */
 
-    // if (!isNew && user.type !== type) {
-    //   return res.status(403).json({
-    //     message: "Account type mismatch",
-    //   });
-    // }
-
     if (user.suspend) {
       return res.status(403).json({
         message: "Account suspended",
@@ -855,7 +841,6 @@ export const startAuth = async (req, res) => {
 
     /* ---------- Save WhatsApp UID ---------- */
     const otpResponse = await sendWhatsAppOtp(phone);
-    logger.info(`OTP send response for phone ${phone}: ${JSON.stringify(otpResponse)}`);
 
     if (!otpResponse.success) {
       await User.findByIdAndDelete(user._id); // rollback
@@ -898,7 +883,7 @@ export const completOtp = async (req, res) => {
   try {
     const { userId, otp, deviceId } = req.body;
 
-    if (!userId || !otp || !deviceId) {
+    if (!userId || !otp) {
       return res.status(400).json({
         message: "userId, otp, deviceId required",
       });
@@ -920,30 +905,43 @@ export const completOtp = async (req, res) => {
       return res.status(400).json({ message: "Invalid OTP", error: verifyResponse.error });
     }
 
-    // 3. Bind device atomically
+
+
+    // 3. Verify OTP and activate user (Device-Agnostic)
+
     const updated = await User.findOneAndUpdate(
       {
         _id: userId,
-        $or: [
-          { deviceId: null },        // First time login
-          { deviceId: deviceId },    // Same device re-login
-        ],
       },
       {
         $set: {
           isVerified: true,
-          deviceId,
-          otp: null,
-        },
+          otp: null,              // Clear OTP after success
+          lastLoginAt: new Date() // Optional audit field (recommended)
+        }
       },
       { new: true }
     );
-    logger.info(`Device binding result for user ${userId}: ${updated ? 'Success' : 'Failed'}`, updated);
-    if (!updated) {
-      return res.status(409).json({
-        message: "Device already bound",
-      });
-    }
+
+    // // 3. Bind device atomically
+    // const updated = await User.findOneAndUpdate(
+    //   {
+    //     _id: userId,
+    //     $or: [
+    //       { deviceId: null },        // First time login
+    //       { deviceId: deviceId },    // Same device re-login
+    //     ],
+    //   },
+    //   {
+    //     $set: {
+    //       isVerified: true,
+    //       deviceId,
+    //       otp: null,
+    //     },
+    //   },
+    //   { new: true }
+    // );
+
 
     // 4. JWT
     const token = generateToken(
