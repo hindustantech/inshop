@@ -1,3 +1,4 @@
+import { serialize } from "v8";
 import PatnerProfile from "../models/PatnerProfile.js";
 import User from "../models/userModel.js";
 import { uploadToCloudinary } from "../utils/Cloudinary.js";
@@ -389,6 +390,35 @@ export const createOrUpdateProfile = async (req, res) => {
 export const getProfile = async (req, res) => {
     try {
         const { userId } = req.params;
+
+
+        // 1️⃣ Validate ObjectId (important in production)
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid userId",
+            });
+        }
+
+        // 2️⃣ Fetch base user (only required fields)
+        const user = await User.findById(userId)
+            .select("name phone type referalCode createdAt")
+            .lean();
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        // 3️⃣ If NOT partner → return user directly (fast path)
+        if (user.type !== "partner") {
+            return res.status(200).json({
+                success: true,
+                data: user,
+            });
+        }
 
         const profile = await PatnerProfile.findOne({ User_id: new mongoose.Types.ObjectId(userId) })
             .populate("User_id", "name phone referalCode");
