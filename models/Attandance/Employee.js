@@ -16,6 +16,9 @@ const employeeSchema = new mongoose.Schema({
         ref: "User",
         required: true
     },
+    user_name:{
+        type:String,
+    },
 
     empCode: {
         type: String,

@@ -48,6 +48,7 @@ export const createEmployee = async (req, res) => {
         const {
             userId,
             role,
+            user_name,
             jobInfo,
             salaryStructure,
             bankDetails,
@@ -100,7 +101,7 @@ export const createEmployee = async (req, res) => {
             companyId,
             userId,
             empCode,
-
+            user_name,
             role: role || "employee",
 
             jobInfo: {
@@ -182,6 +183,172 @@ export const createEmployee = async (req, res) => {
         });
     }
 };
+
+
+/* ---------------------------------------------
+   Update EMPLOYEE (ENTERPRISE LEVEL)
+---------------------------------------------- */
+
+export const updateEmployee = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        /* ---------------------------------------------
+           1. Authorization (Multi-Tenant Security)
+        ---------------------------------------------- */
+        const companyId = req.user?._id || req.user?.id;
+        const userRole = req.user?.role || req.user?.type;
+
+        if (!companyId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+        }
+
+        if (!['partner', 'admin', 'super_admin'].includes(userRole)) {
+            return res.status(403).json({
+                success: false,
+                message: "Access denied",
+            });
+        }
+
+        /* ---------------------------------------------
+           2. Params Validation
+        ---------------------------------------------- */
+        const { employeeId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid employeeId",
+            });
+        }
+
+        const existingEmployee = await Employee.findOne({
+            _id: employeeId,
+            companyId
+        }).session(session);
+
+        if (!existingEmployee) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee not found",
+            });
+        }
+
+        /* ---------------------------------------------
+           3. Build Safe Update Payload (Field Whitelisting)
+        ---------------------------------------------- */
+        const {
+            user_name,
+            role,
+            jobInfo,
+            salaryStructure,
+            bankDetails,
+            officeLocation,
+            employmentStatus
+        } = req.body;
+
+        const updatePayload = {};
+
+        if (user_name !== undefined) updatePayload.user_name = user_name;
+
+        if (role && ['employee', 'manager', 'hr', 'admin', 'super_admin'].includes(role)) {
+            updatePayload.role = role;
+        }
+
+        /* -------- Job Info -------- */
+        if (jobInfo) {
+            updatePayload.jobInfo = {
+                ...existingEmployee.jobInfo.toObject(),
+                ...jobInfo
+            };
+        }
+
+        /* -------- Salary -------- */
+        if (salaryStructure) {
+            updatePayload.salaryStructure = {
+                ...existingEmployee.salaryStructure.toObject(),
+                ...salaryStructure
+            };
+        }
+
+        /* -------- Bank -------- */
+        if (bankDetails) {
+            updatePayload.bankDetails = {
+                ...existingEmployee.bankDetails.toObject(),
+                ...bankDetails
+            };
+        }
+
+        /* -------- Geo Location -------- */
+        if (officeLocation?.coordinates) {
+            if (!Array.isArray(officeLocation.coordinates) || officeLocation.coordinates.length !== 2) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid coordinates format",
+                });
+            }
+
+            updatePayload.officeLocation = {
+                type: "Point",
+                coordinates: officeLocation.coordinates,
+                radius: officeLocation.radius || existingEmployee.officeLocation?.radius || 100
+            };
+        }
+
+        if (employmentStatus) {
+            updatePayload.employmentStatus = employmentStatus;
+        }
+
+        /* ---------------------------------------------
+           4. Atomic Update (No Hydration = Faster)
+        ---------------------------------------------- */
+        const updatedEmployee = await Employee.findOneAndUpdate(
+            { _id: employeeId, companyId },
+            { $set: updatePayload },
+            {
+                new: true,
+                runValidators: true,
+                session
+            }
+        );
+
+        /* ---------------------------------------------
+           5. Commit Transaction
+        ---------------------------------------------- */
+        await session.commitTransaction();
+        session.endSession();
+
+        return res.status(200).json({
+            success: true,
+            message: "Employee updated successfully",
+            data: updatedEmployee
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+
+        console.error("UpdateEmployee Error:", error);
+
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: "Duplicate constraint violation",
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+            error: error.message
+        });
+    }
+};
+
 
 
 export const findbyPhone = async (req, res) => {
@@ -348,7 +515,7 @@ export const getAllEmployees = async (req, res) => {
 export const getEmpDetails = async (req, res) => {
     const { empId } = req.params;
     try {
-        const employee = await Employee.findById(empId).populate("userId", "name email phone");
+        const employee = await Employee.findById(empId);
         if (!employee) {
             return res.status(404).json({
                 success: false,
@@ -424,7 +591,7 @@ export const checkEmpButton = async (req, res) => {
     }
 }
 
-export  const delteEmployee = async (req, res) => {
+export const delteEmployee = async (req, res) => {
     const { empId } = req.params;
     try {
         const employee = await Employee.findByIdAndDelete(empId);

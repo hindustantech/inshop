@@ -12,7 +12,8 @@ import {
     getEmpByUserId,
     findbyReferralCode,
     checkEmpButton,
-    delteEmployee
+    delteEmployee,
+    updateEmployee
 } from "../../controllers/attandance/Employee.js";
 
 /* ===============================
@@ -54,6 +55,11 @@ router.post(
     "/find-by-Referral-Code",
     authMiddleware,
     findbyReferralCode
+);
+router.patch(
+    "/updateEmployee/:employeeId",
+    authMiddleware,
+    updateEmployee
 );
 
 /**
