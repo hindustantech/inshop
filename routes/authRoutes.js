@@ -63,6 +63,7 @@ router.post('/completOtp', completOtp);
 router.post('/completeProfile', authMiddleware, completeProfile);
 router.post('/restoreAccount', authMiddleware, restoreAccount);
 router.post('/requestAccountDeletion', authMiddleware, requestAccountDeletion);
+router.get('/getDeletionStatus', authMiddleware, getDeletionStatus);
 router.get('/findUserByReferralOwner/:code', authMiddleware, findUserByReferralOwner);
 
 router.post('/verifyOtp', verifyOtp);
