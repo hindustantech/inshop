@@ -3,7 +3,7 @@ import User from '../models/userModel.js';
 import UserCoupon from '../models/UserCoupon.js';
 import Salses from '../models/Sales.js'
 import ManualAddress from '../models/ManualAddress.js';
-import { uploadToCloudinary } from '../utils/Cloudinary.js';
+import { uploadToCloudinaryCOUPON } from '../utils/Coupon_image_upload.js';
 import mongoose from 'mongoose';
 import Category from '../models/CategoryCopun.js';
 import { exportToCSV } from '../utils/exportcsv.js';
@@ -411,7 +411,7 @@ export const updateCouponFromAdmin = async (req, res) => {
     if (req.files && req.files.length > 0) {
       const results = await Promise.all(
         req.files.map(file =>
-          uploadToCloudinary(file.buffer, "coupons")
+          uploadToCloudinaryCOUPON(file.buffer, "coupons")
         )
       );
 
@@ -723,7 +723,7 @@ export const updateGiftHamperAdmin = async (req, res) => {
 
     if (req.files?.length) {
       const uploads = await Promise.all(
-        req.files.map(file => uploadToCloudinary(file.buffer, "gift_hampers"))
+        req.files.map(file => uploadToCloudinaryCOUPON(file.buffer, "gift_hampers"))
       );
       updates.copuon_image = uploads.map(u => u.secure_url);
     }
@@ -970,7 +970,7 @@ export const createGiftHamperAdmin = async (req, res) => {
     // Handle file uploads from multer
     if (req.files?.length) {
       const uploads = await Promise.all(
-        req.files.map(file => uploadToCloudinary(file.buffer, "gift_hampers"))
+        req.files.map(file => uploadToCloudinaryCOUPON(file.buffer, "gift_hampers"))
       );
       copuon_image = uploads.map(u => u.secure_url);
     }
@@ -1474,7 +1474,7 @@ export const createCoupon = async (req, res) => {
     if (req.files?.length) {
       const uploads = await Promise.all(
         req.files.map((file) =>
-          uploadToCloudinary(file.buffer, "coupons")
+          uploadToCloudinaryCOUPON(file.buffer, "coupons")
         )
       );
       copuon_image = uploads.map((u) => u.secure_url);
@@ -1983,7 +1983,7 @@ export const createCouponAdmin = async (req, res) => {
     let copuon_image = [];
     if (req.files?.length) {
       try {
-        const uploads = await Promise.all(req.files.map((file) => uploadToCloudinary(file.buffer, "coupons")));
+        const uploads = await Promise.all(req.files.map((file) => uploadToCloudinaryCOUPON(file.buffer, "coupons")));
         copuon_image = uploads.map((u) => u.secure_url);
       } catch (uploadErr) {
         return res.status(500).json({

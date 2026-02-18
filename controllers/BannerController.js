@@ -1,13 +1,15 @@
 import Banner from "../models/Banner.js";
 import User from "../models/userModel.js";
 // Create Banner (default expiry = 15 days, unless specified)
-import { uploadToCloudinary } from "../utils/Cloudinary.js";
 import { exportToCSV } from "../utils/exportcsv.js";
 import Category from "../models/CategoryCopun.js";
 import mongoose from "mongoose";
 import ManualAddress from "../models/ManualAddress.js";
 import logger from "../utils/logger.js";
 import UserPlan from "../models/UserPlan.js";
+import { uploadToCloudinaryBANNER } from "../utils/Coupon_image_Banner.js";
+
+
 // export const createBanner = async (req, res) => {
 //     try {
 //         const userId = req.user?.id;
@@ -39,7 +41,7 @@ import UserPlan from "../models/UserPlan.js";
 //         // Handle image upload
 //         let banner_image = null;
 //         if (req.file) {
-//             const uploadResult = await uploadToCloudinary(req.file.buffer, "banners");
+//             const uploadResult = await uploadToCloudinaryBANNER(req.file.buffer, "banners");
 //             banner_image = uploadResult.secure_url;
 //         } else {
 //             return res.status(400).json({ success: false, message: "Banner image is required" });
@@ -170,7 +172,7 @@ export const createBanner = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Banner image is required' });
     }
     try {
-      const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
+      const uploadResult = await uploadToCloudinaryBANNER(req.file.buffer, 'banners');
       banner_image = uploadResult.secure_url;
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Error uploading image', error: err.message });
@@ -479,7 +481,7 @@ export const createBanneradmin = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Banner image is required' });
     }
     try {
-      const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
+      const uploadResult = await uploadToCloudinaryBANNER(req.file.buffer, 'banners');
       banner_image = uploadResult.secure_url;
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Error uploading image', error: err.message });
@@ -686,7 +688,7 @@ export const createBanneradmin = async (req, res) => {
 //       return res.status(400).json({ success: false, message: 'Banner image is required' });
 //     }
 //     try {
-//       const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
+//       const uploadResult = await uploadToCloudinaryBANNER(req.file.buffer, 'banners');
 //       banner_image = uploadResult.secure_url;
 //     } catch (err) {
 //       return res.status(500).json({ success: false, message: 'Error uploading image', error: err.message });
@@ -1618,7 +1620,7 @@ export const updateBanner = async (req, res) => {
     // Handle file upload (OPTIONAL for updates)
     if (req.file) {
       try {
-        const uploadResult = await uploadToCloudinary(req.file.buffer, 'banners');
+        const uploadResult = await uploadToCloudinaryBANNER(req.file.buffer, 'banners');
         updateData.banner_image = uploadResult.secure_url;
       } catch (err) {
         return res.status(500).json({
