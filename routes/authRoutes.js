@@ -29,6 +29,7 @@ import {
     exportUsersByLocation,
     restoreAccount,
     requestAccountDeletion,
+    getDeletionStatus
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';

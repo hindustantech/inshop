@@ -404,6 +404,81 @@ export const requestAccountDeletion = async (req, res) => {
 };
 
 
+
+export const getDeletionStatus = async (req, res) => {
+  try {
+    const userId = req.user?._id;
+
+    /* ---------- Validate ---------- */
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user id"
+      });
+    }
+
+    /* ---------- Fetch Minimal Fields ---------- */
+    const user = await User.findById(userId)
+      .select("accountStatus scheduledDeletionAt deletionRequestedAt")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    /* ---------- Default Response ---------- */
+    let response = {
+      success: true,
+      accountStatus: user.accountStatus,
+      scheduledDeletionAt: null,
+      daysRemaining: null,
+      message: null
+    };
+
+    /* ---------- If Scheduled for Deletion ---------- */
+    if (user.accountStatus === "PENDING_DELETION" && user.scheduledDeletionAt) {
+
+      const now = new Date();
+      const diffTime = user.scheduledDeletionAt.getTime() - now.getTime();
+      const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      response.scheduledDeletionAt = user.scheduledDeletionAt;
+      response.daysRemaining = daysRemaining > 0 ? daysRemaining : 0;
+
+      response.message =
+        daysRemaining > 0
+          ? `Your account is scheduled for permanent deletion in ${daysRemaining} days. You can restore your account before this date.`
+          : "Your account is queued for permanent deletion and can no longer be restored.";
+    }
+
+    /* ---------- If Suspended ---------- */
+    if (user.accountStatus === "SUSPENDED") {
+      response.message =
+        "Your account has been suspended. Please contact support for assistance.";
+    }
+
+    /* ---------- If Active ---------- */
+    if (user.accountStatus === "ACTIVE") {
+      response.message = "Your account is active.";
+    }
+
+    return res.status(200).json(response);
+
+  } catch (error) {
+    console.error("Get Deletion Status Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to fetch account status"
+    });
+  }
+};
+
+
+
 export const getUserProfile = async (req, res) => {
   try {
     /* -------------------- AUTH VALIDATION -------------------- */
