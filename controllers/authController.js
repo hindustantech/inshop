@@ -297,6 +297,113 @@ export const deleteUser = async (req, res) => {
   }
 };
 
+
+
+export const restoreAccount = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const userId = req.user?._id;
+
+    /* ---------- Validation ---------- */
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user id"
+      });
+    }
+
+    /* ---------- Fetch User ---------- */
+    const user = await User.findById(userId).session(session);
+
+    if (!user) {
+      await session.abortTransaction();
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    /* ---------- State Machine Guard ---------- */
+    if (user.accountStatus !== "PENDING_DELETION") {
+      await session.abortTransaction();
+      return res.status(409).json({
+        success: false,
+        message: "Account is not scheduled for deletion"
+      });
+    }
+
+    /* ---------- Expiry Check (Safety) ---------- */
+    if (user.scheduledDeletionAt && user.scheduledDeletionAt <= new Date()) {
+      await session.abortTransaction();
+      return res.status(410).json({
+        success: false,
+        message: "Restoration window expired. Account already queued for permanent deletion."
+      });
+    }
+
+    /* ---------- Restore ---------- */
+    user.accountStatus = "ACTIVE";
+    user.deletionRequestedAt = null;
+    user.scheduledDeletionAt = null;
+    user.suspend = false;
+    user.suspendedAt = null;
+    user.deletedAt = null;
+
+    await user.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(200).json({
+      success: true,
+      message: "Account restored successfully"
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
+    console.error("Restore Account Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to restore account",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
+export const requestAccountDeletion = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const deleteAfterDays = 365;
+    const scheduledDate = new Date();
+    scheduledDate.setDate(scheduledDate.getDate() + deleteAfterDays);
+
+    await User.findByIdAndUpdate(userId, {
+      accountStatus: "PENDING_DELETION",
+      deletionRequestedAt: new Date(),
+      scheduledDeletionAt: scheduledDate,
+      suspend: true,
+      suspendedAt: new Date()
+    });
+
+    return res.json({
+      success: true,
+      message: `Your account is scheduled for permanent deletion on ${scheduledDate.toDateString()}. You can restore before this date.`
+    });
+
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
 export const getUserProfile = async (req, res) => {
   try {
     /* -------------------- AUTH VALIDATION -------------------- */
@@ -1426,8 +1533,6 @@ const login = async (req, res) => {
     });
   }
 };
-
-
 
 
 

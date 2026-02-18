@@ -158,6 +158,43 @@ const userSchema = new mongoose.Schema({
       default: [0, 0],
     },
   }
+  ,
+
+  // Add inside userSchema
+
+  accountStatus: {
+    type: String,
+    enum: ["ACTIVE", "SUSPENDED", "PENDING_DELETION", "DELETED"],
+    default: "ACTIVE",
+    index: true
+  },
+
+  suspendedAt: {
+    type: Date,
+    default: null
+  },
+
+  deletionRequestedAt: {
+    type: Date,
+    default: null
+  },
+
+  scheduledDeletionAt: {
+    type: Date,
+    default: null,
+    index: true
+  },
+
+  deletedAt: {
+    type: Date,
+    default: null
+  },
+
+  deletionReason: {
+    type: String,
+    default: null
+  }
+
 
 }, {
   timestamps: true
