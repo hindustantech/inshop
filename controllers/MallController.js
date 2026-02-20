@@ -254,8 +254,8 @@ export const getMallsWithUserLocation = async (req, res) => {
             page = 1,
             limit = 50,
             manualCode,
-            lat,
-            lng,
+            latitude,
+            longitude,
             sortOrder = 'asc' // 'asc' for nearest first, 'desc' for farthest first
         } = req.query;
 
@@ -338,9 +338,9 @@ export const getMallsWithUserLocation = async (req, res) => {
         }
 
         // MODE 2: Custom Lat/Lng (if user location not available)
-        if (!baseLocation && lat && lng) {
-            const parsedLat = Number(lat);
-            const parsedLng = Number(lng);
+        if (!baseLocation && latitude && longitude) {
+            const parsedLat = Number(latitude);
+            const parsedLng = Number(longitude);
 
             if (!isNaN(parsedLat) && !isNaN(parsedLng) &&
                 parsedLat >= -90 && parsedLat <= 90 &&
