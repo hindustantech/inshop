@@ -10,8 +10,8 @@ export class BaseLocationStrategy {
 
 export class UserLocationStrategy extends BaseLocationStrategy {
     async getLocation(req, radius) {
-        if (!req.user?.id || !mongoose.isValidObjectId(req.user.id)) return null;
-        const user = await User.findById(req.user.id).select("latestLocation");
+        if (!req.user?._id || !mongoose.isValidObjectId(req.user._id)) return null;
+        const user = await User.findById(req.user._id).select("latestLocation");
         if (user?.latestLocation?.coordinates?.length === 2 &&
             (user.latestLocation.coordinates[0] !== 0 || user.latestLocation.coordinates[1] !== 0)) {
             return { location: user.latestLocation, mode: "user", effectiveRadius: Math.min(radius, MAX_RADIUS) };
@@ -47,9 +47,9 @@ export class ManualCodeStrategy extends BaseLocationStrategy {
 
 export class CustomLatLngStrategy extends BaseLocationStrategy {
     async getLocation(req, radius) {
-        const { lat, lng } = req.query;
-        if (!lat || !lng || isNaN(Number(lat)) || isNaN(Number(lng))) return null;
-        return { location: { type: "Point", coordinates: [Number(lng), Number(lat)] }, mode: "custom", effectiveRadius: Math.min(radius, MAX_RADIUS) };
+        const { latitude, longitude } = req.query;
+        if (!latitude || !longitude || isNaN(Number(latitude)) || isNaN(Number(longitude))) return null;
+        return { location: { type: "Point", coordinates: [Number(longitude), Number(latitude)] }, mode: "custom", effectiveRadius: Math.min(radius, MAX_RADIUS) };
     }
 }
 
