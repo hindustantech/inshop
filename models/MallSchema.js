@@ -100,7 +100,7 @@ const mallSchema = new mongoose.Schema(
         shops: [
             {
                 type: mongoose.Schema.Types.ObjectId,
-                ref: "Shop",
+                ref: "PatnerProfile",
             },
         ],
 
