@@ -2,7 +2,7 @@ import User from "../models/userModel.js";
 import ManualAddress from "../models/ManualAddress.js";
 import mongoose from "mongoose";
 
-const MAX_RADIUS = 100000; // 100 km
+const MAX_RADIUS = 1000; // 100 km
 
 export class BaseLocationStrategy {
     async getLocation(req, radius) { throw new Error("getLocation() must be implemented."); }
