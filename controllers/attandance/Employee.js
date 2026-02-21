@@ -5,14 +5,8 @@ import Holiday from "../../models/Attandance/Holiday.js";
 import Payroll from "../../models/Attandance/Payroll.js";
 import mongoose from "mongoose";
 
-/* ---------------------------------------------
-   Utility: Generate Unique Employee Code
----------------------------------------------- */
-const generateEmpCode = async (companyId) => {
-    const count = await Employee.countDocuments({ companyId });
 
-    return `EMP-${companyId.toString().slice(-4)}-${count + 1}-${Date.now()}`;
-};
+
 
 /* ---------------------------------------------
    CREATE EMPLOYEE (ENTERPRISE LEVEL)
@@ -48,6 +42,7 @@ export const createEmployee = async (req, res) => {
         const {
             userId,
             role,
+            empCode,
             user_name,
             jobInfo,
             salaryStructure,
@@ -92,7 +87,6 @@ export const createEmployee = async (req, res) => {
         /* ---------------------------------------------
            5. Generate Employee Code
         ---------------------------------------------- */
-        const empCode = await generateEmpCode(companyId);
 
         /* ---------------------------------------------
            6. Build Employee Object

@@ -10,20 +10,19 @@ const employeeSchema = new mongoose.Schema({
         required: true,
         index: true
     },
-
+ 
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         required: true
     },
-    user_name:{
-        type:String,
+    user_name: {
+        type: String,
     },
-
+    
     empCode: {
         type: String,
-        unique: true,
-        required: true
+
     },
 
 

@@ -822,7 +822,7 @@ export const getCompanyTodayAttendance = async (req, res) => {
             companyId,
             employmentStatus: "active"
         })
-            .select("_id empCode name phone email")
+            .select("_id empCode user_name ")
             .lean();
 
         if (!employees.length) {
@@ -882,7 +882,7 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
                     employeeId: emp._id,
                     empCode: emp.empCode,
-                    name: emp.name,
+                    name: emp.user_name,
                     phone: emp.phone,
                     email: emp.email,
 
@@ -1017,6 +1017,13 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
+            {
+                $set: {
+                    empName: "$user_name",
+                    empCodeValue: "$empCode"
+                }
+            },
+
             /* ---------- USER JOIN ---------- */
             {
                 $lookup: {
@@ -1026,8 +1033,12 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     as: "user"
                 }
             },
-
-            { $unwind: "$user" },
+            {
+                $unwind: {
+                    path: "$user",
+                    preserveNullAndEmptyArrays: true
+                }
+            },
 
 
             /* ---------- ATTENDANCE JOIN ---------- */
@@ -1141,7 +1152,10 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
                     userId: "$user._id",
 
-                    name: "$user.name",
+                    /* FROM EMPLOYEE TABLE */
+                    name: "$empName",
+                    empCode: "$empCodeValue",
+
                     email: "$user.email",
                     phone: "$user.phone",
 

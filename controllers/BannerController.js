@@ -390,6 +390,7 @@ export const createBanneradmin = async (req, res) => {
       expiryDays,
       category,
       ownerId,
+      approveowner,
       paymentReference,
     } = req.body;
 
@@ -476,6 +477,7 @@ export const createBanneradmin = async (req, res) => {
     /* ======================
        🔹 Image Validation
     ====================== */
+    // let ownerapproved_superadmin = false;
     let banner_image = null;
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Banner image is required' });
@@ -485,6 +487,13 @@ export const createBanneradmin = async (req, res) => {
       banner_image = uploadResult.secure_url;
     } catch (err) {
       return res.status(500).json({ success: false, message: 'Error uploading image', error: err.message });
+    }
+
+    if (userType === 'super_admin') {
+      approveowner = true;
+    }
+    else {
+      approveowner = false;
     }
 
     /* ======================
@@ -556,6 +565,7 @@ export const createBanneradmin = async (req, res) => {
       planId,
       google_location_url,
       banner_type,
+      approveowner,
       manual_address,
       search_radius: search_radius ? parseFloat(search_radius) : 100000,
       location: {

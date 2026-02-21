@@ -1750,6 +1750,7 @@ export const createCouponAdmin = async (req, res) => {
       fromTime,
       toTime,
       isFullDay = false,
+      approveowner = false,
       termsAndConditions,
       is_spacial_copun = false,
       isTransferable = false,
@@ -1994,8 +1995,13 @@ export const createCouponAdmin = async (req, res) => {
       }
     }
 
-    // Active flag
-    const isActive = status === "published";
+    let isActive = false;
+
+    if (req.user?.type === "super_admin") {
+      isActive = true;
+    } else {
+      isActive = false;
+    }
 
     // Prepare coupon data
     const couponData = {
@@ -2016,6 +2022,7 @@ export const createCouponAdmin = async (req, res) => {
       active: isActive,
       validTill: finalValidTill,
       style,
+      approveowner,
       maxDistributions: parsedMaxDistributions,
       fromTime: isFullDay ? undefined : fromTime,
       toTime: isFullDay ? undefined : toTime,
@@ -3262,6 +3269,9 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     // 7️⃣ Build match query for geoNear
     const geoQuery = {
+      approveowner: true,
+      active: true,
+      status: "published",
       isGiftHamper: false, // ❌ exclude gift hampers
       ...(categoryFilter ? { category: categoryFilter } : {}),
     };
@@ -3351,7 +3361,10 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
           {
             $match: {
+              status: "published",
+              approveowner: true,
               active: true,
+
               $or: [
                 { validTill: { $gt: new Date() } },
                 { validTill: null },
@@ -3391,6 +3404,9 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               is_spacial_copun: false,
               active: true,
               isGiftHamper: false,
+              status: "published",
+              approveowner: true,
+
               $or: [
                 { validTill: { $gt: new Date() } },
                 { validTill: null },
