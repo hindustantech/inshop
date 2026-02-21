@@ -2647,12 +2647,12 @@ export const exportAttendanceCSV = async (req, res) => {
             }, 0) || 0;
 
             return {
-                CompanyID: row.companyId,
+                EmployeeCode: row.employeeCode || "N/A",
 
                 EmployeeName: row.employeeName || "N/A",
                 EmployeeEmail: row.employeeEmail || "N/A",
                 EmployeePhone: row.employeePhone || "N/A",
-                EmployeeCode: row.employeeCode || "N/A",
+
 
                 Date: moment(row.date).tz("Asia/Kolkata").format("DD-MMM-YYYY"),
                 Day: moment(row.date).tz("Asia/Kolkata").format("dddd"),

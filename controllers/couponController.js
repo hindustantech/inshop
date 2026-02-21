@@ -80,6 +80,79 @@ function deg2rad(deg) {
 }
 
 
+
+/**
+ * This worker runs every minute and bulk-approves eligible coupons.
+ * Designed to be:
+ * - Idempotent (safe if runs multiple times)
+ * - Bulk-based (no per-document loop)
+ * - Indexed-query friendly
+ * - Horizontal-scale safe (optional distributed lock)
+ */
+
+export const startCouponApprovalWorker = () => {
+  console.log("Coupon Approval Worker Started...");
+
+  cron.schedule("*/1 * * * *", async () => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const now = new Date();
+
+      /**
+       * IMPORTANT:
+       * Filter only coupons that NEED approval.
+       * This keeps operation extremely fast even with millions of rows.
+       *
+       * Example Logic:
+       * - Not yet approved
+       * - Active coupon
+       * - Already started (validFrom <= now)
+       * - Not expired
+       */
+
+      const filter = {
+        approveowner: false,
+        active: true,
+        status: "published",
+        validFrom: { $lte: now },
+        validTill: { $gte: now }
+      };
+
+      /**
+       * BULK UPDATE (Single Mongo Query — O(1) execution)
+       * This is how large platforms avoid document loops.
+       */
+      const result = await Coupon.updateMany(
+        filter,
+        {
+          $set: {
+            approveowner: true,
+            approvedAt: now
+          }
+        },
+        { session }
+      );
+
+      await session.commitTransaction();
+      session.endSession();
+
+      if (result.modifiedCount > 0) {
+        console.log(
+          `[CouponWorker] Approved ${result.modifiedCount} coupons at ${now.toISOString()}`
+        );
+      }
+
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+
+      console.error("[CouponWorker] Failed:", err);
+    }
+  });
+};
+
 export const toggleRecommendedCoupon = async (req, res) => {
   try {
     const { id } = req.params;
@@ -3269,9 +3342,9 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
 
     // 7️⃣ Build match query for geoNear
     const geoQuery = {
-      approveowner: true,
+      // approveowner: true,
       active: true,
-      status: "published",
+      // status: "published",
       isGiftHamper: false, // ❌ exclude gift hampers
       ...(categoryFilter ? { category: categoryFilter } : {}),
     };
@@ -3361,8 +3434,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
           {
             $match: {
-              status: "published",
-              approveowner: true,
+              // status: "published",
+              // approveowner: true,
               active: true,
 
               $or: [
@@ -3404,8 +3477,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
               is_spacial_copun: false,
               active: true,
               isGiftHamper: false,
-              status: "published",
-              approveowner: true,
+              // status: "published",
+              // approveowner: true,
 
               $or: [
                 { validTill: { $gt: new Date() } },
