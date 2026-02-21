@@ -3769,165 +3769,165 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
       },
       ...(search.trim()
         ? [
-            {
-              $match: {
-                $or: [
-                  { manual_address: searchRegex },
-                  { title: searchRegex },
-                  { tag: { $elemMatch: { $regex: searchRegex } } },
-                ],
-              },
-            },
-          ]
-        : []),
-      
-      // Add cursor-based pagination condition with proper null handling
-      ...(cursorObj ? [
           {
             $match: {
               $or: [
-                // If createdAt exists and we have it in cursor
-                ...(cursorObj.createdAt ? [
-                  // First try with createdAt
-                  { distance: { $lt: cursorObj.distance } },
-                  { 
-                    distance: cursorObj.distance, 
-                    createdAt: { $lt: cursorObj.createdAt } 
-                  },
-                  {
-                    distance: cursorObj.distance,
-                    createdAt: cursorObj.createdAt,
-                    _id: { $lt: cursorObj._id }
-                  }
-                ] : [
-                  // Fallback to distance + _id only
-                  { distance: { $lt: cursorObj.distance } },
-                  {
-                    distance: cursorObj.distance,
-                    _id: { $lt: cursorObj._id }
-                  }
-                ])
-              ]
-            }
+                { manual_address: searchRegex },
+                { title: searchRegex },
+                { tag: { $elemMatch: { $regex: searchRegex } } },
+              ],
+            },
+          },
+        ]
+        : []),
+
+      // Add cursor-based pagination condition with proper null handling
+      ...(cursorObj ? [
+        {
+          $match: {
+            $or: [
+              // If createdAt exists and we have it in cursor
+              ...(cursorObj.createdAt ? [
+                // First try with createdAt
+                { distance: { $lt: cursorObj.distance } },
+                {
+                  distance: cursorObj.distance,
+                  createdAt: { $lt: cursorObj.createdAt }
+                },
+                {
+                  distance: cursorObj.distance,
+                  createdAt: cursorObj.createdAt,
+                  _id: { $lt: cursorObj._id }
+                }
+              ] : [
+                // Fallback to distance + _id only
+                { distance: { $lt: cursorObj.distance } },
+                {
+                  distance: cursorObj.distance,
+                  _id: { $lt: cursorObj._id }
+                }
+              ])
+            ]
           }
-        ] : []),
-      
+        }
+      ] : []),
+
       ...(userId
         ? [
-            // Filter coupons based on special coupon logic
-            {
-              $match: {
-                $or: [
-                  // Non-special coupons are visible to all users
-                  { is_spacial_copun: false },
-                  // Special coupons are visible only to specific users
-                  {
-                    $and: [
-                      { is_spacial_copun: true },
-                      {
-                        $or: [
-                          // User is directly in the special coupon user list
-                          { is_spacial_copun_user: userId },
-                          // User is in the visibleToUserIds list (referrals)
-                          {
-                            is_spacial_copun_user: {
+          // Filter coupons based on special coupon logic
+          {
+            $match: {
+              $or: [
+                // Non-special coupons are visible to all users
+                { is_spacial_copun: false },
+                // Special coupons are visible only to specific users
+                {
+                  $and: [
+                    { is_spacial_copun: true },
+                    {
+                      $or: [
+                        // User is directly in the special coupon user list
+                        { is_spacial_copun_user: userId },
+                        // User is in the visibleToUserIds list (referrals)
+                        {
+                          is_spacial_copun_user: {
+                            $in: visibleToUserIds
+                          }
+                        },
+                        // Current user is in visibleToUserIds
+                        {
+                          is_spacial_copun_user: {
+                            $elemMatch: {
                               $in: visibleToUserIds
                             }
-                          },
-                          // Current user is in visibleToUserIds
-                          {
-                            is_spacial_copun_user: {
-                              $elemMatch: {
-                                $in: visibleToUserIds
-                              }
-                            }
                           }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            },
-            {
-              $lookup: {
-                from: 'usercoupons',
-                let: { couponId: '$_id' },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $and: [
-                          { $eq: ['$couponId', '$$couponId'] },
-                          { $eq: ['$userId', userId] },
-                        ],
-                      },
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            $lookup: {
+              from: 'usercoupons',
+              let: { couponId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$couponId', '$$couponId'] },
+                        { $eq: ['$userId', userId] },
+                      ],
                     },
                   },
-                  { $project: { status: 1, count: 1, _id: 0 } },
-                ],
-                as: 'userStatus',
-              },
+                },
+                { $project: { status: 1, count: 1, _id: 0 } },
+              ],
+              as: 'userStatus',
             },
-            { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-            {
-              $match: {
-                status: "published",
-                approveowner: true,
-                active: true,
-                $or: [
-                  { validTill: { $gt: new Date() } },
-                  { validTill: null },
-                ],
-                $or: [
-                  { userStatus: { $exists: false } },
-                  {
-                    $and: [
-                      { 'userStatus.status': { $nin: ['used', 'transferred'] } },
-                      { 'userStatus.count': { $gte: 1 } },
-                    ],
-                  },
-                ],
-              },
+          },
+          { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+          {
+            $match: {
+              status: "published",
+              approveowner: true,
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+              $or: [
+                { userStatus: { $exists: false } },
+                {
+                  $and: [
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                    { 'userStatus.count': { $gte: 1 } },
+                  ],
+                },
+              ],
             },
-            {
-              $addFields: {
-                couponCount: { $ifNull: ['$userStatus.count', 1] },
-              },
+          },
+          {
+            $addFields: {
+              couponCount: { $ifNull: ['$userStatus.count', 1] },
             },
-            {
-              $addFields: {
-                displayTag: {
-                  $cond: {
-                    if: { $eq: ['$userStatus.status', 'cancelled'] },
-                    then: { $concat: ['Cancelled: ', { $toString: '$couponCount' }] },
-                    else: { $concat: ['Available: ', { $toString: '$couponCount' }] },
-                  },
+          },
+          {
+            $addFields: {
+              displayTag: {
+                $cond: {
+                  if: { $eq: ['$userStatus.status', 'cancelled'] },
+                  then: { $concat: ['Cancelled: ', { $toString: '$couponCount' }] },
+                  else: { $concat: ['Available: ', { $toString: '$couponCount' }] },
                 },
               },
             },
-          ]
+          },
+        ]
         : [
-            // For guest users, only show non-special coupons
-            {
-              $match: {
-                is_spacial_copun: false,
-                active: true,
-                isGiftHamper: false,
-                status: "published",
-                approveowner: true,
-                $or: [
-                  { validTill: { $gt: new Date() } },
-                  { validTill: null },
-                ],
-              },
+          // For guest users, only show non-special coupons
+          {
+            $match: {
+              is_spacial_copun: false,
+              active: true,
+              isGiftHamper: false,
+              status: "published",
+              approveowner: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
             },
-            {
-              $addFields: {
-                displayTag: 'Available coupon: 1',
-              },
+          },
+          {
+            $addFields: {
+              displayTag: 'Available coupon: 1',
             },
-          ]),
+          },
+        ]),
       {
         $project: {
           title: 1,
@@ -3946,7 +3946,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
         },
       },
-      { $sort: { distance: -1, createdAt: -1, _id: -1 } },
+      { $sort: { distance: 1, createdAt: -1, _id: -1 } },
       { $limit: parsedLimit + 1 }, // Get one extra to check if there are more
     ];
 
@@ -3960,7 +3960,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     let nextCursor = null;
     if (hasNextPage && results.length > 0) {
       const lastItem = results[results.length - 1];
-      
+
       // Safely get timestamp with fallback
       let timestamp;
       if (lastItem.createdAt) {
@@ -3970,7 +3970,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
       } else {
         timestamp = Date.now(); // Fallback to current time if createdAt is missing
       }
-      
+
       // Format: distance_timestamp_id
       nextCursor = `${lastItem.distance}_${timestamp}_${lastItem._id}`;
     }
@@ -3989,102 +3989,102 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
       },
       ...(search.trim()
         ? [
-            {
-              $match: {
-                $or: [
-                  { manual_address: searchRegex },
-                  { title: searchRegex },
-                  { tag: { $elemMatch: { $regex: searchRegex } } },
-                ],
-              },
+          {
+            $match: {
+              $or: [
+                { manual_address: searchRegex },
+                { title: searchRegex },
+                { tag: { $elemMatch: { $regex: searchRegex } } },
+              ],
             },
-          ]
+          },
+        ]
         : []),
       ...(userId
         ? [
-            {
-              $match: {
-                $or: [
-                  { is_spacial_copun: false },
-                  {
-                    $and: [
-                      { is_spacial_copun: true },
-                      {
-                        $or: [
-                          { is_spacial_copun_user: userId },
-                          {
-                            is_spacial_copun_user: {
+          {
+            $match: {
+              $or: [
+                { is_spacial_copun: false },
+                {
+                  $and: [
+                    { is_spacial_copun: true },
+                    {
+                      $or: [
+                        { is_spacial_copun_user: userId },
+                        {
+                          is_spacial_copun_user: {
+                            $in: visibleToUserIds
+                          }
+                        },
+                        {
+                          is_spacial_copun_user: {
+                            $elemMatch: {
                               $in: visibleToUserIds
                             }
-                          },
-                          {
-                            is_spacial_copun_user: {
-                              $elemMatch: {
-                                $in: visibleToUserIds
-                              }
-                            }
                           }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              }
-            },
-            {
-              $lookup: {
-                from: 'usercoupons',
-                let: { couponId: '$_id' },
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $and: [
-                          { $eq: ['$couponId', '$$couponId'] },
-                          { $eq: ['$userId', userId] },
-                        ],
-                      },
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            $lookup: {
+              from: 'usercoupons',
+              let: { couponId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$couponId', '$$couponId'] },
+                        { $eq: ['$userId', userId] },
+                      ],
                     },
                   },
-                  { $project: { status: 1, count: 1, _id: 0 } },
-                ],
-                as: 'userStatus',
-              },
+                },
+                { $project: { status: 1, count: 1, _id: 0 } },
+              ],
+              as: 'userStatus',
             },
-            { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
-            {
-              $match: {
-                active: true,
-                $or: [
-                  { validTill: { $gt: new Date() } },
-                  { validTill: null },
-                ],
-                $or: [
-                  { userStatus: { $exists: false } },
-                  {
-                    $and: [
-                      { 'userStatus.status': { $nin: ['used', 'transferred'] } },
-                      { 'userStatus.count': { $gte: 1 } },
-                    ],
-                  },
-                ],
-              },
+          },
+          { $unwind: { path: '$userStatus', preserveNullAndEmptyArrays: true } },
+          {
+            $match: {
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
+              $or: [
+                { userStatus: { $exists: false } },
+                {
+                  $and: [
+                    { 'userStatus.status': { $nin: ['used', 'transferred'] } },
+                    { 'userStatus.count': { $gte: 1 } },
+                  ],
+                },
+              ],
             },
-            { $count: 'total' },
-          ]
+          },
+          { $count: 'total' },
+        ]
         : [
-            {
-              $match: {
-                is_spacial_copun: false,
-                active: true,
-                $or: [
-                  { validTill: { $gt: new Date() } },
-                  { validTill: null },
-                ],
-              },
+          {
+            $match: {
+              is_spacial_copun: false,
+              active: true,
+              $or: [
+                { validTill: { $gt: new Date() } },
+                { validTill: null },
+              ],
             },
-            { $count: 'total' },
-          ]),
+          },
+          { $count: 'total' },
+        ]),
     ];
 
     const totalResult = await Coupon.aggregate(countPipeline);
