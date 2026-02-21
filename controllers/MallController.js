@@ -240,6 +240,406 @@ export const createOrUpdateMall = async (req, res) => {
 };
 
 // Rest of the controller functions remain the same...
+// export const getMallsWithUserLocation = async (req, res) => {
+//     try {
+//         const MAX_RADIUS = 100000; // 100km in meters
+//         const DEFAULT_CENTER = [78.9629, 20.5937]; // India center [lng, lat]
+
+//         /* ===============================
+//            1️⃣ Parse Query Parameters
+//         =============================== */
+//         const {
+//             radius = MAX_RADIUS,
+//             search = '',
+//             page = 1,
+//             limit = 50,
+//             manualCode,
+//             latitude,
+//             longitude,
+//             sortOrder = 'desc' // 'asc' for nearest first, 'desc' for farthest first
+//         } = req.query;
+
+//         // Validate and parse pagination
+//         const parsedPage = parseInt(page);
+//         const parsedLimit = parseInt(limit);
+//         let parsedRadius = parseInt(radius);
+
+//         if (isNaN(parsedPage) || parsedPage < 1) {
+//             return res.status(400).json({ success: false, message: "Invalid page number" });
+//         }
+//         if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+//             return res.status(400).json({ success: false, message: "Invalid limit (1-100)" });
+//         }
+//         if (isNaN(parsedRadius) || parsedRadius < 0) {
+//             return res.status(400).json({ success: false, message: "Invalid radius" });
+//         }
+
+//         parsedRadius = Math.min(parsedRadius, MAX_RADIUS);
+//         const skip = (parsedPage - 1) * parsedLimit;
+
+//         // Validate sort order
+//         const sortDirection = sortOrder === 'desc' ? 1 : -1; // Note: -1 is ascending for distance (nearest first)
+
+//         /* ===============================
+//            2️⃣ Build Search Regex (if any)
+//         =============================== */
+//         let searchRegex = null;
+//         if (search.trim()) {
+//             const sanitizedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+//             searchRegex = new RegExp(sanitizedSearch, "i");
+//         }
+
+//         /* ===============================
+//            3️⃣ Resolve Base Location by Mode Priority
+//         =============================== */
+//         let baseLocation = null;
+//         let locationMode = "default";
+//         let locationSource = null;
+//         let effectiveRadius = parsedRadius;
+//         let locationDetails = {};
+
+//         // Helper function to validate coordinates
+//         const isValidCoordinates = (coords) => {
+//             return coords &&
+//                 Array.isArray(coords) &&
+//                 coords.length === 2 &&
+//                 !isNaN(coords[0]) &&
+//                 !isNaN(coords[1]) &&
+//                 !(coords[0] === 0 && coords[1] === 0);
+//         };
+
+//         // MODE 1: User Location (Highest Priority)
+//         if (req.user?._id && mongoose.isValidObjectId(req.user._id)) {
+//             try {
+//                 const user = await User.findById(req.user._id)
+//                     .select("latestLocation name email")
+//                     .lean();
+
+//                 if (user?.latestLocation?.coordinates &&
+//                     isValidCoordinates(user.latestLocation.coordinates)) {
+
+//                     const [lngU, latU] = user.latestLocation.coordinates;
+//                     baseLocation = {
+//                         type: "Point",
+//                         coordinates: [lngU, latU]
+//                     };
+//                     locationMode = "user";
+//                     locationSource = "authenticated_user";
+//                     locationDetails = {
+//                         userId: req.user._id,
+//                         userName: user.name || 'Unknown',
+//                         coordinates: { lng: lngU, lat: latU }
+//                     };
+//                     console.log(`📍 Mode: User Location - [${latU}, ${lngU}]`);
+//                 }
+//             } catch (userError) {
+//                 console.error("Error fetching user location:", userError);
+//             }
+//         }
+
+//         // MODE 2: Custom Lat/Lng (if user location not available)
+//         if (!baseLocation && latitude && longitude) {
+//             const parsedLat = Number(latitude);
+//             const parsedLng = Number(longitude);
+
+//             if (!isNaN(parsedLat) && !isNaN(parsedLng) &&
+//                 parsedLat >= -90 && parsedLat <= 90 &&
+//                 parsedLng >= -180 && parsedLng <= 180) {
+
+//                 baseLocation = {
+//                     type: "Point",
+//                     coordinates: [parsedLng, parsedLat]
+//                 };
+//                 locationMode = "custom";
+//                 locationSource = "query_parameters";
+//                 locationDetails = {
+//                     coordinates: { lat: parsedLat, lng: parsedLng }
+//                 };
+//                 console.log(`📍 Mode: Custom Location - [${parsedLat}, ${parsedLng}]`);
+//             } else {
+//                 return res.status(400).json({
+//                     success: false,
+//                     message: "Invalid coordinates provided. Lat must be between -90 and 90, Lng between -180 and 180"
+//                 });
+//             }
+//         }
+
+//         // MODE 3: Manual Code (if user location and custom lat/lng not available)
+//         if (!baseLocation && manualCode) {
+//             try {
+//                 const manual = await ManualAddress.findOne({
+//                     uniqueCode: manualCode,
+//                     isActive: true
+//                 })
+//                     .select("location city state country uniqueCode")
+//                     .lean();
+
+//                 if (manual?.location?.coordinates &&
+//                     isValidCoordinates(manual.location.coordinates)) {
+
+//                     baseLocation = {
+//                         type: "Point",
+//                         coordinates: manual.location.coordinates
+//                     };
+//                     locationMode = "manual";
+//                     locationSource = "manual_address_code";
+//                     locationDetails = {
+//                         code: manual.uniqueCode,
+//                         city: manual.city,
+//                         state: manual.state,
+//                         country: manual.country
+//                     };
+//                     console.log(`📍 Mode: Manual Code - ${manual.uniqueCode} (${manual.city})`);
+//                 } else {
+//                     return res.status(404).json({
+//                         success: false,
+//                         message: "Invalid or inactive manual code provided"
+//                     });
+//                 }
+//             } catch (manualError) {
+//                 console.error("Error fetching manual address:", manualError);
+//                 return res.status(404).json({
+//                     success: false,
+//                     message: "Manual code not found"
+//                 });
+//             }
+//         }
+
+//         // MODE 4: Default Fallback (if no location resolved)
+//         if (!baseLocation) {
+//             baseLocation = {
+//                 type: "Point",
+//                 coordinates: DEFAULT_CENTER
+//             };
+//             locationMode = "default";
+//             locationSource = "system_fallback";
+//             effectiveRadius = null; // No radius limit for default mode
+//             locationDetails = {
+//                 coordinates: { lat: DEFAULT_CENTER[1], lng: DEFAULT_CENTER[0] },
+//                 note: "Using India center as default location"
+//             };
+//             console.log(`📍 Mode: Default Fallback - India Center`);
+//         }
+
+//         /* ===============================
+//            4️⃣ Build Geo Query
+//         =============================== */
+//         const geoQuery = {
+//             active: true
+//         };
+
+//         // Add search conditions if search term exists
+//         if (searchRegex) {
+//             geoQuery.$or = [
+//                 { name: searchRegex },
+//                 { tagline: searchRegex },
+//                 { manul_address: searchRegex },
+//                 { "address.city": searchRegex },
+//                 { "address.area": searchRegex },
+//                 { "address.state": searchRegex },
+//                 { "address.street": searchRegex },
+//                 { description: searchRegex }
+//             ];
+//         }
+
+//         /* ===============================
+//            5️⃣ Aggregation Pipeline with Distance-Only Sorting
+//         =============================== */
+//         const pipeline = [];
+
+//         // Add $geoNear stage if we have a location
+//         if (baseLocation) {
+//             const geoNearStage = {
+//                 $geoNear: {
+//                     near: baseLocation,
+//                     distanceField: "distance",
+//                     spherical: true,
+//                     query: geoQuery,
+//                     key: "location"
+//                 }
+//             };
+
+//             // Add maxDistance only if effectiveRadius exists
+//             if (effectiveRadius) {
+//                 geoNearStage.$geoNear.maxDistance = effectiveRadius;
+//             }
+
+//             pipeline.push(geoNearStage);
+//         } else {
+//             // Fallback if no location (shouldn't happen due to default)
+//             pipeline.push(
+//                 { $match: geoQuery },
+//                 { $addFields: { distance: null } }
+//             );
+//         }
+
+//         // Add distance conversion field
+//         pipeline.push({
+//             $addFields: {
+//                 distanceInKm: {
+//                     $cond: {
+//                         if: { $ifNull: ["$distance", false] },
+//                         then: { $round: [{ $divide: ["$distance", 1000] }, 2] },
+//                         else: null
+//                     }
+//                 }
+//             }
+//         });
+
+//         // Apply DISTANCE-ONLY sorting
+//         // If we have a location, sort by distance
+//         // If no location (default mode), sort by name as fallback
+//         if (baseLocation && locationMode !== 'default') {
+//             // Sort by distance only (nearest or farthest based on sortOrder)
+//             pipeline.push({
+//                 $sort: {
+//                     distance: sortDirection,  // -1 = nearest first, 1 = farthest first
+//                     name: 1 // Secondary sort by name for consistent pagination
+//                 }
+//             });
+//         } else {
+//             // Default mode - no location, so sort by name
+//             pipeline.push({
+//                 $sort: { name: 1 }
+//             });
+//         }
+
+//         // Add facet for pagination
+//         pipeline.push({
+//             $facet: {
+//                 paginatedResults: [
+//                     { $skip: skip },
+//                     { $limit: parsedLimit },
+//                     {
+//                         $project: {
+//                             name: 1,
+//                             tagline: 1,
+//                             manul_address: 1,
+//                             address: 1,
+//                             logo: 1,
+//                             rating: 1,
+//                             facilities: 1,
+//                             contact: 1,
+//                             timings: 1,
+//                             description: 1,
+//                             distance: 1,
+//                             distanceInKm: 1,
+//                             gallery: { $slice: ["$gallery", 3] }
+//                         }
+//                     }
+//                 ],
+//                 totalCount: [
+//                     { $count: "total" }
+//                 ],
+//                 // Add facet for distance statistics
+//                 distanceStats: [
+//                     {
+//                         $match: {
+//                             distance: { $exists: true, $ne: null }
+//                         }
+//                     },
+//                     {
+//                         $group: {
+//                             _id: null,
+//                             minDistance: { $min: "$distanceInKm" },
+//                             maxDistance: { $max: "$distanceInKm" },
+//                             avgDistance: { $avg: "$distanceInKm" },
+//                             totalWithDistance: { $sum: 1 }
+//                         }
+//                     }
+//                 ]
+//             }
+//         });
+
+//         // Execute aggregation
+//         console.log(`🔍 Executing query with mode: ${locationMode}, sort: ${sortOrder === 'asc' ? 'nearest first' : 'farthest first'}`);
+//         const result = await Mall.aggregate(pipeline);
+
+//         const malls = result[0]?.paginatedResults || [];
+//         const total = result[0]?.totalCount[0]?.total || 0;
+//         const distanceStats = result[0]?.distanceStats[0] || null;
+
+//         /* ===============================
+//            6️⃣ Success Response with Distance-Only Sorting
+//         =============================== */
+//         res.status(200).json({
+//             success: true,
+//             mode: {
+//                 type: locationMode,
+//                 source: locationSource,
+//                 details: locationDetails,
+//                 radius: effectiveRadius ? {
+//                     value: effectiveRadius,
+//                     unit: "meters",
+//                     inKm: (effectiveRadius / 1000).toFixed(2)
+//                 } : null
+//             },
+//             sorting: {
+//                 type: "distance_only",
+//                 order: sortOrder === 'asc' ? 'nearest_first' : 'farthest_first',
+//                 applied: locationMode !== 'default' ? 'distance_based' : 'alphabetical_fallback'
+//             },
+//             pagination: {
+//                 page: parsedPage,
+//                 limit: parsedLimit,
+//                 total,
+//                 pages: total ? Math.ceil(total / parsedLimit) : 0,
+//                 hasNextPage: parsedPage < Math.ceil(total / parsedLimit),
+//                 hasPrevPage: parsedPage > 1
+//             },
+//             search: search.trim() ? {
+//                 term: search,
+//                 regex: searchRegex ? searchRegex.toString() : null
+//             } : null,
+//             distanceStats: distanceStats ? {
+//                 nearest: distanceStats.minDistance?.toFixed(2) + " km",
+//                 farthest: distanceStats.maxDistance?.toFixed(2) + " km",
+//                 average: distanceStats.avgDistance?.toFixed(2) + " km",
+//                 totalWithDistance: distanceStats.totalWithDistance
+//             } : null,
+//             data: malls.map(mall => ({
+//                 ...mall,
+//                 // Add distance indicator
+//                 distance: mall.distanceInKm ? {
+//                     value: mall.distanceInKm,
+//                     unit: "km",
+//                     text: mall.distanceInKm + " km away"
+//                 } : null
+//             }))
+//         });
+
+//     } catch (error) {
+//         console.error("Mall Fetch Error:", {
+//             message: error.message,
+//             stack: error.stack,
+//             query: req.query,
+//             user: req.user?._id
+//         });
+
+//         // Differentiate between error types
+//         if (error.name === 'CastError') {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Invalid data format in query"
+//             });
+//         }
+
+//         if (error.code === 16755) { // GeoNear error
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "Invalid geospatial query parameters"
+//             });
+//         }
+
+//         res.status(500).json({
+//             success: false,
+//             message: "An error occurred while fetching malls",
+//             error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//         });
+//     }
+// };
+
+
 export const getMallsWithUserLocation = async (req, res) => {
     try {
         const MAX_RADIUS = 100000; // 100km in meters
@@ -256,7 +656,7 @@ export const getMallsWithUserLocation = async (req, res) => {
             manualCode,
             latitude,
             longitude,
-            sortOrder = 'asc' // 'asc' for nearest first, 'desc' for farthest first
+            // sortOrder parameter removed - always nearest first
         } = req.query;
 
         // Validate and parse pagination
@@ -277,8 +677,8 @@ export const getMallsWithUserLocation = async (req, res) => {
         parsedRadius = Math.min(parsedRadius, MAX_RADIUS);
         const skip = (parsedPage - 1) * parsedLimit;
 
-        // Validate sort order
-        const sortDirection = sortOrder === 'desc' ? 1 : -1; // Note: -1 is ascending for distance (nearest first)
+        // Always sort by nearest first (ascending distance)
+        const sortDirection = 1; // 1 = nearest first (ascending)
 
         /* ===============================
            2️⃣ Build Search Regex (if any)
@@ -443,7 +843,7 @@ export const getMallsWithUserLocation = async (req, res) => {
         }
 
         /* ===============================
-           5️⃣ Aggregation Pipeline with Distance-Only Sorting
+           5️⃣ Aggregation Pipeline - Always Nearest First
         =============================== */
         const pipeline = [];
 
@@ -486,14 +886,12 @@ export const getMallsWithUserLocation = async (req, res) => {
             }
         });
 
-        // Apply DISTANCE-ONLY sorting
-        // If we have a location, sort by distance
-        // If no location (default mode), sort by name as fallback
+        // ALWAYS SORT BY NEAREST FIRST (ascending distance)
         if (baseLocation && locationMode !== 'default') {
-            // Sort by distance only (nearest or farthest based on sortOrder)
+            // Sort by distance ascending (nearest first)
             pipeline.push({
                 $sort: {
-                    distance: sortDirection,  // -1 = nearest first, 1 = farthest first
+                    distance: 1,  // 1 = ascending = nearest first
                     name: 1 // Secondary sort by name for consistent pagination
                 }
             });
@@ -552,7 +950,7 @@ export const getMallsWithUserLocation = async (req, res) => {
         });
 
         // Execute aggregation
-        console.log(`🔍 Executing query with mode: ${locationMode}, sort: ${sortOrder === 'asc' ? 'nearest first' : 'farthest first'}`);
+        console.log(`🔍 Executing query with mode: ${locationMode} - Always returning nearest first`);
         const result = await Mall.aggregate(pipeline);
 
         const malls = result[0]?.paginatedResults || [];
@@ -560,7 +958,7 @@ export const getMallsWithUserLocation = async (req, res) => {
         const distanceStats = result[0]?.distanceStats[0] || null;
 
         /* ===============================
-           6️⃣ Success Response with Distance-Only Sorting
+           6️⃣ Success Response - Always Nearest First
         =============================== */
         res.status(200).json({
             success: true,
@@ -575,8 +973,7 @@ export const getMallsWithUserLocation = async (req, res) => {
                 } : null
             },
             sorting: {
-                type: "distance_only",
-                order: sortOrder === 'asc' ? 'nearest_first' : 'farthest_first',
+                type: "nearest_first", // Always nearest first
                 applied: locationMode !== 'default' ? 'distance_based' : 'alphabetical_fallback'
             },
             pagination: {
@@ -638,7 +1035,6 @@ export const getMallsWithUserLocation = async (req, res) => {
         });
     }
 };
-
 export const getMallshop = async (req, res) => {
     try {
         const { mallId, search = '', page = 1, limit = 10 } = req.query;
