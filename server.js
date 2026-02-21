@@ -50,12 +50,12 @@ import attandance from './routes/Attandance/Attandance.js'
 import employee from './routes/Attandance/Employee.route.js'
 // import './cron/referralSummary.cron.js'
 // import './controllers/crronjob.js'
-import { startCouponApprovalWorker } from './controllers/couponController.js';
+// import { startCouponApprovalWorker } from './controllers/couponController.js';
 dotenv.config();
 await connectDB();
 
 // START BACKGROUND WORKER HERE
-startCouponApprovalWorker();
+// startCouponApprovalWorker();
 
 const app = express();
 
