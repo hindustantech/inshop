@@ -3300,6 +3300,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           query: geoQuery,
         },
       },
+
+      { $sort: { distance: 1, _id: 1 }, },  // ONLY nearest first, with _id for stability
       ...(search.trim()
         ? [
           {
@@ -3448,7 +3450,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
         },
       },
       // { $sort: sortByLatest ? { distance: -1, createdAt: -1, _id: 1 } : { distance: 1, validTill: -1, _id: 1 } },
-      { $sort: { distance: 1, _id: 1 } },  // ONLY nearest first, with _id for stability
+      // { $sort: { distance: 1, _id: 1 } },  // ONLY nearest first, with _id for stability
       { $skip: skip },
       { $limit: parsedLimit },
     ];
@@ -3467,6 +3469,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           query: geoQuery,
         },
       },
+      { $sort: { distance: 1, _id: 1 } },
+
       ...(search.trim()
         ? [
           {
