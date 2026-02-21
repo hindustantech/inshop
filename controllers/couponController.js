@@ -3447,7 +3447,8 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
           distanceInKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
         },
       },
-      { $sort: sortByLatest ? { distance: -1, createdAt: -1 } : { distance: 1, validTill: -1 } },
+      // { $sort: sortByLatest ? { distance: -1, createdAt: -1, _id: 1 } : { distance: 1, validTill: -1, _id: 1 } },
+      { $sort: { distance: 1, _id: 1 } },  // ONLY nearest first, with _id for stability
       { $skip: skip },
       { $limit: parsedLimit },
     ];
