@@ -272,7 +272,19 @@ const couponSchema = new mongoose.Schema({
 
 });
 
-couponSchema.index({ shope_location: '2dsphere' });
+// Add after your existing indexes
+couponSchema.index({
+  "shope_location.coordinates": "2dsphere",
+  active: 1,
+  status: 1,
+  approveowner: 1
+});
+
+couponSchema.index({
+  is_spacial_copun: 1,
+  active: 1,
+  validTill: 1
+});
 couponSchema.pre("validate", function (next) {
   if (this.isGiftHamper) {
     this.lockCoupon = true;
