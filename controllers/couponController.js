@@ -3595,7 +3595,7 @@ export const getAllCouponsWithStatusTag = async (req, res) => {
     }
 
     // Validate query parameters
-    const { radius = 100000, search = '', limit = 50, manualCode, lat, lng, category, cursor } = req.query;
+    const { radius = 100000, search = '', limit = 150, manualCode, lat, lng, category, cursor } = req.query;
     const parsedLimit = parseInt(limit);
     const parsedRadius = parseInt(radius);
 
