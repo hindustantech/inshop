@@ -230,7 +230,29 @@ export const exportCompanyAttendanceSummary = async ({
 
     return await Attendance.aggregate(pipeline, { allowDiskUse: true });
 };
+export const AttendanceSummaryFields = [
+    "empCode",
+    "employeeName",
+    "department",
+    "designation",
+    "totalDays",
+    "presentDays",
+    "absentDays",
+    "totalWorkedHours",
+    "averageWorkingHours"
+];
 
+export const mapAttendanceSummary = (record) => ({
+    empCode: record.empCode ?? "",
+    employeeName: record.employeeName ?? "",
+    department: record.department ?? "",
+    designation: record.designation ?? "",
+    totalDays: record.totalDays ?? 0,
+    presentDays: record.presentDays ?? 0,
+    absentDays: record.absentDays ?? 0,
+    totalWorkedHours: record.totalWorkedHours ?? 0,
+    averageWorkingHours: record.averageWorkingHours ?? 0
+});
 // Export as CSV
 export const exportAttendanceAsCSV = async (req, res) => {
     try {
