@@ -19,6 +19,8 @@ import {
     debugAttendanceData,
     exportCompanyAttendanceToExcel,
     getAttendanceExport,
+    exportAttendanceAsExcel,
+    exportAttendanceAsCSV
 } from "../../controllers/attandance/Attandance.js";
 
 /* ===============================
@@ -54,6 +56,23 @@ router.get(
     "/monthly",
     authMiddleware,
     getAttendance
+);
+router.get(
+    "/getAttendanceExport",
+    authMiddleware,
+    getAttendanceExport
+);
+
+
+router.get(
+    "/exportAttendanceAsCSV",
+    authMiddleware,
+    exportAttendanceAsCSV
+);
+router.get(
+    "/exportAttendanceAsExcel",
+    authMiddleware,
+    exportAttendanceAsExcel
 );
 router.get(
     "/getAttendanceExport",

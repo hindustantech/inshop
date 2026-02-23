@@ -6,6 +6,7 @@ import Payroll from "../../models/Attandance/Payroll.js";
 import mongoose from "mongoose";
 import { normalizeToUTCDate, buildDateRange } from "./utils/date.utils.js";
 import { Parser } from "json2csv";
+import XLSX from "xlsx";
 // import moment from "moment";
 import moment from "moment-timezone";
 import jwt from "jsonwebtoken";
@@ -55,14 +56,15 @@ function normalizeDate(d) {
 /* =====================================================
    MARK ATTENDANCE CONTROLLER
 ===================================================== */
+// controllers/attendanceController.js
 
 
 
-
-const exportCompanyAttendanceSummary = async ({
+export const exportCompanyAttendanceSummary = async ({
     companyId,
     fromDate,
-    toDate
+    toDate,
+    format = 'csv' // 'csv' or 'excel'
 }) => {
 
     /* =====================================
@@ -93,7 +95,7 @@ const exportCompanyAttendanceSummary = async ({
         { $unwind: "$employee" },
 
         /* =====================================
-           BREAK CALCULATION
+           BREAK CALCULATION (Fixed)
         ====================================== */
         {
             $addFields: {
@@ -104,7 +106,12 @@ const exportCompanyAttendanceSummary = async ({
                             as: "b",
                             in: {
                                 $cond: [
-                                    { $and: ["$$b.start", "$$b.end"] },
+                                    {
+                                        $and: [
+                                            { $ne: ["$$b.start", null] },
+                                            { $ne: ["$$b.end", null] }
+                                        ]
+                                    },
                                     {
                                         $divide: [
                                             { $subtract: ["$$b.end", "$$b.start"] },
@@ -124,9 +131,29 @@ const exportCompanyAttendanceSummary = async ({
             $addFields: {
                 netWorkMinutes: {
                     $max: [
-                        { $subtract: ["$workSummary.totalMinutes", "$breakMinutes"] },
+                        {
+                            $subtract: [
+                                { $ifNull: ["$workSummary.totalMinutes", 0] },
+                                "$breakMinutes"
+                            ]
+                        },
                         0
                     ]
+                },
+
+                // Calculate overtime properly
+                overtimeMinutes: {
+                    $ifNull: ["$workSummary.overtimeMinutes", 0]
+                },
+
+                // Calculate late minutes
+                lateMinutes: {
+                    $ifNull: ["$workSummary.lateMinutes", 0]
+                },
+
+                // Calculate early leave minutes
+                earlyLeaveMinutes: {
+                    $ifNull: ["$workSummary.earlyLeaveMinutes", 0]
                 }
             }
         },
@@ -138,24 +165,37 @@ const exportCompanyAttendanceSummary = async ({
             $group: {
                 _id: "$employeeId",
 
+                // Employee Details
                 employeeName: { $first: "$employee.user_name" },
                 empCode: { $first: "$employee.empCode" },
                 department: { $first: "$employee.jobInfo.department" },
                 designation: { $first: "$employee.jobInfo.designation" },
+                joiningDate: { $first: "$employee.jobInfo.joiningDate" },
 
+                // Attendance Counts
                 totalDays: { $sum: 1 },
 
                 absentDays: {
-                    $sum: { $cond: [{ $eq: ["$status", "absent"] }, 1, 0] }
+                    $sum: {
+                        $cond: [
+                            {
+                                $or: [
+                                    { $eq: ["$status", "absent"] },
+                                    { $eq: ["$status", "rejected"] }
+                                ]
+                            },
+                            1,
+                            0
+                        ]
+                    }
                 },
 
-                validWorkingDays: {
+                presentDays: {
                     $sum: {
                         $cond: [
                             {
                                 $and: [
-                                    { $ne: ["$status", "absent"] },
-                                    { $eq: ["$isAutoMarked", false] },
+                                    { $eq: ["$status", "present"] },
                                     { $eq: ["$approvalStatus", "approved"] }
                                 ]
                             },
@@ -165,13 +205,71 @@ const exportCompanyAttendanceSummary = async ({
                     }
                 },
 
+                leaveDays: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $or: [
+                                    { $eq: ["$status", "leave"] },
+                                    { $eq: ["$status", "half_day"] }
+                                ]
+                            },
+                            1,
+                            0
+                        ]
+                    }
+                },
+
+                holidayDays: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $or: [
+                                    { $eq: ["$status", "holiday"] },
+                                    { $eq: ["$status", "week_off"] }
+                                ]
+                            },
+                            1,
+                            0
+                        ]
+                    }
+                },
+
+                pendingDays: {
+                    $sum: {
+                        $cond: [
+                            { $eq: ["$approvalStatus", "pending"] },
+                            1,
+                            0
+                        ]
+                    }
+                },
+
+                // Valid Working Days (for average calculation)
+                validWorkingDays: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $and: [
+                                    { $ne: ["$status", "absent"] },
+                                    { $ne: ["$status", "rejected"] },
+                                    { $eq: ["$approvalStatus", "approved"] }
+                                ]
+                            },
+                            1,
+                            0
+                        ]
+                    }
+                },
+
+                // Work Minutes
                 totalWorkedMinutes: {
                     $sum: {
                         $cond: [
                             {
                                 $and: [
                                     { $ne: ["$status", "absent"] },
-                                    { $eq: ["$isAutoMarked", false] },
+                                    { $ne: ["$status", "rejected"] },
                                     { $eq: ["$approvalStatus", "approved"] }
                                 ]
                             },
@@ -179,29 +277,80 @@ const exportCompanyAttendanceSummary = async ({
                             0
                         ]
                     }
-                }
+                },
+
+                totalOvertimeMinutes: { $sum: "$overtimeMinutes" },
+                totalLateMinutes: { $sum: "$lateMinutes" },
+                totalEarlyLeaveMinutes: { $sum: "$earlyLeaveMinutes" },
+                totalBreakMinutes: { $sum: "$breakMinutes" }
             }
         },
 
         /* =====================================
-           FINAL EXPORT STRUCTURE
+           FINAL CALCULATIONS & FORMATTING
         ====================================== */
         {
             $project: {
                 _id: 0,
                 empCode: 1,
                 employeeName: 1,
-                department: 1,
-                designation: 1,
+                department: { $ifNull: ["$department", "N/A"] },
+                designation: { $ifNull: ["$designation", "N/A"] },
+                joiningDate: {
+                    $dateToString: {
+                        format: "%Y-%m-%d",
+                        date: "$joiningDate"
+                    }
+                },
 
+                // Attendance Summary
                 totalDays: 1,
+                presentDays: 1,
                 absentDays: 1,
-                presentDays: "$validWorkingDays",
+                leaveDays: 1,
+                holidayDays: 1,
+                pendingDays: 1,
 
+                attendanceRate: {
+                    $round: [
+                        {
+                            $multiply: [
+                                {
+                                    $cond: [
+                                        { $eq: ["$totalDays", 0] },
+                                        0,
+                                        { $divide: ["$presentDays", "$totalDays"] }
+                                    ]
+                                },
+                                100
+                            ]
+                        },
+                        2
+                    ]
+                },
+
+                // Work Hours
                 totalWorkedHours: {
                     $round: [{ $divide: ["$totalWorkedMinutes", 60] }, 2]
                 },
 
+                totalOvertimeHours: {
+                    $round: [{ $divide: ["$totalOvertimeMinutes", 60] }, 2]
+                },
+
+                totalLateHours: {
+                    $round: [{ $divide: ["$totalLateMinutes", 60] }, 2]
+                },
+
+                totalEarlyLeaveHours: {
+                    $round: [{ $divide: ["$totalEarlyLeaveMinutes", 60] }, 2]
+                },
+
+                totalBreakHours: {
+                    $round: [{ $divide: ["$totalBreakMinutes", 60] }, 2]
+                },
+
+                // Averages
                 averageWorkingHours: {
                     $cond: [
                         { $eq: ["$validWorkingDays", 0] },
@@ -218,7 +367,28 @@ const exportCompanyAttendanceSummary = async ({
                             ]
                         }
                     ]
-                }
+                },
+
+                averageOvertimeHours: {
+                    $cond: [
+                        { $eq: ["$validWorkingDays", 0] },
+                        0,
+                        {
+                            $round: [
+                                {
+                                    $divide: [
+                                        { $divide: ["$totalOvertimeMinutes", 60] },
+                                        "$validWorkingDays"
+                                    ]
+                                },
+                                2
+                            ]
+                        }
+                    ]
+                },
+
+                // Additional Metrics
+                validWorkingDays: 1
             }
         },
 
@@ -228,18 +398,55 @@ const exportCompanyAttendanceSummary = async ({
     return await Attendance.aggregate(pipeline, { allowDiskUse: true });
 };
 
-
-// routes/controller
-
-export const getAttendanceExport = async (req, res) => {
+// Export as CSV
+export const exportAttendanceAsCSV = async (req, res) => {
     try {
         const data = await exportCompanyAttendanceSummary({
             companyId: req.user._id,
-            fromDate: req.query.fromDate, // optional
-            toDate: req.query.toDate      // optional
+            fromDate: req.query.fromDate,
+            toDate: req.query.toDate
         });
 
-        res.json({ success: true, data });
+        if (!data || data.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No attendance data found for the specified date range"
+            });
+        }
+
+        // Define CSV fields
+        const fields = [
+            'empCode',
+            'employeeName',
+            'department',
+            'designation',
+            'joiningDate',
+            'totalDays',
+            'presentDays',
+            'absentDays',
+            'leaveDays',
+            'holidayDays',
+            'pendingDays',
+            'attendanceRate',
+            'totalWorkedHours',
+            'totalOvertimeHours',
+            'totalLateHours',
+            'totalEarlyLeaveHours',
+            'totalBreakHours',
+            'averageWorkingHours',
+            'averageOvertimeHours',
+            'validWorkingDays'
+        ];
+
+        const json2csvParser = new Parser({ fields });
+        const csv = json2csvParser.parse(data);
+
+        // Set headers for CSV download
+        const dateRange = `${req.query.fromDate || 'last30days'}_to_${req.query.toDate || 'today'}`;
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=attendance_summary_${dateRange}.csv`);
+
+        res.status(200).send(csv);
 
     } catch (err) {
         res.status(400).json({
@@ -248,6 +455,158 @@ export const getAttendanceExport = async (req, res) => {
         });
     }
 };
+
+// Export as Excel
+export const exportAttendanceAsExcel = async (req, res) => {
+    try {
+        const data = await exportCompanyAttendanceSummary({
+            companyId: req.user._id,
+            fromDate: req.query.fromDate,
+            toDate: req.query.toDate
+        });
+
+        if (!data || data.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No attendance data found for the specified date range"
+            });
+        }
+
+        // Create a new workbook
+        const wb = XLSX.utils.book_new();
+
+        // Add metadata
+        wb.Props = {
+            Title: "Attendance Summary Report",
+            Subject: "Employee Attendance",
+            Author: "HR System",
+            CreatedDate: new Date()
+        };
+
+        // Prepare data for Excel with proper headers
+        const excelData = data.map(record => ({
+            'Employee Code': record.empCode || 'N/A',
+            'Employee Name': record.employeeName || 'N/A',
+            'Department': record.department || 'N/A',
+            'Designation': record.designation || 'N/A',
+            'Joining Date': record.joiningDate || 'N/A',
+            'Total Days': record.totalDays || 0,
+            'Present': record.presentDays || 0,
+            'Absent': record.absentDays || 0,
+            'Leave': record.leaveDays || 0,
+            'Holiday/Week Off': record.holidayDays || 0,
+            'Pending': record.pendingDays || 0,
+            'Attendance Rate (%)': record.attendanceRate || 0,
+            'Total Worked (hrs)': record.totalWorkedHours || 0,
+            'Overtime (hrs)': record.totalOvertimeHours || 0,
+            'Late (hrs)': record.totalLateHours || 0,
+            'Early Leave (hrs)': record.totalEarlyLeaveHours || 0,
+            'Break (hrs)': record.totalBreakHours || 0,
+            'Avg Working (hrs/day)': record.averageWorkingHours || 0,
+            'Avg Overtime (hrs/day)': record.averageOvertimeHours || 0,
+            'Working Days': record.validWorkingDays || 0
+        }));
+
+        // Create worksheet
+        const ws = XLSX.utils.json_to_sheet(excelData);
+
+        // Set column widths
+        const colWidths = [
+            { wch: 15 }, // Employee Code
+            { wch: 25 }, // Employee Name
+            { wch: 20 }, // Department
+            { wch: 20 }, // Designation
+            { wch: 12 }, // Joining Date
+            { wch: 10 }, // Total Days
+            { wch: 8 },  // Present
+            { wch: 8 },  // Absent
+            { wch: 8 },  // Leave
+            { wch: 15 }, // Holiday/Week Off
+            { wch: 8 },  // Pending
+            { wch: 15 }, // Attendance Rate
+            { wch: 15 }, // Total Worked
+            { wch: 12 }, // Overtime
+            { wch: 10 }, // Late
+            { wch: 12 }, // Early Leave
+            { wch: 10 }, // Break
+            { wch: 18 }, // Avg Working
+            { wch: 18 }, // Avg Overtime
+            { wch: 12 }  // Working Days
+        ];
+        ws['!cols'] = colWidths;
+
+        // Add summary sheet with date range info
+        const summaryData = [
+            { 'Report Parameter': 'Date Range', 'Value': `${req.query.fromDate || 'Last 31 Days'} to ${req.query.toDate || 'Today'}` },
+            { 'Report Parameter': 'Generated On', 'Value': new Date().toLocaleString() },
+            { 'Report Parameter': 'Total Employees', 'Value': data.length },
+            { 'Report Parameter': 'Generated By', 'Value': req.user.email || req.user._id.toString() }
+        ];
+
+        const summaryWs = XLSX.utils.json_to_sheet(summaryData);
+        XLSX.utils.book_append_sheet(wb, summaryWs, "Report Info");
+
+        // Add main attendance sheet
+        XLSX.utils.book_append_sheet(wb, ws, "Attendance Summary");
+
+        // Generate buffer
+        const dateRange = `${req.query.fromDate || 'last30days'}_to_${req.query.toDate || 'today'}`;
+        const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+        // Set headers for Excel download
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=attendance_summary_${dateRange}.xlsx`);
+        res.setHeader('Content-Length', buffer.length);
+
+        res.status(200).send(buffer);
+
+    } catch (err) {
+        console.error('Excel Export Error:', err);
+        res.status(400).json({
+            success: false,
+            message: err.message
+        });
+    }
+};
+
+// Unified export endpoint
+export const getAttendanceExport = async (req, res) => {
+    try {
+        const { format = 'json' } = req.query;
+
+        if (format === 'csv') {
+            return await exportAttendanceAsCSV(req, res);
+        } else if (format === 'excel') {
+            return await exportAttendanceAsExcel(req, res);
+        } else {
+            // Return JSON as before
+            const data = await exportCompanyAttendanceSummary({
+                companyId: req.user._id,
+                fromDate: req.query.fromDate,
+                toDate: req.query.toDate
+            });
+
+            res.json({
+                success: true,
+                data,
+                meta: {
+                    totalRecords: data.length,
+                    dateRange: {
+                        fromDate: req.query.fromDate || 'Last 31 days',
+                        toDate: req.query.toDate || 'Today'
+                    }
+                }
+            });
+        }
+
+    } catch (err) {
+        res.status(400).json({
+            success: false,
+            message: err.message
+        });
+    }
+};
+
 
 /* ======================================================
    MARK ATTENDANCE (Punch In + Multi Punch Out)
