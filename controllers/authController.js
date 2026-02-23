@@ -389,7 +389,6 @@ export const requestAccountDeletion = async (req, res) => {
       accountStatus: "PENDING_DELETION",
       deletionRequestedAt: new Date(),
       scheduledDeletionAt: scheduledDate,
-      suspend: true,
       suspendedAt: new Date()
     });
 
