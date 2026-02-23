@@ -21,15 +21,15 @@ const BannerSchema = new mongoose.Schema(
         ref: 'Ad',
       }
     ],
-  
+
     planId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Plan',
     },
-    
-    approveowner:{
-      type:Boolean,
-      default:false,
+
+    approveowner: {
+      type: Boolean,
+      default: false,
     },
     active: {
       type: Boolean,
@@ -94,7 +94,17 @@ const BannerSchema = new mongoose.Schema(
     keyword: { type: [String], index: true },
 
     // ✅ Expiry field for TTL
-    expiryAt: { type: Date, default: null }, // set when creating banner
+    status: {
+      type: String,
+      enum: ["live", "expired", "scheduled"],
+      default: "live",
+      index: true
+    },
+
+    expiredAt: {
+      type: Date,
+      default: null
+    }
   },
   { timestamps: true }
 );
@@ -114,8 +124,6 @@ BannerSchema.index({ main_keyword: 1 });
 // Compound index
 BannerSchema.index({ manual_address: 1, banner_type: 1 });
 
-// TTL index: automatically remove expired banners
-BannerSchema.index({ expiryAt: 1 }, { expireAfterSeconds: 0 });
 
 const Banner = mongoose.model("Banner", BannerSchema);
 export default Banner;

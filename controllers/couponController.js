@@ -1835,7 +1835,7 @@ export const createCouponAdmin = async (req, res) => {
 
 
     let isActive = false;
-    
+
     if (req.user?.type === "super_admin" || req.user?.role === "super_admin") {
       isActive = true;
     }
@@ -2602,7 +2602,30 @@ export const getMyCoupons = async (req, res) => {
 };
 
 
+export const formatDate = (date, options = {}) => {
+  if (!date) return null;
 
+  const {
+    locale = "en-IN",
+    timeZone = "Asia/Kolkata",
+    withTime = true
+  } = options;
+
+  const config = {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone
+  };
+
+  if (withTime) {
+    config.hour = "2-digit";
+    config.minute = "2-digit";
+    config.hour12 = true;
+  }
+
+  return new Intl.DateTimeFormat(locale, config).format(new Date(date));
+};
 
 export const getAllCouponsForAdmin = async (req, res) => {
   try {
@@ -2766,12 +2789,17 @@ export const getAllCouponsForAdmin = async (req, res) => {
       const exportData = allCoupons.map(c => ({
         Title: c.title,
         Discount: c.discountPercentage,
+        shop_address: c.shope_location.address,
+        shop_name: c.shop_name,
         Category: c.category?.name || "",
         CreatedBy: c.createdby?.name || "",
-        OwnerBy: c.ownerId?.name || "",
-        CreatedAt: c.creationDate,
-        ValidTill: c.validTill,
-        Status: c.active ? "Active" : "Inactive"
+        OwnerName: c.ownerId?.name || "",
+        OwnerPhone: c.ownerId?.phone || "",
+        CreatedAt: formatDate(c.creationDate),
+        ValidTill: formatDate(c.validTill),
+        Status: c.active ? "Active" : "Inactive",
+        copuon_image: c.copuon_image,
+        googlreMapLink: c.googlreMapLink
       }));
 
       return exportToCSV(res, exportData, "all_coupons.csv");

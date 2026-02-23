@@ -50,6 +50,7 @@ import attandance from './routes/Attandance/Attandance.js'
 import employee from './routes/Attandance/Employee.route.js'
 // import './cron/referralSummary.cron.js'
 // import './controllers/crronjob.js'
+import './cron/banner.scheduler.js'
 dotenv.config();
 await connectDB();
 

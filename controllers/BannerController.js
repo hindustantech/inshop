@@ -83,6 +83,30 @@ import { uploadToCloudinaryBANNER } from "../utils/Coupon_image_Banner.js";
 // };
 
 
+export const markExpiredBannersInactive = async () => {
+  try {
+    const now = new Date();
+
+    const result = await Banner.updateMany(
+      {
+        active: true,
+        expiryAt: { $ne: null, $lte: now }
+      },
+      {
+        $set: {
+          active: false,
+          status: "expired",
+          expiredAt: now
+        }
+      }
+    );
+
+    console.log(`Expired banners updated: ${result.modifiedCount}`);
+  } catch (error) {
+    console.error("Expiry job failed:", error);
+  }
+};
+
 export const createBanner = async (req, res) => {
   try {
     const userId = req.user?._id;
