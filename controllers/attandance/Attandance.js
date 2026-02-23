@@ -8,10 +8,9 @@ import { normalizeToUTCDate, buildDateRange } from "./utils/date.utils.js";
 import { Parser } from "json2csv";
 // import moment from "moment";
 import moment from "moment-timezone";
-
 import jwt from "jsonwebtoken";
 import User from "../../models/userModel.js";
-
+import { resolveDateRange } from "../../utils/dateRangeResolver.js";
 // utils/dateRange.js
 
 export const buildMonthRange = (year, month) => {
@@ -57,278 +56,198 @@ function normalizeDate(d) {
    MARK ATTENDANCE CONTROLLER
 ===================================================== */
 
-// export const markAttendance = async (req, res) => {
-//     const session = await mongoose.startSession();
-//     session.startTransaction();
 
-//     try {
-//         /* --------------------------------
-//            1. Extract Auth + Body
-//         -------------------------------- */
 
-//         const u_id = req.user._id;
 
-//         const {
-//             date,
-//             punchIn,
-//             punchOut,
-//             breaks,
-//             geoLocation,
-//             deviceInfo,
-//             shift,
-//             remarks,
-//             token
-//         } = req.body;
-
-
-//         if (!token) {
-//             return res.status(401).json({
-//                 message: "Attendance token is required"
-//             });
-
-//         }
-
-
-//         if (!date || !punchIn || !geoLocation?.coordinates) {
-//             return res.status(400).json({
-//                 message: "date, punchIn, and geoLocation required"
-//             });
-//         }
-
-//         // 2) Verify token
-
-//         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-//         if (!decoded || !decoded.userId) {
-//             return res.status(401).json({ message: 'Invalid or expired token' });
-//         }
-
-//         // 3) Fetch user from DB
-//         const user = await User.findById(decoded.userId).select('-password -otp -__v');
-//         if (!user) {
-//             return res.status(401).json({ message: 'User not found, authorization denied' });
-//         }
-
-//         const companyId = user?._id; // from JWT
-
-
-
-//         const attendanceDate = normalizeDate(date);
-
-//         /* --------------------------------
-//            2. Validate Employee
-//         -------------------------------- */
-
-//         const employee = await Employee.findOne({
-//             userId: u_id,
-//             employmentStatus: "active"
-//         }).session(session);
-
-//         if (!employee) {
-//             return res.status(404).json({
-//                 message: "Active employee not found"
-//             });
-//         }
-
-
-//         if (employee.companyId.toString() !== companyId.toString()) {
-//             return res.status(403).json({
-//                 message: "Unauthorized company access"
-//             });
-//         }
-
-
-//         /* --------------------------------
-//            3. Prevent Duplicate Entry
-//         -------------------------------- */
-
-//         const existing = await Attendance.findOne({
-//             companyId,
-//             employeeId: employee._id,
-//             date: attendanceDate
-//         }).session(session);
-
-//         if (existing) {
-//             return res.status(409).json({
-//                 message: "Attendance already marked"
-//             });
-//         }
-
-//         /* --------------------------------
-//            4. Check Holiday
-//         -------------------------------- */
-
-//         const holiday = await Holiday.findOne({
-//             companyId,
-//             date: attendanceDate
-//         }).session(session);
-
-//         let status = "present";
-
-//         if (holiday) {
-//             status = "holiday";
-//         }
-
-//         /* --------------------------------
-//            5. Geo-Fencing Validation
-//         -------------------------------- */
-
-//         let geoVerified = false;
-//         let suspicious = false;
-
-//         if (employee.officeLocation?.coordinates?.length === 2) {
-//             const [officeLng, officeLat] = employee.officeLocation.coordinates;
-//             const [userLng, userLat] = geoLocation.coordinates;
-
-//             const distance = getDistance(
-//                 officeLat,
-//                 officeLng,
-//                 userLat,
-//                 userLng
-//             );
-
-//             if (distance <= employee.officeLocation.radius) {
-//                 geoVerified = true;
-//             } else {
-//                 suspicious = true;
-//             }
-//         }
-
-//         /* --------------------------------
-//            6. Work Calculation
-//         -------------------------------- */
-
-//         let totalMinutes = 0;
-//         let overtimeMinutes = 0;
-//         let lateMinutes = 0;
-//         let earlyLeaveMinutes = 0;
-
-//         const inTime = new Date(punchIn);
-//         const outTime = punchOut ? new Date(punchOut) : null;
-
-//         if (outTime) {
-//             totalMinutes = diffMinutes(inTime, outTime);
-//         }
-
-//         /* ------ Break Deduction ------ */
-
-//         if (breaks?.length) {
-//             for (const b of breaks) {
-//                 if (b.start && b.end) {
-//                     totalMinutes -= diffMinutes(
-//                         new Date(b.start),
-//                         new Date(b.end)
-//                     );
-//                 }
-//             }
-//         }
-
-//         /* ------ Shift Logic ------ */
-
-//         if (shift?.startTime && shift?.endTime) {
-//             const shiftStart = new Date(
-//                 `${attendanceDate.toISOString().split("T")[0]}T${shift.startTime}:00`
-//             );
-
-//             const shiftEnd = new Date(
-//                 `${attendanceDate.toISOString().split("T")[0]}T${shift.endTime}:00`
-//             );
-
-//             // Late
-//             if (inTime > shiftStart) {
-//                 lateMinutes = diffMinutes(shiftStart, inTime);
-//             }
-
-//             // Early leave
-//             if (outTime && outTime < shiftEnd) {
-//                 earlyLeaveMinutes = diffMinutes(outTime, shiftEnd);
-//             }
-
-//             // Overtime
-//             if (outTime && outTime > shiftEnd) {
-//                 overtimeMinutes = diffMinutes(shiftEnd, outTime);
-//             }
-//         }
-
-//         /* --------------------------------
-//            7. Half Day Logic
-//         -------------------------------- */
-
-//         if (totalMinutes < 240 && status === "present") {
-//             status = "half_day";
-//         }
-
-//         if (!outTime && status === "present") {
-//             suspicious = true;
-//         }
-
-//         /* --------------------------------
-//            8. Save Attendance
-//         -------------------------------- */
-
-//         const attendance = new Attendance({
-//             companyId,
-//             employeeId: employee._id,
-
-//             date: attendanceDate,
-
-//             punchIn: inTime,
-//             punchOut: outTime,
-
-//             breaks,
-
-//             shift,
-
-//             status,
-
-//             geoLocation: {
-//                 ...geoLocation,
-//                 verified: geoVerified
-//             },
-
-//             deviceInfo,
-
-//             workSummary: {
-//                 totalMinutes,
-//                 overtimeMinutes,
-//                 lateMinutes,
-//                 earlyLeaveMinutes
-//             },
-
-//             remarks,
-
-//             isSuspicious: suspicious
-//         });
-
-//         await attendance.save({ session });
-
-//         /* --------------------------------
-//            9. Commit
-//         -------------------------------- */
-
-//         await session.commitTransaction();
-//         session.endSession();
-
-//         return res.status(201).json({
-//             message: "Attendance marked successfully",
-//             attendance
-//         });
-
-//     } catch (error) {
-
-//         await session.abortTransaction();
-//         session.endSession();
-
-//         console.error("Attendance Error:", error);
-
-//         return res.status(500).json({
-//             message: "Failed to mark attendance",
-//             error: error.message
-//         });
-//     }
-// };
-
-
-
+const exportCompanyAttendanceSummary = async ({
+    companyId,
+    fromDate,
+    toDate
+}) => {
+
+    /* =====================================
+       Resolve Date Range (Auto or Manual)
+    ====================================== */
+    const { start, end } = resolveDateRange(fromDate, toDate);
+
+    const pipeline = [
+
+        {
+            $match: {
+                companyId: new mongoose.Types.ObjectId(companyId),
+                date: { $gte: start, $lte: end }
+            }
+        },
+
+        /* =====================================
+           JOIN EMPLOYEE MASTER
+        ====================================== */
+        {
+            $lookup: {
+                from: "employees",
+                localField: "employeeId",
+                foreignField: "_id",
+                as: "employee"
+            }
+        },
+        { $unwind: "$employee" },
+
+        /* =====================================
+           BREAK CALCULATION
+        ====================================== */
+        {
+            $addFields: {
+                breakMinutes: {
+                    $sum: {
+                        $map: {
+                            input: "$breaks",
+                            as: "b",
+                            in: {
+                                $cond: [
+                                    { $and: ["$$b.start", "$$b.end"] },
+                                    {
+                                        $divide: [
+                                            { $subtract: ["$$b.end", "$$b.start"] },
+                                            1000 * 60
+                                        ]
+                                    },
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+
+        {
+            $addFields: {
+                netWorkMinutes: {
+                    $max: [
+                        { $subtract: ["$workSummary.totalMinutes", "$breakMinutes"] },
+                        0
+                    ]
+                }
+            }
+        },
+
+        /* =====================================
+           GROUP PER EMPLOYEE
+        ====================================== */
+        {
+            $group: {
+                _id: "$employeeId",
+
+                employeeName: { $first: "$employee.user_name" },
+                empCode: { $first: "$employee.empCode" },
+                department: { $first: "$employee.jobInfo.department" },
+                designation: { $first: "$employee.jobInfo.designation" },
+
+                totalDays: { $sum: 1 },
+
+                absentDays: {
+                    $sum: { $cond: [{ $eq: ["$status", "absent"] }, 1, 0] }
+                },
+
+                validWorkingDays: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $and: [
+                                    { $ne: ["$status", "absent"] },
+                                    { $eq: ["$isAutoMarked", false] },
+                                    { $eq: ["$approvalStatus", "approved"] }
+                                ]
+                            },
+                            1,
+                            0
+                        ]
+                    }
+                },
+
+                totalWorkedMinutes: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $and: [
+                                    { $ne: ["$status", "absent"] },
+                                    { $eq: ["$isAutoMarked", false] },
+                                    { $eq: ["$approvalStatus", "approved"] }
+                                ]
+                            },
+                            "$netWorkMinutes",
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+
+        /* =====================================
+           FINAL EXPORT STRUCTURE
+        ====================================== */
+        {
+            $project: {
+                _id: 0,
+                empCode: 1,
+                employeeName: 1,
+                department: 1,
+                designation: 1,
+
+                totalDays: 1,
+                absentDays: 1,
+                presentDays: "$validWorkingDays",
+
+                totalWorkedHours: {
+                    $round: [{ $divide: ["$totalWorkedMinutes", 60] }, 2]
+                },
+
+                averageWorkingHours: {
+                    $cond: [
+                        { $eq: ["$validWorkingDays", 0] },
+                        0,
+                        {
+                            $round: [
+                                {
+                                    $divide: [
+                                        { $divide: ["$totalWorkedMinutes", 60] },
+                                        "$validWorkingDays"
+                                    ]
+                                },
+                                2
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+
+        { $sort: { empCode: 1 } }
+    ];
+
+    return await Attendance.aggregate(pipeline, { allowDiskUse: true });
+};
+
+
+// routes/controller
+
+export const getAttendanceExport = async (req, res) => {
+    try {
+        const data = await exportCompanyAttendanceSummary({
+            companyId: req.user._id,
+            fromDate: req.query.fromDate, // optional
+            toDate: req.query.toDate      // optional
+        });
+
+        res.json({ success: true, data });
+
+    } catch (err) {
+        res.status(400).json({
+            success: false,
+            message: err.message
+        });
+    }
+};
 
 /* ======================================================
    MARK ATTENDANCE (Punch In + Multi Punch Out)
@@ -788,6 +707,8 @@ export const markAttendance = async (req, res) => {
         });
     }
 };
+
+
 
 
 
