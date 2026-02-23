@@ -1833,6 +1833,12 @@ export const createCouponAdmin = async (req, res) => {
     // Determine final ownerId: body > partnerId > createdBy > userId
     let finalOwnerId;
 
+
+    let isActive = false;
+    
+    if (req.user?.type === "super_admin" || req.user?.role === "super_admin") {
+      isActive = true;
+    }
     // Priority 1: ownerId from body (if agency/super_admin provided it)
     if (req.body.ownerId && (req.user.type === "agency" || req.user.type === "super_admin" || req.user.type === "admin")) {
       finalOwnerId = req.body.ownerId;
@@ -2055,13 +2061,7 @@ export const createCouponAdmin = async (req, res) => {
       }
     }
 
-    let isActive = false;
 
-    if (req.user?.type === "super_admin") {
-      isActive = true;
-    } else {
-      isActive = false;
-    }
 
     // Prepare coupon data
     const couponData = {
