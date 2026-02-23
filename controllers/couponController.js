@@ -92,7 +92,7 @@ function deg2rad(deg) {
 
 
 
-export const toggleRecommendedCoupon = async (req, res) => {
+export const toggleOwnerApproval = async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -103,33 +103,34 @@ export const toggleRecommendedCoupon = async (req, res) => {
       });
     }
 
-    const coupon = await Coupon.findOneAndUpdate(
-      { _id: id },
-      [
-        {
-          $set: {
-            recomendedForyou: { $not: "$recomendedForyou" }
-          }
-        }
-      ],
-      { new: true }
-    ).select("recomendedForyou");
+    // Step 1 — Read Current State (Lean = fast)
+    const existing = await Coupon.findById(id).select("approveowner").lean();
 
-    if (!coupon) {
+    if (!existing) {
       return res.status(404).json({
         success: false,
         message: "Coupon not found",
       });
     }
 
-    res.status(200).json({
+    // Step 2 — Decide Next State (deterministic)
+    const nextState = !existing.approveowner;
+
+    // Step 3 — Atomic Update
+    const updated = await Coupon.findByIdAndUpdate(
+      id,
+      { $set: { approveowner: nextState } },
+      { new: true, runValidators: false }
+    ).select("approveowner");
+
+    return res.status(200).json({
       success: true,
-      message: "Recommended status updated",
-      data: coupon,
+      message: `Owner approval ${nextState ? "enabled" : "disabled"}`,
+      data: updated,
     });
 
   } catch (err) {
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Server error",
       error: err.message,

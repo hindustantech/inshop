@@ -37,6 +37,7 @@ import {
     getAllGiftForAdmin,
     getGiftById,
     toggleRecommendedCoupon,
+    toggleOwnerApproval
 } from '../controllers/couponController.js';
 import { checkPermission } from '../middlewares/checkPermission.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
@@ -103,6 +104,7 @@ router.patch('/toggleRecommendedCoupon/:id', authMiddleware1, toggleRecommendedC
 
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);
+router.put("/toggle-approveowner/:id", authMiddleware, toggleOwnerApproval);
 // router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
 router.get("/coupons/admin", authMiddleware, checkPermission('coupon.list'), getAllCouponsForAdmin);
 router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
