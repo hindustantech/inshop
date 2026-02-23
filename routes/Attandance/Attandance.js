@@ -74,11 +74,7 @@ router.get(
     authMiddleware,
     exportAttendanceAsExcel
 );
-router.get(
-    "/getAttendanceExport",
-    authMiddleware,
-    getAttendanceExport
-);
+
 router.get(
     "/employee-monthly-cards",
     authMiddleware,
