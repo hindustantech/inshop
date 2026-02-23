@@ -744,7 +744,7 @@ export const broadcastNotification = async (req, res) => {
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
 
-    s
+    
 
     return res.status(200).json({
       success: true,
