@@ -1126,12 +1126,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-            {
-                $set: {
-                    empName: "$user_name",
-                    empCodeValue: "$empCode"
-                }
-            },
+         
 
             /* ---------- USER JOIN ---------- */
             {
@@ -1263,7 +1258,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
                     /* FROM EMPLOYEE TABLE */
 
-                    name: "$empName",
+                    name: { $ifNull: ["$user_name", "$user.name"] },  // fallback safe
                     empCode: "$empCodeValue",
 
                     email: "$user.email",
