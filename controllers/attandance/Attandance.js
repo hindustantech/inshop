@@ -878,23 +878,10 @@ export const toIST = (date) => {
 };
 
 // utils/date.util.js
-
-export const getISTDayRange = () => {
-
-    const now = new Date();
-
-    const start = new Date(
-        now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
-    );
-
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(start);
-    end.setHours(23, 59, 59, 999);
-
-    return { start, end };
+export const convertUTCtoIST = (date) => {
+    if (!date) return null;
+    return new Date(new Date(date).getTime() + (5.5 * 60 * 60 * 1000));
 };
-
 export const getCompanyTodayAttendance = async (req, res) => {
 
     try {
@@ -993,8 +980,8 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
                     status: record?.status || "absent",
 
-                    punchIn: record?.punchIn,
-                    punchOut: record?.punchOut,
+                    punchIn: convertUTCtoIST(record?.punchIn),
+                    punchOut: convertUTCtoIST(record?.punchOut),
                     flags: {
 
                         isLate:
