@@ -1,30 +1,26 @@
 // utils/date.util.js
 
-export const normalizeToUTCDate = (date = new Date()) => {
 
+// utils/date.util.js
+
+export const normalizeToUTCDate = (date = new Date()) => {
     const d = new Date(date);
 
-    return new Date(Date.UTC(
-        d.getFullYear(),
-        d.getMonth(),
-        d.getDate(),
-        0, 0, 0
-    ));
+    d.setHours(0, 0, 0, 0);  // Start of day in server timezone
+
+    return d;
 };
 
-
 export const buildDateRange = (from, to) => {
+    const start = new Date(from);
+    start.setHours(0, 0, 0, 0);
 
-    const start = normalizeToUTCDate(new Date(from));
-
-    const end = new Date(
-        Date.UTC(
-            new Date(to).getFullYear(),
-            new Date(to).getMonth(),
-            new Date(to).getDate(),
-            23, 59, 59
-        )
-    );
+    const end = new Date(to);
+    end.setHours(23, 59, 59, 999);
 
     return { start, end };
 };
+
+
+
+
