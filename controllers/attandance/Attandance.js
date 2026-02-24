@@ -982,8 +982,8 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
                     status: record?.status || "absent",
 
-                    punchIn: formatToIST(record?.punchIn),
-                    punchOut: formatToIST(record?.punchOut),
+                    punchIn: formatDateToIST(record?.punchIn),
+                    punchOut: formatDateToIST(record?.punchOut),
                     flags: {
 
                         isLate:
