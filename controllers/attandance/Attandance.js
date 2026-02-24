@@ -862,8 +862,26 @@ export const markAttendance = async (req, res) => {
 // utils/timezone.util.js
 
 // utils/timezone.util.js
-// utils/timezone.util.js
 
+// utils/date.util.js
+
+export const getISTDayRange = () => {
+
+    const now = new Date();
+
+    // Convert to IST first
+    const istNow = new Date(
+        now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+    );
+
+    const start = new Date(istNow);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(istNow);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+};
 export const toIST = (date) => {
     if (!date) return null;
 
@@ -882,6 +900,8 @@ export const convertUTCtoIST = (date) => {
     if (!date) return null;
     return new Date(new Date(date).getTime() + (5.5 * 60 * 60 * 1000));
 };
+
+
 export const getCompanyTodayAttendance = async (req, res) => {
 
     try {
