@@ -1126,7 +1126,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-         
+
 
             /* ---------- USER JOIN ---------- */
             {
@@ -1257,8 +1257,18 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     userId: "$user._id",
 
                     /* FROM EMPLOYEE TABLE */
-
-                    name: { $ifNull: ["$user_name", "$user.name"] },  // fallback safe
+                    name: {
+                        $cond: {
+                            if: {
+                                $or: [
+                                    { $eq: ["$user_name", null] },
+                                    { $eq: ["$user_name", ""] }
+                                ]
+                            },
+                            then: "$user.name",
+                            else: "$user_name"
+                        }
+                    },  // fallback safe
                     empCode: "$empCodeValue",
 
                     email: "$user.email",
