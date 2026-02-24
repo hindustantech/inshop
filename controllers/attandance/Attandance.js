@@ -1240,17 +1240,17 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 $project: {
                     _id: 0,
                     userId: "$user._id",
-
+                    
                     /* FROM EMPLOYEE TABLE - CORRECTED FIELD REFERENCES */
                     name: {
                         $ifNull: ["$user_name", "$user.name", "Unknown"]
                     }, // First try user_name from employee, then user.name, fallback
-
+                    
                     empCode: 1,
-
+                    
                     email: "$user.email",
                     phone: "$user.phone",
-
+                    
                     department: "$jobInfo.department",
                     designation: "$jobInfo.designation",
 
