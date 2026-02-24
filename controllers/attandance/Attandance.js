@@ -1223,18 +1223,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
                     /* FROM EMPLOYEE TABLE */
 
-                    name: {
-                        $cond: {
-                            if: {
-                                $or: [
-                                    { $eq: ["$empName", null] },
-                                    { $eq: ["$empName", ""] }
-                                ]
-                            },
-                            then: "$user.name",
-                            else: "$empName"
-                        }
-                    },
+                    name: "$empName",
                     empCode: "$empCodeValue",
 
                     email: "$user.email",
