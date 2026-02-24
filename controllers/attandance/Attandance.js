@@ -861,29 +861,6 @@ export const markAttendance = async (req, res) => {
 
 // utils/timezone.util.js
 
-export const formatToIST = (date) => {
-    if (!date) return null;
-
-    return new Intl.DateTimeFormat("en-IN", {
-        timeZone: "Asia/Kolkata",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false
-    }).format(new Date(date));
-};
-
-export const formatDateToIST = (date) => {
-    if (!date) return null;
-
-    return new Intl.DateTimeFormat("en-IN", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-    }).format(new Date(date));
-};
-
 
 
 export const getCompanyTodayAttendance = async (req, res) => {
@@ -982,8 +959,8 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
                     status: record?.status || "absent",
 
-                    punchIn: formatDateToIST(record?.punchIn),
-                    punchOut: formatDateToIST(record?.punchOut),
+                    punchIn: record?.punchIn,
+                    punchOut: record?.punchOut,
                     flags: {
 
                         isLate:
