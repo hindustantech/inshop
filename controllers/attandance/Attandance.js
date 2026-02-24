@@ -877,6 +877,24 @@ export const toIST = (date) => {
     });
 };
 
+// utils/date.util.js
+
+export const getISTDayRange = () => {
+
+    const now = new Date();
+
+    const start = new Date(
+        now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+    );
+
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+};
+
 export const getCompanyTodayAttendance = async (req, res) => {
 
     try {
@@ -921,10 +939,12 @@ export const getCompanyTodayAttendance = async (req, res) => {
            Attendance Records
         ============================ */
 
+        const { start, end } = getISTDayRange();
+
         const attendanceList = await Attendance.find({
             companyId,
             employeeId: { $in: employeeIds },
-            date: today
+            date: { $gte: start, $lte: end }
         })
             .select(`
                 employeeId
