@@ -48,12 +48,12 @@ import appsettingroutes from './routes/appsetting.js'
 import holiday from './routes/Attandance/Holiday.js'
 import attandance from './routes/Attandance/Attandance.js'
 import employee from './routes/Attandance/Employee.route.js'
+import { startAttendanceCron } from './controllers/attandance/attendanceAutoClose.job.js';
 // import './cron/referralSummary.cron.js'
 // import './controllers/crronjob.js'
 import './cron/banner.scheduler.js'
 dotenv.config();
 await connectDB();
-
 // START BACKGROUND WORKER HERE
 
 const app = express();
@@ -143,4 +143,9 @@ if (!fs.existsSync('uploads/links')) {
 // Start server
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on  ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Server running on ${PORT}`);
+
+    // Start cron AFTER server is alive
+    startAttendanceCron();
+});

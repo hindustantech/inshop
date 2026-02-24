@@ -9,8 +9,12 @@ const adSchema = new mongoose.Schema({
     activity_use: {
         type: String,
         require: true,
-        enum: ['activity', 'advertisament','unlock'],
+        enum: ['activity', 'advertisament', 'unlock'],
         default: "activity"
+    },
+    isActive: {
+        type: Boolean,
+        default: true
     },
     desc: {
         type: String,
