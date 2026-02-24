@@ -859,9 +859,6 @@ export const markAttendance = async (req, res) => {
 
 
 
-// utils/timezone.util.js
-
-// utils/timezone.util.js
 
 // utils/date.util.js
 
@@ -1073,7 +1070,6 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 
 
-
 export const getEmployeeSimpleMonthlySummary = async (req, res) => {
     try {
 
@@ -1126,8 +1122,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-
-
             /* ---------- USER JOIN ---------- */
             {
                 $lookup: {
@@ -1149,9 +1143,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             {
                 $lookup: {
                     from: "attendances",
-
                     let: { empId: "$_id" },
-
                     pipeline: [
                         {
                             $match: {
@@ -1165,7 +1157,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                             }
                         }
                     ],
-
                     as: "attendance"
                 }
             },
@@ -1174,7 +1165,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             /* ---------- COUNTS ---------- */
             {
                 $addFields: {
-
                     presentDays: {
                         $size: {
                             $filter: {
@@ -1217,7 +1207,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     overtimeMinutes: {
                         $sum: "$attendance.workSummary.overtimeMinutes"
                     }
-
                 }
             },
 
@@ -1225,7 +1214,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             /* ---------- DERIVED ---------- */
             {
                 $addFields: {
-
                     workingDays: {
                         $add: ["$presentDays", "$halfDays"]
                     },
@@ -1243,7 +1231,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                             2
                         ]
                     }
-
                 }
             },
 
@@ -1251,19 +1238,18 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             /* ---------- FINAL FORMAT ---------- */
             {
                 $project: {
-
                     _id: 0,
-
                     userId: "$user._id",
 
-                    /* FROM EMPLOYEE TABLE */
-                    name: "$user_name",// fallback safe
-                    empCode: "$empCodeValue",
+                    /* FROM EMPLOYEE TABLE - CORRECTED FIELD REFERENCES */
+                    name: {
+                        $ifNull: ["$user_name", "$user.name", "Unknown"]
+                    }, // First try user_name from employee, then user.name, fallback
+
+                    empCode: 1,
 
                     email: "$user.email",
                     phone: "$user.phone",
-
-                    empCode: 1,
 
                     department: "$jobInfo.department",
                     designation: "$jobInfo.designation",
@@ -1271,32 +1257,25 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                     joiningDate: {
                         $dateToString: {
                             format: "%Y-%m-%d",
-                            date: "$jobInfo.joiningDate"
+                            date: "$jobInfo.joiningDate",
+                            onNull: null
                         }
                     },
 
-
                     summary: {
-
                         presentDays: "$presentDays",
                         halfDays: "$halfDays",
                         leaveDays: "$leaveDays",
                         workingDays: "$workingDays",
-
-                        // temporary (will override later)
-                        absentDays: { $literal: 0 }
+                        absentDays: 0 // temporary placeholder
                     },
 
-
                     timeSummary: {
-
                         totalHours: "$totalHours",
                         overtimeHours: "$overtimeHours"
                     }
-
                 }
             },
-
 
             { $sort: { name: 1 } }
 
@@ -1335,32 +1314,26 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         ===================================== */
 
         const companySummary = {
-
             totalEmployees: report.length,
-
             totalPresent: 0,
             totalAbsent: 0,
             totalLeave: 0,
             totalWorkingDays: 0,
-
             totalHours: 0,
             totalOvertime: 0
         };
 
 
         report.forEach(emp => {
-
             const s = emp.summary;
             const t = emp.timeSummary;
 
-            companySummary.totalPresent += s.presentDays;
-            companySummary.totalAbsent += s.absentDays;
-            companySummary.totalLeave += s.leaveDays;
-            companySummary.totalWorkingDays += s.workingDays;
-
-            companySummary.totalHours += t.totalHours;
-            companySummary.totalOvertime += t.overtimeHours;
-
+            companySummary.totalPresent += s.presentDays || 0;
+            companySummary.totalAbsent += s.absentDays || 0;
+            companySummary.totalLeave += s.leaveDays || 0;
+            companySummary.totalWorkingDays += s.workingDays || 0;
+            companySummary.totalHours += t.totalHours || 0;
+            companySummary.totalOvertime += t.overtimeHours || 0;
         });
 
 
@@ -1376,35 +1349,25 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         ===================================== */
 
         return res.status(200).json({
-
             success: true,
-
             data: {
-
                 period: {
                     start: start.toISOString().split("T")[0],
                     end: end.toISOString().split("T")[0]
                 },
-
                 summary: companySummary,
-
                 report
-
             }
-
         });
 
 
     } catch (error) {
-
         console.error("Monthly Summary Error:", error);
-
         return res.status(500).json({
             success: false,
             message: "Monthly report failed",
             error: error.message
         });
-
     }
 };
 
