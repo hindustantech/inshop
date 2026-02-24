@@ -194,23 +194,23 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  ZoneId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Zone',
-    default: null,
-    validate: {
-      validator: function (value) {
-        // Allow ZoneId ONLY for admin roles
-        if (this.type === 'admin') {
-          return value !== null; // must exist
-        }
+  // ZoneId: {
+  //   type: mongoose.Schema.Types.ObjectId,
+  //   ref: 'Zone',
+  //   default: null,
+  //   validate: {
+  //     validator: function (value) {
+  //       // Allow ZoneId ONLY for admin roles
+  //       if (this.type === 'admin') {
+  //         return value !== null; // must exist
+  //       }
 
-        return value === null;
-      },
-      message: 'ZoneId is allowed only for admin/super_admin users'
-    },
-    index: true
-  },
+  //       return value === null;
+  //     },
+  //     message: 'ZoneId is allowed only for admin/super_admin users'
+  //   },
+  //   index: true
+  // },
 
 }, {
   timestamps: true
