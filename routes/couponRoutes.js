@@ -105,7 +105,7 @@ router.patch('/toggleRecommendedCoupon/:id', authMiddleware1, toggleRecommendedC
 
 
 router.get("/coupons/my", authMiddleware, getMyCoupons);
-router.put("/toggle-approveowner/:id", checkPermission('coupon.approveowner'), authMiddleware, toggleOwnerApproval);
+router.put("/toggle-approveowner/:id", checkPermission('coupon.approve'), authMiddleware, toggleOwnerApproval);
 // router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
 router.get("/coupons/admin", authMiddleware, checkPermission('coupon.list'), getAllCouponsForAdmin);
 router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
