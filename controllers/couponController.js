@@ -320,7 +320,6 @@ export const updateCouponByAdmin = async (req, res) => {
       .populate('category', 'name')
       .populate('ownerId', '_id')
       .populate('promotion', 'name desc')
-      .populate('consumersId', '_id')
       .populate('usedCopun', '_id');
 
     if (!updatedCoupon) {

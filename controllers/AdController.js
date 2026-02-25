@@ -7,6 +7,7 @@ import ManualAddress from "../models/ManualAddress.js";
 import UserCoupon from '../models/UserCoupon.js';
 import Salses from '../models/Sales.js'
 import ReferralUsage from "../models/ReferralUsage.js";
+import Category from "../models/CategoryCopun.js";
 // 1️⃣ Create a new Ad
 export const createAd = async (req, res) => {
   try {
@@ -690,20 +691,8 @@ export const getAdUserCityByCopunSpacileWithGeo = async (req, res) => {
     }
 
     // Recommended filter validation
-    let recommendedFilter = null;
-    if (recomendedForyou !== undefined) {
-      // Convert to boolean properly
-      if (recomendedForyou === 'true' || recomendedForyou === '1' || recomendedForyou === true) {
-        recommendedFilter = true;
-      } else if (recomendedForyou === 'false' || recomendedForyou === '0' || recomendedForyou === false) {
-        recommendedFilter = false;
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid recomendedForyou value. Use true/false, 1/0'
-        });
-      }
-    }
+    const recommendedFilter =
+      recomendedForyou === 'true' || recomendedForyou === true;
 
     const skip = (parsedPage - 1) * parsedLimit;
 
@@ -789,6 +778,7 @@ export const getAdUserCityByCopunSpacileWithGeo = async (req, res) => {
     const geoQuery = {
       status: 'published', // Add status filter
       active: true,
+      ...(recommendedFilter ? { recomendedForyou: true } : {}),
       $or: [
         { validTill: { $gt: new Date() } },
         { validTill: null },

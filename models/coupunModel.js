@@ -45,6 +45,10 @@ const couponSchema = new mongoose.Schema({
     default: "draft",
     index: true,
   },
+  couponName: {
+    type: String,
+    required: true
+  },
 
   shop_name: {
     type: String,
