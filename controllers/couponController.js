@@ -140,7 +140,9 @@ export const toggleRecommendedCoupon = async (req, res) => {
 
 export const toggleOwnerApproval = async (req, res) => {
   try {
+    const user = req.user.id;
     const { id } = req.params;
+
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
