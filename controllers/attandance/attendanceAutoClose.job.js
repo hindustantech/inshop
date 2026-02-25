@@ -80,6 +80,7 @@ export const startAttendanceCron = () => {
     let isRunning = false;
 
     cron.schedule("0 2 0 * * *", async () => {
+        // cron.schedule("* * * * *", async () => {
         if (isRunning) return;
         isRunning = true;
 
