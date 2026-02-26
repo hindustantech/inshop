@@ -1,5 +1,5 @@
 import express from 'express';
-import { approveMyBanner, revokeMyBannerApproval, deleteBanner, updateBanner, createBanneradmin, createBanner, toggleBannerActive, getUserNearestBanners, getMyBanners, getAllBannersForAdmin, getBannerById, updateBannerExpiry } from '../controllers/BannerController.js';
+import { approveMyBanner, revokeMyBannerApproval,getBannerAdminById, deleteBanner, updateBanner, createBanneradmin, createBanner, toggleBannerActive, getUserNearestBanners, getMyBanners, getAllBannersForAdmin, getBannerById, updateBannerExpiry } from '../controllers/BannerController.js';
 import multer from 'multer';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { authMiddleware1 } from '../middlewares/checkuser.js';
@@ -27,6 +27,7 @@ router.get('/getbanner', authMiddleware1, getUserNearestBanners);
 router.get("/banners/my", authMiddleware, getMyBanners);
 router.get("/banners/admin", authMiddleware, getAllBannersForAdmin);
 router.get("/getdeatils/:bannerId", authMiddleware, getBannerById);
+router.get("/getBannerAdminById/:bannerId", authMiddleware, getBannerAdminById);
 router.patch("/updateBannerExpiry/:id", authMiddleware, checkPermission('banner.update'), updateBannerExpiry);
 router.patch("/toggleBannerActive/:bannerId", authMiddleware, toggleBannerActive);
 router.patch("/:bannerId/approve", authMiddleware, approveMyBanner);

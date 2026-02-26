@@ -1452,113 +1452,60 @@ export const updateBannerExpiry = async (req, res) => {
 
 
 
-// export const getBannerById = async (req, res) => {
-//   try {
-//     const { bannerId } = req.params;
-
-//     if (!bannerId) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Banner ID is required",
-//       });
-//     }
-
-//     const banner = await Banner.findById(bannerId)
-//       .populate({
-//         path: "ownerId",
-//         select: "name email phone" // 👈 phone here
-//       })
-//       .populate({
-//         path: "createdby",
-//         select: "name email phone" // 👈 phone here also
-//       })
-//       .populate({
-//         path: "promotion",
-//         select: "title description ad_image"
-//       })
-//       .populate({
-//         path: "category",
-//         select: "name icon"
-//       })
-//       .lean();
-
-//     if (!banner) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Banner not found",
-//       });
-//     }
-
-//     res.json({
-//       success: true,
-//       data: banner,
-//     });
-
-//   } catch (error) {
-//     res.status(500).json({
-//       success: false,
-//       message: "Error fetching banner details",
-//       error: error.message,
-//     });
-//   }
-// };
 
 
-// export const getBannerById = async (req, res) => {
-//   try {
-//     const { bannerId } = req.params;
-//     const userId = req.user._id; // assuming you have authentication middleware
+export const getBannerAdminById = async (req, res) => {
+  try {
+    const { bannerId } = req.params;
+    const userId = req.user._id; // assuming you have authentication middleware
 
-//     if (!bannerId) {
-//       return res.status(400).json({ success: false, message: "Banner ID is required" });
-//     }
+    if (!bannerId) {
+      return res.status(400).json({ success: false, message: "Banner ID is required" });
+    }
 
-//     // Fetch the user location
-//     const user = await User.findById(userId).lean();
-//     if (!user || !user.latestLocation || !user.latestLocation.coordinates) {
-//       return res.status(400).json({ success: false, message: "User location not available" });
-//     }
+    // Fetch the user location
+    const user = await User.findById(userId).lean();
+    if (!user || !user.latestLocation || !user.latestLocation.coordinates) {
+      return res.status(400).json({ success: false, message: "User location not available" });
+    }
 
-//     const banner = await Banner.findById(bannerId)
-//       .populate({ path: "ownerId", select: "name email phone" })
-//       .populate({ path: "createdby", select: "name email phone" })
-//       .lean();
+    const banner = await Banner.findById(bannerId)
+      .populate({ path: "ownerId", select: "name email phone" })
+      .populate({ path: "createdby", select: "name email phone" })
 
-//     if (!banner) {
-//       return res.status(404).json({ success: false, message: "Banner not found" });
-//     }
+      .lean();
 
-//     // Calculate distance using MongoDB $geoNear aggregation
-//     const userLng = user.latestLocation.coordinates[0];
-//     const userLat = user.latestLocation.coordinates[1];
+    if (!banner) {
+      return res.status(404).json({ success: false, message: "Banner not found" });
+    }
 
-//     const distanceInMeters = calculateDistance(
-//       userLat,
-//       userLng,
-//       banner.location.coordinates[1],
-//       banner.location.coordinates[0]
-//     );
+    // Calculate distance using MongoDB $geoNear aggregation
+    const userLng = user.latestLocation.coordinates[0];
+    const userLat = user.latestLocation.coordinates[1];
 
-//     res.json({
-//       success: true,
-//       data: {
-//         ...banner,
-//         distanceInMeters,
-//         distanceInKm: (distanceInMeters / 1000).toFixed(2)
-//       },
-//     });
-//   } catch (error) {
-//     res.status(500).json({
-//       success: false,
-//       message: "Error fetching banner with distance",
-//       error: error.message,
-//     });
-//   }
-// };
+    const distanceInMeters = calculateDistance(
+      userLat,
+      userLng,
+      banner.location.coordinates[1],
+      banner.location.coordinates[0]
+    );
 
-// Haversine formula to calculate distance between two lat/lng points
-
-
+    res.json({
+      success: true,
+      data: {
+        ...banner,
+        distanceInMeters,
+        distanceInKm: (distanceInMeters / 1000).toFixed(2)
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching banner with distance",
+      error: error.message,
+    });
+  }
+};
 
 
 export const getBannerById = async (req, res) => {
@@ -1645,6 +1592,8 @@ export const getBannerById = async (req, res) => {
     });
   }
 };
+
+// Haversine formula to calculate distance between two lat/lng points
 function calculateDistance(lat1, lng1, lat2, lng2) {
   const R = 6371000; // Earth radius in meters
   const toRad = (deg) => (deg * Math.PI) / 180;
