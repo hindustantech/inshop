@@ -37,7 +37,9 @@ const BannerSchema = new mongoose.Schema(
       index: true
     },
 
-
+    phone_number: {
+      type: String,
+    },
     manual_address: {
       type: String,
       required: true,

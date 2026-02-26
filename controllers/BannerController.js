@@ -413,6 +413,7 @@ export const createBanneradmin = async (req, res) => {
       manual_address,
       expiryDays,
       category,
+      phone_number,
       ownerId,
       approveowner,
       paymentReference,
@@ -585,6 +586,7 @@ export const createBanneradmin = async (req, res) => {
       ownerId: finalOwnerId,
       banner_image,
       website_url,
+      phone_number,
       address_notes,
       planId,
       google_location_url,
@@ -1591,6 +1593,7 @@ export const updateBanner = async (req, res) => {
       banner_type,
       search_radius,
       manual_address,
+      phone_number,
       main_keyword,
       keyword,
       expiryDays,
@@ -1606,6 +1609,7 @@ export const updateBanner = async (req, res) => {
 
     // Handle fields conditionally
     if (title) updateData.title = title.trim();
+    if (phone_number) updateData.phone_number = phone_number?.trim();
     if (google_location_url) updateData.google_location_url = google_location_url.trim();
     if (website_url) updateData.website_url = website_url.trim();
     if (banner_type && ['Changeable', 'Unchangeable'].includes(banner_type)) {
