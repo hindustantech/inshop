@@ -1504,35 +1504,121 @@ export const updateBannerExpiry = async (req, res) => {
 // };
 
 
+// export const getBannerById = async (req, res) => {
+//   try {
+//     const { bannerId } = req.params;
+//     const userId = req.user._id; // assuming you have authentication middleware
+
+//     if (!bannerId) {
+//       return res.status(400).json({ success: false, message: "Banner ID is required" });
+//     }
+
+//     // Fetch the user location
+//     const user = await User.findById(userId).lean();
+//     if (!user || !user.latestLocation || !user.latestLocation.coordinates) {
+//       return res.status(400).json({ success: false, message: "User location not available" });
+//     }
+
+//     const banner = await Banner.findById(bannerId)
+//       .populate({ path: "ownerId", select: "name email phone" })
+//       .populate({ path: "createdby", select: "name email phone" })
+//       .lean();
+
+//     if (!banner) {
+//       return res.status(404).json({ success: false, message: "Banner not found" });
+//     }
+
+//     // Calculate distance using MongoDB $geoNear aggregation
+//     const userLng = user.latestLocation.coordinates[0];
+//     const userLat = user.latestLocation.coordinates[1];
+
+//     const distanceInMeters = calculateDistance(
+//       userLat,
+//       userLng,
+//       banner.location.coordinates[1],
+//       banner.location.coordinates[0]
+//     );
+
+//     res.json({
+//       success: true,
+//       data: {
+//         ...banner,
+//         distanceInMeters,
+//         distanceInKm: (distanceInMeters / 1000).toFixed(2)
+//       },
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: "Error fetching banner with distance",
+//       error: error.message,
+//     });
+//   }
+// };
+
+// Haversine formula to calculate distance between two lat/lng points
+
+
+
+
 export const getBannerById = async (req, res) => {
   try {
     const { bannerId } = req.params;
-    const userId = req.user._id; // assuming you have authentication middleware
+    const userId = req.user?._id;
 
-    if (!bannerId) {
-      return res.status(400).json({ success: false, message: "Banner ID is required" });
+    if (!mongoose.isValidObjectId(bannerId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Banner ID",
+      });
     }
 
-    // Fetch the user location
-    const user = await User.findById(userId).lean();
-    if (!user || !user.latestLocation || !user.latestLocation.coordinates) {
-      return res.status(400).json({ success: false, message: "User location not available" });
+    const user = await User.findById(userId)
+      .select("latestLocation")
+      .lean();
+
+    if (
+      !user ||
+      !user.latestLocation ||
+      !Array.isArray(user.latestLocation.coordinates)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "User location not available",
+      });
     }
 
     const banner = await Banner.findById(bannerId)
-      .populate({ path: "ownerId", select: "name email phone" })
-      .populate({ path: "createdby", select: "name email phone" })
-      // .populate({ path: "promotion", select: "title description ad_image" })
-      // .populate({ path: "category", select: "name " })
+      .populate({
+        path: "ownerId",
+        select: "name email phone",
+      })
+      .populate({
+        path: "createdby",
+        select: "name email phone",
+      })
       .lean();
 
     if (!banner) {
-      return res.status(404).json({ success: false, message: "Banner not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Banner not found",
+      });
     }
 
-    // Calculate distance using MongoDB $geoNear aggregation
-    const userLng = user.latestLocation.coordinates[0];
-    const userLat = user.latestLocation.coordinates[1];
+    /* =============================
+       Override Logic (NO STRUCTURE CHANGE)
+    ============================= */
+
+    if (banner.phone_number && banner.ownerId) {
+      banner.ownerId.phone = banner.phone_number;
+    }
+
+    /* =============================
+       Distance Calculation
+    ============================= */
+
+    const [userLng, userLat] = user.latestLocation.coordinates;
 
     const distanceInMeters = calculateDistance(
       userLat,
@@ -1541,24 +1627,24 @@ export const getBannerById = async (req, res) => {
       banner.location.coordinates[0]
     );
 
-    res.json({
+    return res.status(200).json({
       success: true,
       data: {
         ...banner,
         distanceInMeters,
-        distanceInKm: (distanceInMeters / 1000).toFixed(2)
+        distanceInKm: Number((distanceInMeters / 1000).toFixed(2)),
       },
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("GET_BANNER_BY_ID_ERROR:", error);
+
+    return res.status(500).json({
       success: false,
       message: "Error fetching banner with distance",
       error: error.message,
     });
   }
 };
-
-// Haversine formula to calculate distance between two lat/lng points
 function calculateDistance(lat1, lng1, lat2, lng2) {
   const R = 6371000; // Earth radius in meters
   const toRad = (deg) => (deg * Math.PI) / 180;
