@@ -20,7 +20,8 @@ import {
     exportCompanyAttendanceToExcel,
     getAttendanceExport,
     exportAttendanceAsExcel,
-    exportAttendanceAsCSV
+    exportAttendanceAsCSV,
+    getTodayPunchStatus
 } from "../../controllers/attandance/Attandance.js";
 
 /* ===============================
@@ -56,6 +57,11 @@ router.get(
     "/monthly",
     authMiddleware,
     getAttendance
+);
+router.get(
+    "/getTodayPunchStatus",
+    authMiddleware,
+    getTodayPunchStatus
 );
 router.get(
     "/getAttendanceExport",

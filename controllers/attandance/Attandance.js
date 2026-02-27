@@ -19,7 +19,52 @@ export const buildMonthRange = (year, month) => {
     const end = new Date(Date.UTC(year, month, 0, 23, 59, 59));
     return { start, end };
 };
+// utils/date.util.js
 
+export const getUTCDayRange = (inputDate = new Date()) => {
+    const start = new Date(Date.UTC(
+        inputDate.getUTCFullYear(),
+        inputDate.getUTCMonth(),
+        inputDate.getUTCDate(),
+        0, 0, 0, 0
+    ));
+
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+
+    return { start, end };
+};
+
+
+export const getTodayPunchStatus = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        const { start, end } = getUTCDayRange();
+
+        const attendance = await Attendance.findOne({
+            employeeId: userId,
+            date: { $gte: start, $lt: end }
+        })
+            .select({ punchIn: 1, punchOut: 1 })
+            .lean();
+
+        const isPunchedIn = !!attendance?.punchIn;
+        const isPunchedOut = !!attendance?.punchOut;
+
+        return res.status(200).json({
+            success: true,
+            isPunchedIn,
+            isPunchedOut
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
 /* =====================================================
    Utility Functions
 ===================================================== */
@@ -1240,17 +1285,17 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 $project: {
                     _id: 0,
                     userId: "$user._id",
-                    
+
                     /* FROM EMPLOYEE TABLE - CORRECTED FIELD REFERENCES */
                     name: {
                         $ifNull: ["$user_name", "$user.name", "Unknown"]
                     }, // First try user_name from employee, then user.name, fallback
-                    
+
                     empCode: 1,
-                    
+
                     email: "$user.email",
                     phone: "$user.phone",
-                    
+
                     department: "$jobInfo.department",
                     designation: "$jobInfo.designation",
 
