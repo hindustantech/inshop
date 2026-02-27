@@ -1,5 +1,8 @@
 import notification from "../models/notification.js";
 import User from "../models/userModel.js";
+import { notificationQueue } from "../services/notificationQueue.js";
+import { processBroadcast } from "./broadcastService.js";
+
 // ✅ Create Notification
 export const createNotification = async (req, res) => {
     try {
@@ -63,4 +66,34 @@ export const getNotifications = async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+};
+
+
+
+export const sendNotiMultification = async (req, res) => {
+    const { latitude, longitude, title, body, data } = req.body;
+
+    if (!title || !body) {
+        return res.status(400).json({
+            success: false,
+            message: "Title and body required",
+        });
+    }
+
+    notificationQueue.add(async () => {
+        console.log("Broadcast Started...");
+        const result = await processBroadcast({
+            latitude,
+            longitude,
+            title,
+            body,
+            data,
+        });
+        console.log("Broadcast Completed:", result);
+    }, 3); // priority (lower = higher priority)
+
+    return res.status(202).json({
+        success: true,
+        message: "Notification queued",
+    });
 };

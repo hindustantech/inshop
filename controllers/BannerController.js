@@ -943,8 +943,17 @@ export const getUserNearestBanners = async (req, res) => {
     }
 
     // 5️⃣ Build expiry query
-    const expiryQuery = { $or: [{ expiryAt: { $gt: new Date() } }, { expiryAt: null }] };
 
+    const now = new Date();
+
+    const baseFilters = {
+      active: true,
+      // status: "live",
+      $or: [
+        { expiredAt: { $gt: now } },
+        { expiredAt: null }
+      ]
+    };
     // 6️⃣ Build category filter
     let categoryFilter = {};
     let validCategoryIds = []; // Declare here to use in both main and fallback pipelines
@@ -980,7 +989,7 @@ export const getUserNearestBanners = async (req, res) => {
     // 7️⃣ Combine all filters for geoNear query
     const mainQuery = {
       $and: [
-        expiryQuery,
+        baseFilters,
         ...(Object.keys(categoryFilter).length > 0 ? [categoryFilter] : []),
       ],
     };
@@ -1045,7 +1054,7 @@ export const getUserNearestBanners = async (req, res) => {
     if (data.length === 0) {
       console.log('No banners found with initial query, falling back to all non-expired banners');
       const fallbackPipeline = [
-        { $match: expiryQuery },
+        { $match: baseFilters },
         ...(validCategoryIds.length > 0
           ? [{ $match: { category: { $in: validCategoryIds } } }]
           : []),
@@ -1120,7 +1129,7 @@ export const getUserNearestBanners = async (req, res) => {
     // Adjust total for fallback mode
     if (data.length > 0 && mode === 'fallback') {
       const fallbackCountPipeline = [
-        { $match: expiryQuery },
+        { $match: baseFilters },
         ...(validCategoryIds.length > 0
           ? [{ $match: { category: { $in: validCategoryIds } } }]
           : []),

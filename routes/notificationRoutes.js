@@ -1,5 +1,5 @@
 import express from "express";
-import { createNotification,getNotifications } from "../controllers/notificationController.js";
+import { createNotification,getNotifications ,sendNotiMultification} from "../controllers/notificationController.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
 const router = express.Router();
 
@@ -9,6 +9,7 @@ const router = express.Router();
  * @access  Admin only
  */
 router.post("/", authMiddleware, createNotification);
+router.post("/multification", authMiddleware, sendNotiMultification);
 
 /**
  * @route   GET /api/notifications
