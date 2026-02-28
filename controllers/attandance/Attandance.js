@@ -19,7 +19,7 @@ export const buildMonthRange = (year, month) => {
     const end = new Date(Date.UTC(year, month, 0, 23, 59, 59));
     return { start, end };
 };
-// utils/date.util.js
+
 
 export const getUTCDayRange = (inputDate = new Date()) => {
     const start = new Date(Date.UTC(
@@ -36,29 +36,59 @@ export const getUTCDayRange = (inputDate = new Date()) => {
 };
 
 
+
+
 export const getTodayPunchStatus = async (req, res) => {
     try {
         const userId = req.user._id;
 
-        const { start, end } = getUTCDayRange();
+        /* ==============================
+           STEP 1: Resolve Employee
+        ============================== */
 
-        const attendance = await Attendance.findOne({
-            employeeId: userId,
-            date: { $gte: start, $lt: end }
+        const employee = await Employee.findOne({
+            userId,
+            employmentStatus: "active"
         })
-            .select({ punchIn: 1, punchOut: 1 })
+            .select("_id companyId")
             .lean();
 
-        const isPunchedIn = !!attendance?.punchIn;
-        const isPunchedOut = !!attendance?.punchOut;
+        if (!employee) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee profile not found"
+            });
+        }
+
+        const { _id: employeeId, companyId } = employee;
+
+        /* ==============================
+           STEP 2: Get Today Range
+        ============================== */
+
+        const { start, end } = getUTCDayRange();
+
+        /* ==============================
+           STEP 3: Query Attendance
+        ============================== */
+
+        const attendance = await Attendance.findOne({
+            companyId,
+            employeeId,
+            date: { $gte: start, $lt: end }
+        })
+            .select("punchIn punchOut")
+            .lean();
 
         return res.status(200).json({
             success: true,
-            isPunchedIn,
-            isPunchedOut
+            isPunchedIn: Boolean(attendance?.punchIn),
+            isPunchedOut: Boolean(attendance?.punchOut)
         });
 
     } catch (error) {
+        console.error("Punch Status Error:", error);
+
         return res.status(500).json({
             success: false,
             message: "Internal server error"
