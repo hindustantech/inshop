@@ -11,12 +11,120 @@ import notification from '../models/notification.js';
 import ReferralUsage from '../models/ReferralUsage.js'
 import mongoose from "mongoose";
 import logger from '../utils/logger.js';
+import PatnerProfile from '../models/PatnerProfile.js';
 
 import { Parser } from 'json2csv';
 
 
 
 
+
+export const updateProfileMedia = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    const authUserId = req.user.id || req.user._id;
+    const targetUserId = req.query.Id;
+
+    if (!targetUserId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized access"
+      });
+    }
+
+    if (!req.file?.buffer) {
+      return res.status(400).json({
+        success: false,
+        message: "Image file is required"
+      });
+    }
+
+    // ==============================
+    // STEP 1: Upload Media
+    // ==============================
+    const uploadResult = await uploadToCloudinary(
+      req.file.buffer,
+      "profile/media"
+    );
+
+    const mediaUrl = uploadResult.secure_url;
+
+    // ==============================
+    // STEP 2: Start Transaction
+    // ==============================
+    session.startTransaction();
+
+    // ==============================
+    // STEP 3: Update User Profile
+    // ==============================
+    const updatedUser = await User.findByIdAndUpdate(
+      targetUserId,
+      { profileImage: mediaUrl },
+      { new: true, session }
+    ).select("-password -otp");
+
+    if (!updatedUser) {
+      throw new Error("User not found");
+    }
+
+    // ==============================
+    // STEP 4: Update Partner Profile (if exists)
+    // ==============================
+    const partner = await PartnerProfile.findOne({
+      User_id: targetUserId
+    }).session(session);
+
+    let partnerResponse = null;
+
+    if (partner) {
+      partner.logo = mediaUrl;
+
+      // Defensive nested object creation
+      if (!partner.detilsmall) {
+        partner.detilsmall = {};
+      }
+
+      if (!Array.isArray(partner.detilsmall.mallImage)) {
+        partner.detilsmall.mallImage = [];
+      }
+
+      // Prevent duplicate insertion
+      if (!partner.detilsmall.mallImage.includes(mediaUrl)) {
+        partner.detilsmall.mallImage.push(mediaUrl);
+      }
+
+      await partner.save({ session });
+
+      partnerResponse = {
+        logo: partner.logo,
+        mallImages: partner.detilsmall.mallImage
+      };
+    }
+
+    await session.commitTransaction();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile media updated successfully",
+      data: {
+        userProfileImage: updatedUser.profileImage,
+        partner: partnerResponse
+      }
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+
+  } finally {
+    session.endSession();
+  }
+};
 /* -------------------------------
    Distance Calculator (KM)
 -------------------------------- */
@@ -743,7 +851,7 @@ export const broadcastNotification = async (req, res) => {
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
 
-    
+
 
     return res.status(200).json({
       success: true,
