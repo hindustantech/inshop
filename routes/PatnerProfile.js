@@ -3,6 +3,7 @@ import multer from "multer";
 import { createOrUpdateProfile, getProfile } from "../controllers/PatnerProfile.js";
 import authMiddleware from '../middlewares/authMiddleware.js';
 import { updateProfileMedia } from "../controllers/authController.js";
+
 const router = express.Router();
 
 
@@ -35,8 +36,7 @@ router.post(
 
 router.put(
     "/media",
-    protect,                     // JWT Authentication
-    authorize("super_admin", "partner", "agency"), // Role Based Access
+    authMiddleware,                     // JWT Authentication
     upload.single("image"),      // Multipart Form Data
     updateProfileMedia
 );
