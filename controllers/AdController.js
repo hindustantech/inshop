@@ -785,7 +785,6 @@ export const getAdUserCityByCopunSpacileWithGeo = async (req, res) => {
       ],
       ...(categoryFilter ? { category: categoryFilter } : {}),
       ...(promotionFilter ? { promotion: promotionFilter } : {}),
-      ...(recommendedFilter !== null ? { recomendedForyou: recommendedFilter } : {}),
     };
 
     // 8️⃣ Build common pipeline stages
@@ -861,6 +860,7 @@ export const getAdUserCityByCopunSpacileWithGeo = async (req, res) => {
         {
           $match: {
             $or: [
+              { recomendedForyou: true },
               { userStatus: { $exists: false } },
               {
                 $and: [
@@ -946,9 +946,12 @@ export const getAdUserCityByCopunSpacileWithGeo = async (req, res) => {
         },
       },
       {
-        $sort: sortByLatest ?
-          { recomendedForyou: -1, validTill: -1, createdAt: -1 } : // Prioritize recommended coupons
-          { recomendedForyou: -1, distance: 1, validTill: -1 }
+        $sort: {
+          recomendedForyou: -1,
+          distance: 1,
+          validTill: -1,
+          creationDate: -1
+        },
       },
       { $skip: skip },
       { $limit: parsedLimit },
