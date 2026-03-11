@@ -1,13 +1,24 @@
 import Advertistment from "../../models/Attandance/Advertistment.js";
 import AdvertisementCategory from "../../models/Attandance/AdvertisementCategory.js";
 import mongoose from "mongoose";
+import { uploadToCloudinary } from "../../utils/Cloudinary.js";
+import fs from 'fs';
+import path from 'path';
 
-// @desc    Create a new advertisement
+// @desc    Create a new advertisement with image upload
 // @route   POST /api/advertisements
 // @access  Private/Admin
 export const createAdvertisement = async (req, res) => {
     try {
-        const { title, description, imageUrl, linkUrl, category, status } = req.body;
+        const { title, description, linkUrl, category, status } = req.body;
+
+        // Validate required fields
+        if (!title || !description || !linkUrl || !category) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide all required fields: title, description, linkUrl, category"
+            });
+        }
 
         // Check if category exists
         const categoryExists = await AdvertisementCategory.findById(category);
@@ -18,25 +29,52 @@ export const createAdvertisement = async (req, res) => {
             });
         }
 
+        let imageUrl = '';
+
+        // Handle image upload if file is present
+        if (req.file) {
+            try {
+                const uploadResult = await uploadToCloudinary(req.file.buffer, 'advertisements');
+                imageUrl = uploadResult.secure_url;
+            } catch (uploadError) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Failed to upload image",
+                    error: uploadError.message
+                });
+            }
+        } else if (req.body.imageUrl) {
+            // If no file but imageUrl is provided in body (for backward compatibility)
+            imageUrl = req.body.imageUrl;
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide an image (file upload or URL)"
+            });
+        }
+
+        // Create advertisement
         const advertisement = await Advertistment.create({
             title,
             description,
             imageUrl,
             linkUrl,
             category,
-            status
+            status: status || 'active'
         });
 
         // Populate category details
         const populatedAd = await Advertistment.findById(advertisement._id)
-            .populate('category', 'name slug');
+            .populate('category', 'name slug status');
 
         res.status(201).json({
             success: true,
             message: "Advertisement created successfully",
             data: populatedAd
         });
+
     } catch (error) {
+        console.error('Create advertisement error:', error);
         res.status(500).json({
             success: false,
             message: "Error creating advertisement",
@@ -45,13 +83,21 @@ export const createAdvertisement = async (req, res) => {
     }
 };
 
-// @desc    Update an existing advertisement
+// @desc    Update an existing advertisement with optional image upload
 // @route   PUT /api/advertisements/:id
 // @access  Private/Admin
 export const updateAdvertisement = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, imageUrl, linkUrl, category, status } = req.body;
+        const { title, description, linkUrl, category, status } = req.body;
+
+        // Validate ID
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid advertisement ID format"
+            });
+        }
 
         // Check if advertisement exists
         const advertisement = await Advertistment.findById(id);
@@ -73,26 +119,47 @@ export const updateAdvertisement = async (req, res) => {
             }
         }
 
+        // Prepare update data
+        const updateData = {
+            title: title || advertisement.title,
+            description: description || advertisement.description,
+            linkUrl: linkUrl || advertisement.linkUrl,
+            category: category || advertisement.category,
+            status: status || advertisement.status
+        };
+
+        // Handle image upload if new file is provided
+        if (req.file) {
+            try {
+                const uploadResult = await uploadToCloudinary(req.file.buffer, 'advertisements');
+                updateData.imageUrl = uploadResult.secure_url;
+            } catch (uploadError) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Failed to upload new image",
+                    error: uploadError.message
+                });
+            }
+        } else if (req.body.imageUrl && req.body.imageUrl !== advertisement.imageUrl) {
+            // If imageUrl is provided in body and it's different from current
+            updateData.imageUrl = req.body.imageUrl;
+        }
+
         // Update advertisement
         const updatedAdvertisement = await Advertistment.findByIdAndUpdate(
             id,
-            {
-                title: title || advertisement.title,
-                description: description || advertisement.description,
-                imageUrl: imageUrl || advertisement.imageUrl,
-                linkUrl: linkUrl || advertisement.linkUrl,
-                category: category || advertisement.category,
-                status: status || advertisement.status
-            },
+            updateData,
             { new: true, runValidators: true }
-        ).populate('category', 'name slug');
+        ).populate('category', 'name slug status');
 
         res.status(200).json({
             success: true,
             message: "Advertisement updated successfully",
             data: updatedAdvertisement
         });
+
     } catch (error) {
+        console.error('Update advertisement error:', error);
         res.status(500).json({
             success: false,
             message: "Error updating advertisement",
@@ -222,7 +289,7 @@ export const getAllAdvertisements = async (req, res) => {
 
         // Build filter
         const filter = {};
-        
+
         // Filter by status
         if (req.query.status) {
             filter.status = req.query.status;
