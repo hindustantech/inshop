@@ -5,6 +5,7 @@ import express from "express";
 ================================ */
 
 import {
+    getCompanyByUser,
     createEmployee,
     findbyPhone,
     getAllEmployees,
@@ -70,6 +71,11 @@ router.get(
     "/",
     authMiddleware,
     getAllEmployees
+);
+router.get(
+    "/getCompanyByUser/:userType",
+    authMiddleware,
+    getCompanyByUser
 );
 router.delete(
     "/delteEmployee/:empId",
