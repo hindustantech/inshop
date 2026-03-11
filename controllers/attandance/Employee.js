@@ -4,8 +4,107 @@ import Attendance from "../../models/Attandance/Attendance.js";
 import Holiday from "../../models/Attandance/Holiday.js";
 import Payroll from "../../models/Attandance/Payroll.js";
 import mongoose from "mongoose";
+import PatnerProfile from "../../models/PatnerProfile.js";
 
 
+
+// controllers/companyController.js
+
+export const getCompanyByUser = async (req, res) => {
+    try {
+        const { userType } = req.params; // or from req.body
+        const userId = req.user?._id || req.user?.id;
+
+        // Validate input
+        if (!userId || !userType) {
+            return res.status(400).json({
+                success: false,
+                message: 'userId and userType are required'
+            });
+        }
+
+        let companyDetails = null;
+
+        // CASE 1: User is PARTNER - directly get their company profile
+        if (userType === 'partner' || userType === 'admin' || userType === 'super_admin') {
+            const partnerProfile = await PatnerProfile.findOne({ User_id: userId })
+                .select('firm_name logo email address isIndependent')
+                .populate('User_id', 'name email')
+                .lean();
+
+            if (partnerProfile) {
+                companyDetails = {
+                    companyId: partnerProfile._id,
+                    companyName: partnerProfile.firm_name,
+                    companyLogo: partnerProfile.logo,
+                    email: partnerProfile.email,
+                    address: partnerProfile.address || { city: '', state: '' },
+                    isIndependent: partnerProfile.isIndependent,
+                    adminName: partnerProfile.User_id?.name,
+                    userType: 'partner'
+                };
+            }
+        }
+
+        // CASE 2: User is EMPLOYEE - find company they're associated with
+        else if (userType === 'user') {
+            const employee = await Employee.findOne({ userId: userId })
+                .populate({
+                    path: 'companyId',
+                    select: 'name email' // Get admin user info
+                })
+                .lean();
+
+            if (employee && employee.companyId) {
+                // Get company details from partner profile
+                const partnerProfile = await PatnerProfile.findOne({
+                    User_id: employee.companyId._id
+                })
+                    .select('firm_name logo email address isIndependent')
+                    .lean();
+
+                if (partnerProfile) {
+                    companyDetails = {
+                        companyId: partnerProfile._id,
+                        companyName: partnerProfile.firm_name,
+                        companyLogo: partnerProfile.logo,
+                        email: partnerProfile.email,
+                        address: partnerProfile.address || { city: '', state: '' },
+                        isIndependent: partnerProfile.isIndependent,
+                        employeeInfo: {
+                            empCode: employee.empCode,
+                            designation: employee.jobInfo?.designation,
+                            department: employee.jobInfo?.department
+                        },
+                        userType: 'employee'
+                    };
+                }
+            }
+        }
+
+        // If no company found
+        if (!companyDetails) {
+            return res.status(404).json({
+                success: false,
+                message: `No company found for this ${userType}`
+            });
+        }
+
+        // Return success response
+        return res.status(200).json({
+            success: true,
+            data: companyDetails
+        });
+
+    } catch (error) {
+        console.error('Error in getCompanyByUser:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
 
 
 /* ---------------------------------------------

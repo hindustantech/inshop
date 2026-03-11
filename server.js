@@ -52,6 +52,8 @@ import { startAttendanceCron } from './controllers/attandance/attendanceAutoClos
 // import './cron/referralSummary.cron.js'
 // import './controllers/crronjob.js'
 import './cron/banner.scheduler.js'
+import categoryAdvertisment from './routes/Attandance/categoryAdvertisment.js'
+import advertisment from './routes/Attandance/Advertisement.Routes.js'
 dotenv.config();
 await connectDB();
 // START BACKGROUND WORKER HERE
@@ -89,6 +91,8 @@ app.use('/api/agencypatner', agencypatner);
 app.use('/api/holiday', holiday);
 app.use('/api/attendance', attandance);
 app.use('/api/employee', employee);
+app.use('/api/categoryAdvertisment', categoryAdvertisment);
+app.use('/api/advertisements', advertisment);
 // API routes
 app.use("/api/gift-hampers", giftHamperRoutes);
 app.use("/api/corporateRoutes", corporateRoutes);

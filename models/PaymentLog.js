@@ -11,6 +11,26 @@ const paymentLogSchema = new mongoose.Schema({
         required: true,
         index: true,
     },  
+    couponId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Coupon",
+        default: null,
+        index: true,
+    },
+    bannerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Banner",
+        default: null,
+        index: true,
+    },
+    plnaId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Plan",
+        default: null,
+        index: true,
+    },
+    
+
     paymentId: {
         type: String,
         default: null,
