@@ -10,11 +10,18 @@ const userPlanSchema = new Schema(
             required: true,
             index: true,
         },
-        // couponsUsed: {
-        //     type: Schema.Types.ObjectId,
-        //     ref: "Coupon",
-        //     // required: true,
-        // },
+        CouponId: {
+            type: Schema.Types.ObjectId,
+            ref: "Coupon",
+            default: null,
+            index: true,
+        },
+        BannerId: {
+            type: Schema.Types.ObjectId,
+            ref: "Banner",
+            default: null,
+            index: true,
+        },
 
         planId: {
             type: Schema.Types.ObjectId,

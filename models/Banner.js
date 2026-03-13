@@ -26,7 +26,7 @@ const BannerSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Plan',
     },
-
+    
     approveowner: {
       type: Boolean,
       default: false,

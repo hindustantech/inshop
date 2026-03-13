@@ -14,6 +14,8 @@ const userLockSchema = new Schema(
       index: true
     },
 
+
+
     lockedAt: {
       type: Date,
       required: true,
@@ -48,6 +50,8 @@ const couponSchema = new mongoose.Schema({
   couponName: {
     type: String,
   },
+ 
+
 
   shop_name: {
     type: String,
@@ -82,7 +86,9 @@ const couponSchema = new mongoose.Schema({
     type: String,
     require: true,
   },
-
+  coupon_name:{
+    type: String,
+  },
   promotion: [
     {
       type: mongoose.Schema.Types.ObjectId, // references id from another table

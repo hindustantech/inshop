@@ -44,6 +44,7 @@ import giftHamperRoutes from './routes/GiftHamper.route.js';
 import corporateRoutes from './routes/corperate.js'
 import appsettingroutes from './routes/appsetting.js'
 
+import attendanceRequestRoutes from "./routes/Attandance/Request.js";
 
 import holiday from './routes/Attandance/Holiday.js'
 import attandance from './routes/Attandance/Attandance.js'
@@ -55,6 +56,7 @@ import './cron/banner.scheduler.js'
 import categoryAdvertisment from './routes/Attandance/categoryAdvertisment.js'
 import advertisment from './routes/Attandance/Advertisement.Routes.js'
 dotenv.config();
+
 await connectDB();
 // START BACKGROUND WORKER HERE
 
@@ -93,6 +95,8 @@ app.use('/api/attendance', attandance);
 app.use('/api/employee', employee);
 app.use('/api/categoryAdvertisment', categoryAdvertisment);
 app.use('/api/advertisements', advertisment);
+app.use("/api/attendance/requests", attendanceRequestRoutes);
+
 // API routes
 app.use("/api/gift-hampers", giftHamperRoutes);
 app.use("/api/corporateRoutes", corporateRoutes);
