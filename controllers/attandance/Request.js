@@ -11,7 +11,6 @@ import Employee from "../../models/Attandance/Employee.js";
 export const createAttendanceRequest = async (req, res) => {
     try {
         const {
-            companyId,
             requestType,
             reason,
             leaveDetails,
@@ -22,7 +21,6 @@ export const createAttendanceRequest = async (req, res) => {
 
         // First get the employee record for this user
         const employee = await Employee.findOne({ 
-            companyId, 
             userId: userId 
         });
 
@@ -56,7 +54,6 @@ export const createAttendanceRequest = async (req, res) => {
             // Check for overlapping leave requests
             const overlappingRequest = await AttendanceRequest.findOne({
                 employeeId: employee._id,
-                companyId,
                 requestType: "leave",
                 status: { $in: ["pending", "approved"] },
                 $or: [
@@ -98,7 +95,6 @@ export const createAttendanceRequest = async (req, res) => {
             // Check for existing pending request for same date
             const existingRequest = await AttendanceRequest.findOne({
                 employeeId: employee._id,
-                companyId,
                 requestType: { $in: ["punch_in_out", "punch_in_and_out"] },
                 "punchDetails.date": requestDate,
                 status: "pending"
@@ -113,7 +109,7 @@ export const createAttendanceRequest = async (req, res) => {
         }
 
         const request = await AttendanceRequest.create({
-            companyId,
+            companyId:employee.companyId,
             employeeId: employee._id, // Use employee _id
             requestType,
             reason,

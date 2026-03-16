@@ -4330,7 +4330,40 @@ export const transferCoupon = async (req, res) => {
   }
 };
 
+export const checkQur = async (req, res) => {
+  try {
+    const {  owner } = req.body;
 
+    if (!mongoose.Types.ObjectId.isValid(couponId)) {
+      return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
+    }
+
+    if (!owner) {
+      return res.status(400).json({ success: false, message: "Invalid Owner Token" });
+    }
+
+    // ✅ Verify owner token
+    const decoded = jwt.verify(owner, JWT_SECRET);
+    if (!decoded ) {
+      return res.status(401).json({ message: "Invalid or expired owner token" });
+    }
+
+    const ownerUser = await User.findById(decoded.userId);
+    if (!ownerUser) {
+      return res.status(401).json({ message: "Owner not found, authorization denied" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Coupon created as used (no prior claim found)",
+      data:ownerUser
+    });
+
+  } catch (error) {
+    console.error("Error claiming coupon:", error);
+    return res.status(500).json({ success: false, message: "Error claiming coupon", error: error.message });
+  }
+};
 
 export const claimCoupon = async (req, res) => {
   try {
