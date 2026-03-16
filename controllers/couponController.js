@@ -4334,10 +4334,7 @@ export const checkQur = async (req, res) => {
   try {
     const {  owner } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(couponId)) {
-      return res.status(400).json({ success: false, message: "Invalid Coupon ID" });
-    }
-
+   
     if (!owner) {
       return res.status(400).json({ success: false, message: "Invalid Owner Token" });
     }
