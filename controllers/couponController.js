@@ -191,9 +191,15 @@ export const toggleOwnerApproval = async (req, res) => {
 export const generateAdminTheQRCode = async (req, res) => {
   try {
     const { userId } = req.query;
-    logger.info("userId",userId)
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required",
+      });
+    }
     const user = await User.findById(userId);
-    logger.info("user",user);
+    logger.info("user", user);
     if (!user || user.type !== "partner") {
       return res.status(404).json({
         success: false,
