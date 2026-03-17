@@ -34,6 +34,13 @@ const paymentSchema = new mongoose.Schema(
             index: true,
         },
 
+        BannerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Banner",
+            default: null,
+            index: true,
+        },
+        
         /* -------------------- PAYMENT CORE -------------------- */
         amount: {
             type: Number,

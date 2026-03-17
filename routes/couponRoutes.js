@@ -1,6 +1,7 @@
 import express from 'express';
 import {
     generateTheQRCode,
+    generateAdminTheQRCode,
     createCoupon,
     getAllCouponsWithStatusTag,
     getall,
@@ -110,6 +111,7 @@ router.put("/toggle-approveowner/:id", authMiddleware, checkPermission('coupon.a
 // router.get("/coupons/admin", authMiddleware, getAllCouponsForAdmin);
 router.get("/coupons/admin", authMiddleware, checkPermission('coupon.list'), getAllCouponsForAdmin);
 router.get("/generateTheQRCode", authMiddleware, generateTheQRCode);
+router.get("/generateAdminTheQRCode/:userId", authMiddleware,checkPermission('user.qr'),generateAdminTheQRCode);
 
 router.post("/claimCoupon", authMiddleware, claimCoupon);
 router.post("/checkQur", checkQur);

@@ -187,7 +187,43 @@ export const toggleOwnerApproval = async (req, res) => {
   }
 };
 
+export const generateAdminTheQRCode = async (req, res) => {
+  try {
+    const { userId } = req.query;
 
+    const user = await User.findById(userId);
+    if (!user || user.type !== "partner") {
+      return res.status(404).json({
+        success: false,
+        message: "User not found or not a partner"
+      });
+    }
+
+    // Generate a JWT token that expires in 10 minutes
+    const token = jwt.sign(
+      { userId: user._id },
+      JWT_SECRET,
+      // { expiresIn: "10m" } // 10 minutes
+    );
+
+    // Generate QR code from the token
+    const qrCodeUrl = await QRCode.toDataURL(token);
+
+    return res.status(200).json({
+      success: true,
+      message: "QR Code generated successfully",
+      data: { qrCodeUrl }
+    });
+
+  } catch (error) {
+    console.error("Error generating QR code:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error generating QR code",
+      error: error.message
+    });
+  }
+};
 
 export const generateTheQRCode = async (req, res) => {
   try {
@@ -4332,16 +4368,16 @@ export const transferCoupon = async (req, res) => {
 
 export const checkQur = async (req, res) => {
   try {
-    const {  owner } = req.body;
+    const { owner } = req.body;
 
-   
+
     if (!owner) {
       return res.status(400).json({ success: false, message: "Invalid Owner Token" });
     }
 
     // ✅ Verify owner token
     const decoded = jwt.verify(owner, JWT_SECRET);
-    if (!decoded ) {
+    if (!decoded) {
       return res.status(401).json({ message: "Invalid or expired owner token" });
     }
 
@@ -4353,7 +4389,7 @@ export const checkQur = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Coupon created as used (no prior claim found)",
-      data:ownerUser
+      data: ownerUser
     });
 
   } catch (error) {
