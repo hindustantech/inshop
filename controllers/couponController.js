@@ -190,7 +190,7 @@ export const toggleOwnerApproval = async (req, res) => {
 
 export const generateAdminTheQRCode = async (req, res) => {
   try {
-    const { userId } = req.query;
+    const { userId } = req.params; // ✅ FIXED
 
     if (!userId) {
       return res.status(400).json({
