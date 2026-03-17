@@ -17,6 +17,7 @@ import Plan from '../models/Plan.js';
 import Wallet from '../models/Wallet.js';
 import UserPlan from '../models/UserPlan.js';
 import cron from 'node-cron';
+import logger from '../utils/logger.js';
 
 const statesAndUTs = [
   'Andhra Pradesh',
@@ -190,8 +191,9 @@ export const toggleOwnerApproval = async (req, res) => {
 export const generateAdminTheQRCode = async (req, res) => {
   try {
     const { userId } = req.query;
-
+    logger.info("userId",userId)
     const user = await User.findById(userId);
+    logger.info("user",user);
     if (!user || user.type !== "partner") {
       return res.status(404).json({
         success: false,
