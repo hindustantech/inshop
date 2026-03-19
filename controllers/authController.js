@@ -1270,21 +1270,24 @@ export const completOtp = async (req, res) => {
 
 export const completeProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { name, email, profileImage, data } = req.body;
+    const userId = req.user.id; // from JWT middleware
 
-    if (!name && !email && !profileImage && !data) {
+    const {
+      name,
+      email,
+      data,
+    } = req.body;
+
+    /* ---------- Validation ---------- */
+
+    if (!name && !email && !req.file && !data) {
       return res.status(400).json({
         message: "At least one field is required",
       });
     }
 
-    const update = {};
+    /* ---------- Email Validation ---------- */
 
-    /* ---------- Name ---------- */
-    if (name) update.name = name.trim();
-
-    /* ---------- Email ---------- */
     if (email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -1304,40 +1307,56 @@ export const completeProfile = async (req, res) => {
           message: "Email already in use",
         });
       }
-
-      update.email = email.toLowerCase().trim();
     }
 
-    /* ---------- Profile Image ---------- */
-    if (profileImage) {
-      if (profileImage.startsWith("data:image")) {
-        const base64Data = profileImage.split(";base64,").pop();
-        const buffer = Buffer.from(base64Data, "base64");
+    /* ---------- Build Update Object ---------- */
 
-        const result = await uploadToCloudinary(buffer, "profile_images");
+    const update = {};
 
+    if (name) update.name = name.trim();
+
+    if (email)
+      update.email = email.toLowerCase().trim();
+
+    /* ---------- Handle Image Upload ---------- */
+    if (req.file) {
+      try {
+        // Upload to 'profiles' folder instead of 'products'
+        const result = await uploadToCloudinary(req.file.buffer, 'profiles');
         update.profileImage = result.secure_url;
-      } else {
-        update.profileImage = profileImage;
+      } catch (uploadError) {
+        console.error('Cloudinary upload error:', uploadError);
+        return res.status(400).json({
+          message: "Failed to upload profile image",
+          error: uploadError.message
+        });
       }
     }
 
-    /* ---------- Extra Data ---------- */
-    if (data && typeof data === "object") {
+    if (data && typeof data === "object")
       update.data = data;
-    }
 
+    // Mark profile as completed
     update.isProfileCompleted = true;
+
+    /* ---------- Atomic Update ---------- */
 
     const user = await User.findByIdAndUpdate(
       userId,
       { $set: update },
-      { new: true, runValidators: true }
+      {
+        new: true,
+        runValidators: true,
+      }
     ).select("-password -otp");
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({
+        message: "User not found",
+      });
     }
+
+    /* ---------- Response ---------- */
 
     return res.json({
       message: "Profile completed successfully",
@@ -1345,7 +1364,7 @@ export const completeProfile = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("COMPLETE_PROFILE_ERROR:", err);
+    console.error('Profile update error:', err);
 
     if (err.code === 11000) {
       return res.status(409).json({
@@ -1353,7 +1372,7 @@ export const completeProfile = async (req, res) => {
       });
     }
 
-    return res.status(500).json({
+    res.status(500).json({
       message: "Profile update failed",
       error: err.message,
     });
