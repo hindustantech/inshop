@@ -52,6 +52,7 @@ import employee from './routes/Attandance/Employee.route.js'
 import { startAttendanceCron } from './controllers/attandance/attendanceAutoClose.job.js';
 // import './cron/referralSummary.cron.js'
 // import './controllers/crronjob.js'
+import ShopVisit from './routes/ShopVisti.js';
 import './cron/banner.scheduler.js'
 import categoryAdvertisment from './routes/Attandance/categoryAdvertisment.js'
 import advertisment from './routes/Attandance/Advertisement.Routes.js'
@@ -111,6 +112,7 @@ app.use('/api/send', sendnotification);
 app.use('/api/notification', notification);
 app.use('/api/banner', banner);
 app.use('/api/qrgenerater', qrgenerater);
+app.use('/api/ShopVisit', ShopVisit);
 
 app.use('/api/PromotionalBanner', PromotionalBanner);
 app.use('/api', chunkuploadimage);

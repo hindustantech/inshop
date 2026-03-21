@@ -1,107 +1,135 @@
-import mongoose from "mongoose";
-
-const { Schema } = mongoose;
+import { Schema, model } from "mongoose";
 
 const shopVisitSchema = new Schema(
-{
+  {
+    // 📅 Visit Info
     visitDate: {
-        type: Date,
-        required: true,
-        index: true
+      type: Date,
+      required: true,
+      index: true,
     },
 
+    visited: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    // 🏪 Shop Details
     shopName: {
-        type: String,
-        required: true,
-        trim: true
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
     },
 
-    shopAddress: {
-        type: String,
-        required: true
+    address: {
+      type: String,
+      required: true,
     },
 
     area: {
-        type: String,
-        required: true,
-        index: true
+      type: String,
+      required: true,
+      index: true,
     },
 
-    phoneNumber: {
-        type: String,
-        required: true,
-        match: /^[6-9]\d{9}$/
+    phone: {
+      type: String,
+      required: true,
+      match: /^[0-9]{10}$/,
+      index: true,
     },
 
     category: {
-        type: String,
-        enum: [
-            "restaurant",
-            "salon",
-            "grocery",
-            "electronics",
-            "fashion",
-            "pharmacy",
-            "other"
-        ],
-        required: true
+      type: Schema.Types.ObjectId,
+        ref: "Category",
     },
 
+    // 💼 Business Conversion
     convertedToBusiness: {
-        type: Boolean,
-        default: false
+      type: Boolean,
+      default: false,
+      index: true,
     },
 
-    couponId: {
+    conversionDate: {
+      type: Date,
+    },
+
+    // 🎟 Coupon / Banner Tracking
+    campaign: {
+      couponId: {
         type: Schema.Types.ObjectId,
-        ref: "Coupon"
-    },
-
-    bannerId: {
+        ref: "Coupon",
+      },
+      bannerId: {
         type: Schema.Types.ObjectId,
-        ref: "Banner"
+        ref: "Banner",
+      },
+      source: {
+        type: String, // e.g. "push", "ads", "organic"
+        enum: ["push", "ads", "organic", "referral"],
+        default: "organic",
+      },
     },
 
-    attendanceId: {
-        type: Schema.Types.ObjectId,
-        ref: "Attendance"
+    // 💰 Revenue Tracking
+    revenue: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
-    visitedBy: {
-        type: Schema.Types.ObjectId,
-        ref: "User",
-        required: true,
-        index: true
+    currency: {
+      type: String,
+      default: "INR",
     },
 
-    revenueGenerated: {
-        type: Number,
-        default: 0
-    }
+    // 📊 Metadata (for scaling like Amazon analytics)
+    meta: {
+      deviceType: String,
+      appVersion: String,
+      ipAddress: String,
+      geo: {
+        lat: Number,
+        lng: Number,
+      },
+    },
 
-},
-{
-    timestamps: true
-}
+    // 👤 Assigned Sales Agent (optional for CRM scaling)
+    assignedTo: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
+    createdby: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
+
+    // 🔄 Status Tracking
+    status: {
+      type: String,
+      enum: ["lead", "visited", "converted", "rejected"],
+      default: "lead",
+      index: true,
+    },
+  },
+  {
+    timestamps: true, // createdAt, updatedAt
+  }
 );
 
+// 🚀 Compound Indexes (High Performance Queries)
+shopVisitSchema.index({ area: 1, category: 1 });
+shopVisitSchema.index({ visitDate: -1, convertedToBusiness: 1 });
+shopVisitSchema.index({ phone: 1, shopName: 1 });
 
-shopVisitSchema.pre("save", function(next){
+// 📈 Virtual for Conversion Rate Use
+shopVisitSchema.virtual("isHighValue").get(function () {
+  return this.revenue > 10000;
+});
 
-    if(this.convertedToBusiness){
-
-        if(!this.couponId && !this.bannerId && !this.attendanceId){
-
-            return next(
-                new Error("Conversion source required (couponId/bannerId/attendanceId)")
-            )
-
-        }
-
-    }
-
-    next()
-
-})
-
-export default mongoose.model("ShopVisit", shopVisitSchema)
+export default model("ShopVisit", shopVisitSchema);
