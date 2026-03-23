@@ -287,7 +287,8 @@ export const getAllShopVisits = async (req, res) => {
   }
 };
 
-// 📄 Export shop visits to CSV
+
+
 export const exportShopVisitsToCSV = async (req, res) => {
   try {
     const {
@@ -303,16 +304,30 @@ export const exportShopVisitsToCSV = async (req, res) => {
       assignedTo,
     } = req.query;
 
-    // Build filter object (same as getAllShopVisits)
+    /* =========================
+       1. BUILD FILTER
+    ========================== */
     const filter = {};
 
     if (area) filter.area = area;
     if (category) filter.category = category;
     if (status) filter.status = status;
-    if (convertedToBusiness !== undefined) filter.convertedToBusiness = convertedToBusiness === "true";
-    if (visited !== undefined) filter.visited = visited === "true";
-    if (createdBy) filter.createdby = createdBy;
-    if (assignedTo) filter.assignedTo = assignedTo;
+
+    if (convertedToBusiness !== undefined) {
+      filter.convertedToBusiness = convertedToBusiness === "true";
+    }
+
+    if (visited !== undefined) {
+      filter.visited = visited === "true";
+    }
+
+    if (createdBy && mongoose.Types.ObjectId.isValid(createdBy)) {
+      filter.createdby = new mongoose.Types.ObjectId(createdBy);
+    }
+
+    if (assignedTo && mongoose.Types.ObjectId.isValid(assignedTo)) {
+      filter.assignedTo = new mongoose.Types.ObjectId(assignedTo);
+    }
 
     if (startDate || endDate) {
       filter.visitDate = {};
@@ -327,43 +342,18 @@ export const exportShopVisitsToCSV = async (req, res) => {
       ];
     }
 
-    // Fetch all matching records
-    const shopVisits = await ShopVisit.find(filter)
-      .populate("category", "name")
-      .populate("campaign.couponId", "code discount type")
-      .populate("campaign.bannerId", "name imageUrl")
-      .populate("assignedTo", "name email")
-      .populate("createdby", "name email")
-      .lean();
+    /* =========================
+       2. SET CSV HEADERS
+    ========================== */
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=shop-visits-${Date.now()}.csv`
+    );
 
-    // Transform data for CSV
-    const csvData = shopVisits.map(visit => ({
-      "Visit ID": visit._id,
-      "Visit Date": visit.visitDate ? new Date(visit.visitDate).toLocaleString() : "",
-      "Visited": visit.visited ? "Yes" : "No",
-      "Shop Name": visit.shopName,
-      "Address": visit.address,
-      "Area": visit.area,
-      "Phone": visit.phone,
-      "Category": visit.category?.name || "",
-      "Converted to Business": visit.convertedToBusiness ? "Yes" : "No",
-      "Conversion Date": visit.conversionDate ? new Date(visit.conversionDate).toLocaleString() : "",
-      "Campaign Source": visit.campaign?.source || "",
-      "Coupon Code": visit.campaign?.couponId?.code || "",
-      "Coupon Discount": visit.campaign?.couponId?.discount || "",
-      "Banner Name": visit.campaign?.bannerId?.name || "",
-      "Revenue": visit.revenue,
-      "Currency": visit.currency,
-      "Status": visit.status,
-      "Device Type": visit.meta?.deviceType || "",
-      "IP Address": visit.meta?.ipAddress || "",
-      "Created By": visit.createdby?.name || visit.createdby?.email || "",
-      "Assigned To": visit.assignedTo?.name || visit.assignedTo?.email || "",
-      "Created At": visit.createdAt ? new Date(visit.createdAt).toLocaleString() : "",
-      "Updated At": visit.updatedAt ? new Date(visit.updatedAt).toLocaleString() : "",
-    }));
-
-    // Define CSV fields
+    /* =========================
+       3. CSV FIELDS
+    ========================== */
     const fields = [
       "Visit ID",
       "Visit Date",
@@ -374,11 +364,23 @@ export const exportShopVisitsToCSV = async (req, res) => {
       "Phone",
       "Category",
       "Converted to Business",
-      "Conversion Date",
-      "Campaign Source",
-      "Coupon Code",
-      "Coupon Discount",
-      "Banner Name",
+
+      // Coupon
+      "Coupon Title",
+      "Coupon Name",
+      "Coupon Discount %",
+      "Coupon Owner Name",
+      "Coupon Owner Email",
+      "Coupon Owner Phone",
+      "Coupon Created By",
+
+      // Banner
+      "Banner Title",
+      "Banner Image",
+      "Banner Owner Name",
+      "Banner Owner Email",
+
+      // Others
       "Revenue",
       "Currency",
       "Status",
@@ -390,20 +392,118 @@ export const exportShopVisitsToCSV = async (req, res) => {
       "Updated At",
     ];
 
-    // Create CSV parser
     const json2csvParser = new Parser({ fields });
-    const csv = json2csvParser.parse(csvData);
 
-    // Set response headers for CSV download
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=shop-visits-${new Date().toISOString()}.csv`
-    );
+    // Write header first
+    res.write(json2csvParser.parse([]).split("\n")[0] + "\n");
 
-    res.status(200).send(csv);
+    /* =========================
+       4. CURSOR (STREAMING)
+    ========================== */
+    const cursor = ShopVisit.find(filter)
+      .populate("category", "name")
+
+      // Coupon + Owner + Creator
+      .populate({
+        path: "campaign.couponId",
+        select: "title couponName discountPercentage ownerId createdby",
+        populate: [
+          { path: "ownerId", select: "name email phone" },
+          { path: "createdby", select: "name email" },
+        ],
+      })
+
+      // Banner + Owner
+      .populate({
+        path: "campaign.bannerId",
+        select: "title banner_image ownerId createdby",
+        populate: [
+          { path: "ownerId", select: "name email" },
+          { path: "createdby", select: "name email" },
+        ],
+      })
+
+      .populate("assignedTo", "name email")
+      .populate("createdby", "name email")
+
+      .lean()
+      .cursor();
+
+    /* =========================
+       5. STREAM TRANSFORMATION
+    ========================== */
+    for await (const visit of cursor) {
+      const row = {
+        "Visit ID": visit._id,
+        "Visit Date": visit.visitDate
+          ? new Date(visit.visitDate).toLocaleString()
+          : "",
+        "Visited": visit.visited ? "Yes" : "No",
+
+        "Shop Name": visit.shopName || "",
+        "Address": visit.address || "",
+        "Area": visit.area || "",
+        "Phone": visit.phone || "",
+        "Category": visit.category?.name || "",
+
+        "Converted to Business": visit.convertedToBusiness ? "Yes" : "No",
+
+        // Coupon
+        "Coupon Title": visit.campaign?.couponId?.title || "",
+        "Coupon Name": visit.campaign?.couponId?.couponName || "",
+        "Coupon Discount %":
+          visit.campaign?.couponId?.discountPercentage || "",
+
+        "Coupon Owner Name":
+          visit.campaign?.couponId?.ownerId?.name || "",
+        "Coupon Owner Email":
+          visit.campaign?.couponId?.ownerId?.email || "",
+        "Coupon Owner Phone":
+          visit.campaign?.couponId?.ownerId?.phone || "",
+
+        "Coupon Created By":
+          visit.campaign?.couponId?.createdby?.name || "",
+
+        // Banner
+        "Banner Title": visit.campaign?.bannerId?.title || "",
+        "Banner Image": visit.campaign?.bannerId?.banner_image || "",
+
+        "Banner Owner Name":
+          visit.campaign?.bannerId?.ownerId?.name || "",
+        "Banner Owner Email":
+          visit.campaign?.bannerId?.ownerId?.email || "",
+
+        // Others
+        "Revenue": visit.revenue || "",
+        "Currency": visit.currency || "",
+        "Status": visit.status || "",
+
+        "Device Type": visit.meta?.deviceType || "",
+        "IP Address": visit.meta?.ipAddress || "",
+
+        "Created By": visit.createdby?.name || "",
+        "Assigned To": visit.assignedTo?.name || "",
+
+        "Created At": visit.createdAt
+          ? new Date(visit.createdAt).toLocaleString()
+          : "",
+        "Updated At": visit.updatedAt
+          ? new Date(visit.updatedAt).toLocaleString()
+          : "",
+      };
+
+      const csvRow = json2csvParser.parse([row]).split("\n")[1];
+      res.write(csvRow + "\n");
+    }
+
+    /* =========================
+       6. END RESPONSE
+    ========================== */
+    res.end();
+
   } catch (error) {
-    console.error("Error exporting shop visits:", error);
+    console.error("CSV Export Error:", error);
+
     res.status(500).json({
       success: false,
       message: "Failed to export shop visits",
