@@ -453,7 +453,6 @@ export const getShopVisitById = async (req, res) => {
 };
 
 // ✏️ Update shop visit
-import mongoose from "mongoose";
 
 const isValidObjectId = (id) => {
   return mongoose.Types.ObjectId.isValid(id);
