@@ -20,8 +20,8 @@ export const createAttendanceRequest = async (req, res) => {
         const userId = req.user._id;
 
         // First get the employee record for this user
-        const employee = await Employee.findOne({ 
-            userId: userId 
+        const employee = await Employee.findOne({
+            userId: userId
         });
 
         if (!employee) {
@@ -109,7 +109,7 @@ export const createAttendanceRequest = async (req, res) => {
         }
 
         const request = await AttendanceRequest.create({
-            companyId:employee.companyId,
+            companyId: employee.companyId,
             employeeId: employee._id, // Use employee _id
             requestType,
             reason,
@@ -565,9 +565,9 @@ export const rejectAttendanceRequest = async (req, res) => {
 */
 export const cancelAttendanceRequest = async (req, res) => {
     try {
-        const { requestId } = req.params;
+        const { requestId, companyId } = req.params;
         const userId = req.user._id;
-        const companyId = req.user.companyId;
+
 
         if (!mongoose.Types.ObjectId.isValid(requestId)) {
             return res.status(400).json({
@@ -639,9 +639,9 @@ export const cancelAttendanceRequest = async (req, res) => {
 */
 export const updateAttendanceRequest = async (req, res) => {
     try {
-        const { requestId } = req.params;
+        const { requestId, companyId } = req.params;
         const userId = req.user._id;
-        const companyId = req.user.companyId;
+
         const updates = req.body;
 
         if (!mongoose.Types.ObjectId.isValid(requestId)) {
@@ -800,8 +800,8 @@ export const bulkApproveRequests = async (req, res) => {
                                 date: d
                             },
                             {
-                                $set: { 
-                                    status: "leave", 
+                                $set: {
+                                    status: "leave",
                                     approvalStatus: "approved",
                                     remarks: `Leave approved via bulk action`
                                 }
