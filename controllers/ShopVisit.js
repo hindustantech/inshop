@@ -14,65 +14,65 @@ import mongoose from "mongoose";
 
 
 export const searchcouopn = async (req, res) => {
-    try {
-        const { q = "", page = 1, limit = 10 } = req.query;
+  try {
+    const { q = "", page = 1, limit = 10 } = req.query;
 
-        const pageNumber = Number(page);
-        const limitNumber = Number(limit);
-        const skip = (pageNumber - 1) * limitNumber;
+    const pageNumber = Number(page);
+    const limitNumber = Number(limit);
+    const skip = (pageNumber - 1) * limitNumber;
 
-        const searchConditions = [];
+    const searchConditions = [];
 
-        if (q) {
-            searchConditions.push(
-                { couponName: { $regex: q, $options: "i" } },
-                { coupon_name: { $regex: q, $options: "i" } },
-                { title: { $regex: q, $options: "i" } },
-                { copuon_srno: { $regex: q, $options: "i" } },
-                { owner_phone: { $regex: q, $options: "i" } }
-            );
-        }
-
-        const filter = {
-            active: true,
-            approveowner: true,
-            status: "published",
-            ...(searchConditions.length > 0 && { $or: searchConditions })
-        };
-
-        const [coupons, total] = await Promise.all([
-            Coupon.find(filter)
-                .populate("category", "name")
-                .populate("promotion", "title")
-                .populate("ownerId", "name phone email")
-                .sort({ creationDate: -1 })
-                .skip(skip)
-                .limit(limitNumber)
-                .lean(),
-
-            Coupon.countDocuments(filter)
-        ]);
-
-        return res.status(200).json({
-            success: true,
-            message: "Coupons fetched successfully",
-            pagination: {
-                total,
-                page: pageNumber,
-                limit: limitNumber,
-                totalPages: Math.ceil(total / limitNumber)
-            },
-            data: coupons
-        });
-
-    } catch (error) {
-        console.error("Coupon search error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error"
-        });
+    if (q) {
+      searchConditions.push(
+        { couponName: { $regex: q, $options: "i" } },
+        { coupon_name: { $regex: q, $options: "i" } },
+        { title: { $regex: q, $options: "i" } },
+        { copuon_srno: { $regex: q, $options: "i" } },
+        { owner_phone: { $regex: q, $options: "i" } }
+      );
     }
+
+    const filter = {
+      active: true,
+      approveowner: true,
+      status: "published",
+      ...(searchConditions.length > 0 && { $or: searchConditions })
+    };
+
+    const [coupons, total] = await Promise.all([
+      Coupon.find(filter)
+        .populate("category", "name")
+        .populate("promotion", "title")
+        .populate("ownerId", "name phone email")
+        .sort({ creationDate: -1 })
+        .skip(skip)
+        .limit(limitNumber)
+        .lean(),
+
+      Coupon.countDocuments(filter)
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Coupons fetched successfully",
+      pagination: {
+        total,
+        page: pageNumber,
+        limit: limitNumber,
+        totalPages: Math.ceil(total / limitNumber)
+      },
+      data: coupons
+    });
+
+  } catch (error) {
+    console.error("Coupon search error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
 };
 
 
@@ -453,11 +453,17 @@ export const getShopVisitById = async (req, res) => {
 };
 
 // ✏️ Update shop visit
+import mongoose from "mongoose";
+
+const isValidObjectId = (id) => {
+  return mongoose.Types.ObjectId.isValid(id);
+};
+
 export const updateShopVisit = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!isValidObjectId(id)) {
       return res.status(400).json({
         success: false,
         message: "Invalid shop visit ID",
@@ -482,7 +488,9 @@ export const updateShopVisit = async (req, res) => {
       assignedTo,
     } = req.body;
 
-    // Validate phone if being updated
+    // -------------------------
+    // Validation Layer
+    // -------------------------
     if (phone && !/^[0-9]{10}$/.test(phone)) {
       return res.status(400).json({
         success: false,
@@ -490,9 +498,12 @@ export const updateShopVisit = async (req, res) => {
       });
     }
 
-    // Build update object
     const updateData = {};
+    const unsetData = {}; // for removing invalid fields
 
+    // -------------------------
+    // Primitive Fields
+    // -------------------------
     if (visitDate !== undefined) updateData.visitDate = visitDate;
     if (visited !== undefined) updateData.visited = visited;
     if (shopName !== undefined) updateData.shopName = shopName;
@@ -506,13 +517,48 @@ export const updateShopVisit = async (req, res) => {
     if (currency !== undefined) updateData.currency = currency;
     if (status !== undefined) updateData.status = status;
     if (assignedTo !== undefined) updateData.assignedTo = assignedTo;
-    
+
+    // -------------------------
+    // Campaign Handling (CRITICAL FIX)
+    // -------------------------
     if (campaign) {
-      updateData["campaign.couponId"] = campaign.couponId;
-      updateData["campaign.bannerId"] = campaign.bannerId;
-      updateData["campaign.source"] = campaign.source;
+      // couponId
+      if (campaign.couponId) {
+        if (isValidObjectId(campaign.couponId)) {
+          updateData["campaign.couponId"] = campaign.couponId;
+        } else {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid couponId",
+          });
+        }
+      } else if (campaign.couponId === "" || campaign.couponId === null) {
+        unsetData["campaign.couponId"] = "";
+      }
+
+      // bannerId
+      if (campaign.bannerId) {
+        if (isValidObjectId(campaign.bannerId)) {
+          updateData["campaign.bannerId"] = campaign.bannerId;
+        } else {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid bannerId",
+          });
+        }
+      } else if (campaign.bannerId === "" || campaign.bannerId === null) {
+        unsetData["campaign.bannerId"] = "";
+      }
+
+      // source (string safe)
+      if (campaign.source !== undefined) {
+        updateData["campaign.source"] = campaign.source;
+      }
     }
-    
+
+    // -------------------------
+    // Meta Handling
+    // -------------------------
     if (meta) {
       if (meta.deviceType) updateData["meta.deviceType"] = meta.deviceType;
       if (meta.appVersion) updateData["meta.appVersion"] = meta.appVersion;
@@ -520,9 +566,17 @@ export const updateShopVisit = async (req, res) => {
       if (meta.geo) updateData["meta.geo"] = meta.geo;
     }
 
+    // -------------------------
+    // Final Update Query
+    // -------------------------
+    const updateQuery = {
+      ...(Object.keys(updateData).length && { $set: updateData }),
+      ...(Object.keys(unsetData).length && { $unset: unsetData }),
+    };
+
     const updatedShopVisit = await ShopVisit.findByIdAndUpdate(
       id,
-      updateData,
+      updateQuery,
       { new: true, runValidators: true }
     )
       .populate("category", "name")
@@ -538,14 +592,16 @@ export const updateShopVisit = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: updatedShopVisit,
       message: "Shop visit updated successfully",
     });
+
   } catch (error) {
     console.error("Error updating shop visit:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: "Failed to update shop visit",
       error: error.message,
