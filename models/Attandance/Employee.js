@@ -10,7 +10,7 @@ const employeeSchema = new mongoose.Schema({
         required: true,
         index: true
     },
- 
+
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -19,7 +19,7 @@ const employeeSchema = new mongoose.Schema({
     user_name: {
         type: String,
     },
-    
+
     empCode: {
         type: String,
 
@@ -72,7 +72,14 @@ const employeeSchema = new mongoose.Schema({
             required: true
         },
         radius: {
-            type: Number // meters
+            type: Number 
+        },
+        locationtype: {
+            type: String,
+            enum: ['current', 'employee']
+        },
+        manual: {
+            type: String,
         }
     }
 
