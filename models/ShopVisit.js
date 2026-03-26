@@ -112,7 +112,7 @@ const shopVisitSchema = new Schema(
     // 🔄 Status Tracking
     status: {
       type: String,
-      enum: ["lead", "visited", "converted", "rejected"],
+      enum: ["lead", "visited","follow_up_visited","new_visited", "converted", "rejected"],
       default: "lead",
       index: true,
     },

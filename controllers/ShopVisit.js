@@ -257,8 +257,8 @@ export const getAllShopVisits = async (req, res) => {
     const [shopVisits, totalCount] = await Promise.all([
       ShopVisit.find(filter)
         .populate("category", "name")
-        .populate("campaign.couponId", "code discount type")
-        .populate("campaign.bannerId", "name imageUrl")
+        .populate("campaign.couponId", "title coupon_ discount type")
+        .populate("campaign.bannerId", "title imageUrl")
         .populate("assignedTo", "name email role")
         .populate("createdby", "name email role")
         .sort(sort)
