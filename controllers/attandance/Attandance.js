@@ -2209,17 +2209,12 @@ export const getTodayAttendance = async (req, res) => {
         ====================== */
 
         return res.status(200).json({
-
             success: true,
-
             date: today,
-
             status,
-
             punchIn: record?.punchIn || null,
-
             punchOut: record?.punchOut || null,
-
+            manual: employee?.manual || null,
             flags: {
                 isLate: (record?.workSummary?.lateMinutes || 0) > 0,
                 isEarlyLeave: (record?.workSummary?.earlyLeaveMinutes || 0) > 0,
