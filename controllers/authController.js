@@ -1044,7 +1044,7 @@ export const UpdateManualAddress = async (req, res) => {
 const generateUniqueReferralCode = async (maxRetries = 5) => {
   for (let i = 0; i < maxRetries; i++) {
     // Generate code with 3 digits after IND (matching your validation)
-    const code = `IND${Math.floor(100 + Math.random() * 900)}`;
+    const code = `IND${Math.floor(1000 + Math.random() * 9000)}`;
 
     const existingUser = await User.findOne({ referalCode: code });
     if (!existingUser) {
