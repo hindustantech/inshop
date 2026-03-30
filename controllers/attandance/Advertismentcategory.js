@@ -135,6 +135,7 @@ export const deleteCategory = async (req, res) => {
 // @desc    Toggle category status (active/inactive)
 // @route   PATCH /api/advertisement-categories/:id/toggle-status
 // @access  Private/Admin
+
 export const toggleCategoryStatus = async (req, res) => {
     try {
         const { id } = req.params;
@@ -168,6 +169,7 @@ export const toggleCategoryStatus = async (req, res) => {
 // @desc    Get all advertisement categories
 // @route   GET /api/advertisement-categories
 // @access  Public
+
 export const getAllCategories = async (req, res) => {
     try {
         // Pagination
@@ -228,6 +230,7 @@ export const getAllCategories = async (req, res) => {
 // @desc    Get single advertisement category by ID
 // @route   GET /api/advertisement-categories/:id
 // @access  Public
+
 export const getCategoryById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -257,6 +260,7 @@ export const getCategoryById = async (req, res) => {
 // @desc    Get all active categories (for frontend dropdowns)
 // @route   GET /api/advertisement-categories/active
 // @access  Public
+
 export const getActiveCategories = async (req, res) => {
     try {
         const categories = await AdvertisementCategory.find({ status: "active" })

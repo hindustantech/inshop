@@ -2307,6 +2307,7 @@ export const getDailyAttendance = async (req, res) => {
 /**
  * @desc Attendance Range Summary
  */
+
 export const getRangeSummary = async (req, res) => {
 
     try {

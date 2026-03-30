@@ -1041,27 +1041,19 @@ export const UpdateManualAddress = async (req, res) => {
 };
 
 
-export const generateUniqueReferralCode = async () => {
-  let code;
-  let exists = true;
-  let attempts = 0;
+const generateUniqueReferralCode = async (maxRetries = 5) => {
+  for (let i = 0; i < maxRetries; i++) {
+    // Generate code with 3 digits after IND (matching your validation)
+    const code = `IND${Math.floor(100 + Math.random() * 900)}`;
 
-  while (exists && attempts < 5) {
-    code = "IND" + Math.floor(100 + Math.random() * 900);
-
-    exists = await User.exists({
-      referalCode: code,
-    });
-
-    attempts++;
+    const existingUser = await User.findOne({ referalCode: code });
+    if (!existingUser) {
+      return code;
+    }
   }
-
-  if (exists) {
-    throw new Error("Referral code generation failed");
-  }
-
-  return code;
+  throw new Error('Referral code generation failed');
 };
+
 
 
 export const startAuth = async (req, res) => {
