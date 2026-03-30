@@ -1041,7 +1041,7 @@ export const UpdateManualAddress = async (req, res) => {
 };
 
 
-const generateUniqueReferralCode = async (maxRetries = 5) => {
+const generateUniqueReferralCode = async (maxRetries = 10) => {
   for (let i = 0; i < maxRetries; i++) {
     // Generate code with 3 digits after IND (matching your validation)
     const code = `IND${Math.floor(1000 + Math.random() * 9000)}`;
