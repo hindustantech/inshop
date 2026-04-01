@@ -10,6 +10,13 @@ const userPlanSchema = new Schema(
             required: true,
             index: true,
         },
+        ownerId: {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+            index: true,
+        },
+        
         CouponId: {
             type: Schema.Types.ObjectId,
             ref: "Coupon",
@@ -28,6 +35,7 @@ const userPlanSchema = new Schema(
             ref: "Plan",
             required: true,
         },
+        
 
         status: {
             type: String,

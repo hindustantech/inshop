@@ -1774,11 +1774,21 @@ export async function verifyCouponPayment(userId, planId, targetOwnerId = null) 
   // If targetOwnerId is provided, check payment for that owner
   const actualUserId = targetOwnerId || userId;
 
-  const userPlan = await UserPlan.findOne({
-    userId: actualUserId,
-    planId,
-    status: "active",
-  }).populate("planId");
+  const userPlan = await UserPlan.findOneAndUpdate(
+    {
+      userId,
+      planId,
+      status: "active",
+    },
+    {
+      $set: {
+        ownerId: actualUserId, // ✅ update ownerId
+      },
+    },
+    {
+      new: true, // return updated document
+    }
+  ).populate("planId");
 
   if (!userPlan) {
     return {
@@ -1811,32 +1821,12 @@ export async function verifyCouponPayment(userId, planId, targetOwnerId = null) 
     };
   }
 
-  // Check if plan has coupons left
-  const startDate = userPlan.startDate || userPlan.createdAt;
-  const couponCount = await Coupon.countDocuments({
-    ownerId: actualUserId,
-    planId: plan._id,
-    createdAt: { $gte: startDate },
-    status: { $in: ["published", "draft"] },
-  });
-
-  if (plan.couponsIncluded > 0 && couponCount >= plan.couponsIncluded) {
-    return {
-      success: false,
-      code: "COUPON_LIMIT_REACHED",
-      message: `Plan coupon limit reached. Maximum ${plan.couponsIncluded} coupons allowed.`,
-      currentCount: couponCount,
-      maxLimit: plan.couponsIncluded,
-    };
-  }
 
   return {
     success: true,
     userPlan,
     plan,
-    usedCoupons: couponCount,
-    remainingCoupons: plan.couponsIncluded > 0 ? plan.couponsIncluded - couponCount : null,
-  };
+    message: "Payment verified successfully",};
 }
 
 export const createCouponAdmin = async (req, res) => {
@@ -1927,6 +1917,7 @@ export const createCouponAdmin = async (req, res) => {
 
       // Verify payment for the final owner (not necessarily the creator)
       paymentInfo = await verifyCouponPayment(userId, planId, finalOwnerId);
+      conslole.log("Payment verification result:", paymentInfo);
       if (!paymentInfo.success) {
         return res.status(402).json({
           success: false,
