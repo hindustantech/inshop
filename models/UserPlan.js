@@ -12,11 +12,9 @@ const userPlanSchema = new Schema(
         },
         ownerId: {
             type: Schema.Types.ObjectId,
-            ref: "User",
-            required: true,
-            index: true,
+            ref: "User"
         },
-        
+
         CouponId: {
             type: Schema.Types.ObjectId,
             ref: "Coupon",
