@@ -1917,7 +1917,7 @@ export const createCouponAdmin = async (req, res) => {
 
       // Verify payment for the final owner (not necessarily the creator)
       paymentInfo = await verifyCouponPayment(userId, planId, finalOwnerId);
-      conslole.log("Payment verification result:", paymentInfo);
+      console.log("Payment verification result:", paymentInfo);
       if (!paymentInfo.success) {
         return res.status(402).json({
           success: false,
