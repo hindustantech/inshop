@@ -1,5 +1,5 @@
 import { OAuth2Client } from "google-auth-library";
-import logger from "../utils/logger";
+import logger from "../utils/logger.js";
 
 const client = new OAuth2Client();
 
