@@ -1405,6 +1405,47 @@ export const oauthAuthController = async (req, res) => {
     });
   }
 };
+export const UpdatePhone = async (req, res) => {
+  try {    const { phone } = req.body;
+    const userId = req?.user?.id;
+    
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number is required",
+      });
+    }
+
+    const existingUser = await User.findOne({ phone: phone.trim() });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number already in use",
+      });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId, // the user to update
+      { phone: phone.trim() }, // update this field
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Phone number updated successfully",
+      data: updatedUser,
+    });
+  }
+
+    catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
 
 export const completeProfile = async (req, res) => {
   try {
