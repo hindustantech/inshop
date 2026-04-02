@@ -12,7 +12,7 @@ import ReferralUsage from '../models/ReferralUsage.js'
 import mongoose from "mongoose";
 import logger from '../utils/logger.js';
 import PatnerProfile from '../models/PatnerProfile.js';
-
+import { verifyGoogleOwnership } from '../config/OAuth.js';
 import { Parser } from 'json2csv';
 
 
@@ -143,9 +143,6 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 
-/* -------------------------------
-   Export Users (JSON → CSV)
--------------------------------- */
 
 /* -------------------------------
    Export Users By Location
@@ -1259,6 +1256,155 @@ export const completOtp = async (req, res) => {
 };
 
 
+
+
+
+export const oauthAuthController = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const { idToken, deviceId, referralCode, devicetoken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        success: false,
+        message: "idToken is required",
+      });
+    }
+
+    // 🔐 Step 1: Verify Google Token
+    const googleData = await verifyGoogleOwnership(idToken);
+
+    const { googleId, email, name, photo } = googleData;
+
+    if (!googleId) {
+      throw new Error("Invalid Google token");
+    }
+
+    // 🔎 Step 2: Find user (optimized query)
+    let user = await User.findOne({
+      $or: [
+        { "oauthProviders.google.id": googleId },
+        ...(email ? [{ email }] : []),
+      ],
+    }).session(session);
+
+    let isNewUser = false;
+
+    // 🆕 Step 3: Create User (Atomic)
+    if (!user) {
+      const ownReferral = await generateUniqueReferralCode();
+
+      user = await User.create(
+        [
+          {
+            name,
+            email,
+            profileImage: photo,
+            referalCode: ownReferral,
+            referredBy: referralCode || null,
+            deviceId: deviceId || null,
+            devicetoken: devicetoken || null,
+            oauthProviders: {
+              google: { id: googleId, email },
+            },
+            isVerified: true,
+            accountStatus: "ACTIVE",
+          },
+        ],
+        { session }
+      );
+
+      user = user[0];
+      isNewUser = true;
+    } else {
+      let updatePayload = {};
+      let needsUpdate = false;
+
+      // 🔗 Step 4: Link Google if missing
+      if (!user.oauthProviders?.google?.id) {
+        updatePayload["oauthProviders.google"] = {
+          id: googleId,
+          email,
+        };
+        needsUpdate = true;
+      }
+
+      // 📱 Step 5: Update deviceId (single value)
+      if (deviceId && user.deviceId !== deviceId) {
+        updatePayload.deviceId = deviceId;
+        needsUpdate = true;
+      }
+
+      // 🔔 Step 6: Update device token
+      if (devicetoken && user.devicetoken !== devicetoken) {
+        updatePayload.devicetoken = devicetoken;
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        user = await User.findByIdAndUpdate(
+          user._id,
+          { $set: updatePayload },
+          { new: true, session }
+        );
+      }
+    }
+
+    // 🚫 Step 7: Account Status Check
+    if (
+      user.accountStatus === "SUSPENDED" ||
+      user.suspend === true
+    ) {
+      await session.abortTransaction();
+
+      return res.status(403).json({
+        success: false,
+        message: "Account suspended",
+      });
+    }
+
+    // 🔐 Step 8: Generate JWT
+    const token = generateToken(user._id, user.type);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // ✅ Step 9: Response (lean payload)
+    return res.status(200).json({
+      success: true,
+      message: isNewUser
+        ? "User registered successfully"
+        : "Login successful",
+      data: {
+        isNewUser,
+        token,
+        user: {
+          id: user._id,
+          uid: user.uid,
+          name: user.name,
+          email: user.email,
+          profileImage: user.profileImage,
+          type: user.type,
+          accountStatus: user.accountStatus,
+        },
+      },
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
+    console.error("OAuth Auth Error:", error);
+
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized Google login",
+    });
+  }
+};
 
 export const completeProfile = async (req, res) => {
   try {

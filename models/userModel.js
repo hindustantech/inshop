@@ -133,6 +133,13 @@ const userSchema = new mongoose.Schema({
     type: String,
   }
   ,
+  oauthProviders: {
+    google: {
+      id: String,
+      email: String,
+    }
+  },
+
   corpareteUser: {
     type: Boolean,
     default: false
