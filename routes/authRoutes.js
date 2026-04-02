@@ -30,7 +30,8 @@ import {
     restoreAccount,
     requestAccountDeletion,
     getDeletionStatus,
-    oauthAuthController
+    oauthAuthController,
+    UpdatePhone
 } from '../controllers/authController.js';
 import authMiddleware from '../middlewares/authMiddleware.js';
 import profileUploadMiddleware from '../middlewares/profileUploadMiddleware.js';
@@ -61,8 +62,9 @@ router.delete("/deleteUser", authMiddleware, deleteUser);
 
 router.post('/startAuth', startAuth);
 router.post('/oauthAuthController', oauthAuthController);
+router.post('/UpdatePhone', authMiddleware, UpdatePhone);
 router.post('/completOtp', completOtp);
-router.post('/completeProfile', authMiddleware, upload.single('profileImage'),completeProfile);
+router.post('/completeProfile', authMiddleware, upload.single('profileImage'), completeProfile);
 router.post('/restoreAccount', authMiddleware, restoreAccount);
 router.post('/requestAccountDeletion', authMiddleware, requestAccountDeletion);
 router.get('/getDeletionStatus', authMiddleware, getDeletionStatus);

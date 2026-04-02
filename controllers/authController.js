@@ -1427,7 +1427,7 @@ export const oauthAuthController = async (req, res) => {
 export const UpdatePhone = async (req, res) => {
   try {
     const { phone } = req.body;
-    const userId = req?.user?.id;
+    const userId = req?.user?.id || req?.user?._id;
 
     if (!phone) {
       return res.status(400).json({
