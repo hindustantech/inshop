@@ -19,6 +19,7 @@ export const verifyGoogleOwnership = async (idToken) => {
         });
 
         const payload = ticket.getPayload();
+        log("Google token payload:", payload);
 
         if (!payload) {
             throw new Error("Invalid token payload");
