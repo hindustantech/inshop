@@ -1267,7 +1267,7 @@ export const oauthAuthController = async (req, res) => {
   try {
     session.startTransaction();
 
-    const { idToken, deviceId, referralCode, devicetoken } = req.body;
+    const { idToken, deviceId, referralCode, devicetoken, type } = req.body;
 
     if (!idToken) {
       return res.status(400).json({
@@ -1314,6 +1314,7 @@ export const oauthAuthController = async (req, res) => {
             referalCode: ownReferral,
             referredBy: referralCode || null,
             deviceId: deviceId || null,
+            type: type || "user",
             devicetoken: devicetoken || null,
             oauthProviders: {
               google: {
@@ -1424,9 +1425,10 @@ export const oauthAuthController = async (req, res) => {
 };
 
 export const UpdatePhone = async (req, res) => {
-  try {    const { phone } = req.body;
+  try {
+    const { phone } = req.body;
     const userId = req?.user?.id;
-    
+
     if (!phone) {
       return res.status(400).json({
         success: false,
@@ -1455,7 +1457,7 @@ export const UpdatePhone = async (req, res) => {
     });
   }
 
-    catch (error) {
+  catch (error) {
     res.status(500).json({
       success: false,
       message: "Server error",
