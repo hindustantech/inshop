@@ -1259,6 +1259,8 @@ export const completOtp = async (req, res) => {
 
 
 
+
+
 export const oauthAuthController = async (req, res) => {
   const session = await mongoose.startSession();
 
@@ -1277,13 +1279,19 @@ export const oauthAuthController = async (req, res) => {
     // 🔐 Step 1: Verify Google Token
     const googleData = await verifyGoogleOwnership(idToken);
 
-    const { googleId, email, name, photo } = googleData;
+    const {
+      providerId: googleId,
+      email,
+      name,
+      avatar,
+      emailVerified,
+    } = googleData;
 
     if (!googleId) {
-      throw new Error("Invalid Google token");
+      throw new Error("INVALID_GOOGLE_ID");
     }
 
-    // 🔎 Step 2: Find user (optimized query)
+    // 🔎 Step 2: Find user (Indexed Query)
     let user = await User.findOne({
       $or: [
         { "oauthProviders.google.id": googleId },
@@ -1293,37 +1301,40 @@ export const oauthAuthController = async (req, res) => {
 
     let isNewUser = false;
 
-    // 🆕 Step 3: Create User (Atomic)
+    // 🆕 Step 3: Create User (Atomic Write)
     if (!user) {
       const ownReferral = await generateUniqueReferralCode();
 
-      user = await User.create(
+      const [newUser] = await User.create(
         [
           {
             name,
             email,
-            profileImage: photo,
+            profileImage: avatar,
             referalCode: ownReferral,
             referredBy: referralCode || null,
             deviceId: deviceId || null,
             devicetoken: devicetoken || null,
             oauthProviders: {
-              google: { id: googleId, email },
+              google: {
+                id: googleId,
+                email,
+              },
             },
-            isVerified: true,
+            isVerified: emailVerified,
             accountStatus: "ACTIVE",
           },
         ],
         { session }
       );
 
-      user = user[0];
+      user = newUser;
       isNewUser = true;
     } else {
       let updatePayload = {};
       let needsUpdate = false;
 
-      // 🔗 Step 4: Link Google if missing
+      // 🔗 Link Google if not linked
       if (!user.oauthProviders?.google?.id) {
         updatePayload["oauthProviders.google"] = {
           id: googleId,
@@ -1332,15 +1343,21 @@ export const oauthAuthController = async (req, res) => {
         needsUpdate = true;
       }
 
-      // 📱 Step 5: Update deviceId (single value)
+      // 📱 Device ID update
       if (deviceId && user.deviceId !== deviceId) {
         updatePayload.deviceId = deviceId;
         needsUpdate = true;
       }
 
-      // 🔔 Step 6: Update device token
+      // 🔔 Device Token update
       if (devicetoken && user.devicetoken !== devicetoken) {
         updatePayload.devicetoken = devicetoken;
+        needsUpdate = true;
+      }
+
+      // 🖼️ Optional profile sync (like Google refresh)
+      if (avatar && user.profileImage !== avatar) {
+        updatePayload.profileImage = avatar;
         needsUpdate = true;
       }
 
@@ -1353,11 +1370,8 @@ export const oauthAuthController = async (req, res) => {
       }
     }
 
-    // 🚫 Step 7: Account Status Check
-    if (
-      user.accountStatus === "SUSPENDED" ||
-      user.suspend === true
-    ) {
+    // 🚫 Step 4: Account Status Check (Fail Fast)
+    if (user.accountStatus === "SUSPENDED" || user.suspend === true) {
       await session.abortTransaction();
 
       return res.status(403).json({
@@ -1366,13 +1380,13 @@ export const oauthAuthController = async (req, res) => {
       });
     }
 
-    // 🔐 Step 8: Generate JWT
+    // 🔐 Step 5: Generate JWT (stateless auth)
     const token = generateToken(user._id, user.type);
 
     await session.commitTransaction();
     session.endSession();
 
-    // ✅ Step 9: Response (lean payload)
+    // ✅ Step 6: Response (Lean, frontend optimized)
     return res.status(200).json({
       success: true,
       message: isNewUser
@@ -1397,7 +1411,10 @@ export const oauthAuthController = async (req, res) => {
     await session.abortTransaction();
     session.endSession();
 
-    console.error("OAuth Auth Error:", error);
+    console.error("OAuth Auth Error:", {
+      message: error.message,
+      stack: error.stack,
+    });
 
     return res.status(401).json({
       success: false,
@@ -1405,6 +1422,7 @@ export const oauthAuthController = async (req, res) => {
     });
   }
 };
+
 export const UpdatePhone = async (req, res) => {
   try {    const { phone } = req.body;
     const userId = req?.user?.id;

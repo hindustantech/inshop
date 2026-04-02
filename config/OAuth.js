@@ -60,7 +60,7 @@ export const verifyGoogleOwnership = async (idToken) => {
     // }
 
     // ✅ Normalized user object (standard across services)
-    return {
+     return {
       provider: "google",
       providerId: payload.sub,
       email: payload.email?.toLowerCase() || null,
@@ -68,7 +68,6 @@ export const verifyGoogleOwnership = async (idToken) => {
       avatar: payload.picture || null,
       emailVerified: payload.email_verified,
     };
-
   } catch (error) {
     console.error("❌ Google Auth Error:", {
       message: error.message,
