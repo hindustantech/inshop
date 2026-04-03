@@ -1259,7 +1259,40 @@ export const completOtp = async (req, res) => {
 
 
 
+// services/patner.service.js
 
+
+export const createPatnerProfileMinimal = async ({
+  user,
+  session,
+  payload = {},
+}) => {
+  const {
+    firm_name = user.name || "Default Firm",
+    logo = null, // image URL from frontend
+  } = payload;
+
+  // 🛑 Idempotency check (critical in production)
+  const existing = await PatnerProfile.findOne({
+    User_id: user._id,
+  }).session(session);
+
+  if (existing) return existing;
+
+  const [patner] = await PatnerProfile.create(
+    [
+      {
+        User_id: user._id,
+        email: user.email,
+        firm_name,
+        logo, // single image string
+      },
+    ],
+    { session }
+  );
+
+  return patner;
+};
 
 export const oauthAuthController = async (req, res) => {
   const session = await mongoose.startSession();
@@ -1381,6 +1414,16 @@ export const oauthAuthController = async (req, res) => {
       });
     }
 
+    if (isNewUser && user.type === "patner") {
+      await createPatnerProfileMinimal({
+        user,
+        session,
+        payload: {
+          firm_name: name,     // default from Google
+          logo: avatar || null // Google profile image
+        },
+      });
+    }
     // 🔐 Step 5: Generate JWT (stateless auth)
     const token = generateToken(user._id, user.type);
 
