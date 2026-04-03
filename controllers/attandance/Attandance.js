@@ -1976,12 +1976,7 @@ const formatMinutesToHours = (minutes = 0) => {
     return hours.toFixed(2); // ✅ FIXED
 };
 
-const buildMonthRange = (year, month) => {
-    const start = new Date(year, month - 1, 1);
-    const end = new Date(year, month, 0);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
-};
+
 
 /* ============================
    Controller
