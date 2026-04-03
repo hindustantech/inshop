@@ -2422,68 +2422,35 @@ export const getRangeSummary = async (req, res) => {
    EXPORT: Attendance CSV (IST SAFE)
 ====================================================== */
 
+
+
 // export const exportAttendanceCSV = async (req, res) => {
-
 //     try {
-
 //         const companyId = req.user._id;
-
-//         /* ================================
-//            Force IST Timezone
-//         ================================= */
 
 //         moment.tz.setDefault("Asia/Kolkata");
 
-//         const {
-//             startDate,
-//             endDate,
-//             month,   // YYYY-MM
-//             year
-//         } = req.query;
+//         const { startDate, endDate, month, year } = req.query;
 
 //         let fromDateIST;
 //         let toDateIST;
 
-//         /* ================================
+//         /* --------------------------------------------------
 //            Date Filter (IST)
-//         ================================= */
+//         -------------------------------------------------- */
 
-//         // Monthly
 //         if (month) {
-
-//             fromDateIST = moment
-//                 .tz(month, "YYYY-MM", "Asia/Kolkata")
-//                 .startOf("month");
-
-//             toDateIST = moment
-//                 .tz(month, "YYYY-MM", "Asia/Kolkata")
-//                 .endOf("month");
+//             fromDateIST = moment.tz(month, "YYYY-MM", "Asia/Kolkata").startOf("month");
+//             toDateIST = moment.tz(month, "YYYY-MM", "Asia/Kolkata").endOf("month");
 //         }
-
-//         // Custom Range
 //         else if (startDate && endDate) {
-
-//             fromDateIST = moment
-//                 .tz(startDate, "YYYY-MM-DD", "Asia/Kolkata")
-//                 .startOf("day");
-
-//             toDateIST = moment
-//                 .tz(endDate, "YYYY-MM-DD", "Asia/Kolkata")
-//                 .endOf("day");
+//             fromDateIST = moment.tz(startDate, "YYYY-MM-DD", "Asia/Kolkata").startOf("day");
+//             toDateIST = moment.tz(endDate, "YYYY-MM-DD", "Asia/Kolkata").endOf("day");
 //         }
-
-//         // Yearly
 //         else if (year) {
-
-//             fromDateIST = moment
-//                 .tz(`${year}-01-01`, "Asia/Kolkata")
-//                 .startOf("year");
-
-//             toDateIST = moment
-//                 .tz(`${year}-12-31`, "Asia/Kolkata")
-//                 .endOf("year");
+//             fromDateIST = moment.tz(`${year}-01-01`, "Asia/Kolkata").startOf("year");
+//             toDateIST = moment.tz(`${year}-12-31`, "Asia/Kolkata").endOf("year");
 //         }
-
 //         else {
 //             return res.status(400).json({
 //                 success: false,
@@ -2491,26 +2458,78 @@ export const getRangeSummary = async (req, res) => {
 //             });
 //         }
 
-//         /* ================================
-//            Convert IST → UTC (DB Query)
-//         ================================= */
-
 //         const fromUTC = fromDateIST.clone().utc().toDate();
 //         const toUTC = toDateIST.clone().utc().toDate();
 
-//         /* ================================
-//            Fetch Attendance
-//         ================================= */
+//         /* --------------------------------------------------
+//            Aggregation (Attendance → Employee → User)
+//         -------------------------------------------------- */
 
-//         const records = await Attendance.find({
-//             companyId,
-//             date: {
-//                 $gte: fromUTC,
-//                 $lte: toUTC
+//         const records = await Attendance.aggregate([
+//             {
+//                 $match: {
+//                     companyId: new mongoose.Types.ObjectId(companyId),
+//                     date: { $gte: fromUTC, $lte: toUTC }
+//                 }
+//             },
+
+//             /* Join Employee */
+//             {
+//                 $lookup: {
+//                     from: "employees",
+//                     let: { empId: "$employeeId" },
+//                     pipeline: [
+//                         { $match: { $expr: { $eq: ["$_id", "$$empId"] } } },
+//                         {
+//                             $project: {
+//                                 user_name: 1,
+//                                 empCode: 1,
+//                                 userId: 1
+//                             }
+//                         }
+//                     ],
+//                     as: "employee"
+//                 }
+//             },
+//             { $unwind: { path: "$employee", preserveNullAndEmptyArrays: true } },
+
+//             /* Join User */
+//             {
+//                 $lookup: {
+//                     from: "users",
+//                     let: { uid: "$employee.userId" },
+//                     pipeline: [
+//                         { $match: { $expr: { $eq: ["$_id", "$$uid"] } } },
+//                         {
+//                             $project: {
+//                                 email: 1,
+//                                 phone: 1,
+//                                 name: 1
+//                             }
+//                         }
+//                     ],
+//                     as: "user"
+//                 }
+//             },
+//             { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+
+//             /* Flatten */
+//             {
+//                 $addFields: {
+//                     employeeName: "$employee.user_name",
+//                     employeeCode: "$employee.empCode",
+//                     employeeEmail: "$user.email",
+//                     employeePhone: "$user.phone"
+//                 }
+//             },
+
+//             {
+//                 $project: {
+//                     employee: 0,
+//                     user: 0
+//                 }
 //             }
-//         })
-//             .populate("employeeId", "user_name empCode userId ")
-//             .lean();
+//         ], { allowDiskUse: true });
 
 //         if (!records.length) {
 //             return res.status(404).json({
@@ -2519,108 +2538,64 @@ export const getRangeSummary = async (req, res) => {
 //             });
 //         }
 
-//         /* ================================
-//            Format CSV (IST Display)
-//         ================================= */
+//         /* --------------------------------------------------
+//            Format CSV
+//         -------------------------------------------------- */
 
 //         const formattedData = records.map(row => {
 
-//             /* Break Calculation (IST Safe) */
 //             const totalBreakMinutes = row.breaks?.reduce((acc, b) => {
-
 //                 if (b.start && b.end) {
-
 //                     const start = moment(b.start).tz("Asia/Kolkata");
 //                     const end = moment(b.end).tz("Asia/Kolkata");
-
 //                     return acc + end.diff(start, "minutes");
 //                 }
-
 //                 return acc;
-
 //             }, 0) || 0;
 
 //             return {
+//                 EmployeeCode: row.employeeCode || "N/A",
 
-//                 /* Employee */
-//                 CompanyID: row.companyId,
+//                 EmployeeName: row.employeeName || "N/A",
+//                 EmployeeEmail: row.employeeEmail || "N/A",
+//                 EmployeePhone: row.employeePhone || "N/A",
 
-//                 EmployeeName: row.employeeId?.user_name || "N/A",
-//                 EmployeeEmail: row.employeeId?.userId?.email || "N/A",
-//                 EmployeePhone: row.employeeId?.userId?.email || "N/A",
-//                 EmployeeCode: row.employeeId?.empCode || "N/A",
 
-//                 /* Date (IST) */
-//                 Date: moment(row.date)
-//                     .tz("Asia/Kolkata")
-//                     .format("DD-MMM-YYYY"),
+//                 Date: moment(row.date).tz("Asia/Kolkata").format("DD-MMM-YYYY"),
+//                 Day: moment(row.date).tz("Asia/Kolkata").format("dddd"),
+//                 Month: moment(row.date).tz("Asia/Kolkata").format("MMMM"),
+//                 Year: moment(row.date).tz("Asia/Kolkata").format("YYYY"),
 
-//                 Day: moment(row.date)
-//                     .tz("Asia/Kolkata")
-//                     .format("dddd"),
-
-//                 Month: moment(row.date)
-//                     .tz("Asia/Kolkata")
-//                     .format("MMMM"),
-
-//                 Year: moment(row.date)
-//                     .tz("Asia/Kolkata")
-//                     .format("YYYY"),
-
-//                 /* Shift */
 //                 ShiftName: row.shift?.name || "General",
 //                 ShiftStart: row.shift?.startTime || "",
 //                 ShiftEnd: row.shift?.endTime || "",
 
-//                 /* Punch (IST) */
-//                 PunchIn: row.punchIn
-//                     ? moment(row.punchIn)
-//                         .tz("Asia/Kolkata")
-//                         .format("hh:mm A")
-//                     : "",
+//                 PunchIn: row.punchIn ? moment(row.punchIn).tz("Asia/Kolkata").format("hh:mm A") : "",
+//                 PunchOut: row.punchOut ? moment(row.punchOut).tz("Asia/Kolkata").format("hh:mm A") : "",
 
-//                 PunchOut: row.punchOut
-//                     ? moment(row.punchOut)
-//                         .tz("Asia/Kolkata")
-//                         .format("hh:mm A")
-//                     : "",
-
-//                 /* Work */
-//                 TotalWorkMinutes: row.workSummary?.totalMinutes || 0,
-//                 OvertimeMinutes: row.workSummary?.overtimeMinutes || 0,
-//                 LateMinutes: row.workSummary?.lateMinutes || 0,
-//                 EarlyLeaveMinutes: row.workSummary?.earlyLeaveMinutes || 0,
+//                 TotalWorkMinutes: row.isAutoMarked ? Number(row.workSummary?.totalMinutes || 0).toFixed(2) : 0,
+//                 TotalHours: row.isAutoMarked ? Number(row.workSummary?.totalMinutes ? (row.workSummary.totalMinutes / 60) : 0).toFixed(2) : 0,
+//                 OvertimeMinutes: Number(row.workSummary?.overtimeMinutes || 0).toFixed(2),
+//                 LateMinutes: Number(row.workSummary?.lateMinutes || 0).toFixed(2),
+//                 EarlyLeaveMinutes: Number(row.workSummary?.earlyLeaveMinutes || 0).toFixed(2),
 
 //                 BreakMinutes: totalBreakMinutes,
 
-//                 /* Status */
 //                 Status: row.status,
-
-//                 /* Location */
-
 //                 LocationVerified: row.geoLocation?.verified ? "Yes" : "No",
 
-
-
-//                 /* Audit */
 //                 Remarks: row.remarks || "",
 //                 AutoMarked: row.isAutoMarked ? "Yes" : "No",
-//                 Suspicious: row.isSuspicious ? "Yes" : "No",
-
-
+//                 Suspicious: row.isSuspicious ? "Yes" : "No"
 //             };
 //         });
 
-//         /* ================================
+//         /* --------------------------------------------------
 //            Convert to CSV
-//         ================================= */
+//         -------------------------------------------------- */
 
 //         const parser = new Parser();
 //         const csv = parser.parse(formattedData);
-
-//         /* ================================
-//            Download
-//         ================================= */
 
 //         const fileName =
 //             `attendance_${fromDateIST.format("YYYYMMDD")}_${toDateIST.format("YYYYMMDD")}.csv`;
@@ -2631,9 +2606,7 @@ export const getRangeSummary = async (req, res) => {
 //         return res.status(200).send(csv);
 
 //     } catch (error) {
-
 //         console.error("CSV Export Error:", error);
-
 //         return res.status(500).json({
 //             success: false,
 //             message: "CSV Export Failed",
@@ -2641,7 +2614,6 @@ export const getRangeSummary = async (req, res) => {
 //         });
 //     }
 // };
-
 
 
 export const exportAttendanceCSV = async (req, res) => {
@@ -2662,19 +2634,16 @@ export const exportAttendanceCSV = async (req, res) => {
         if (month) {
             fromDateIST = moment.tz(month, "YYYY-MM", "Asia/Kolkata").startOf("month");
             toDateIST = moment.tz(month, "YYYY-MM", "Asia/Kolkata").endOf("month");
-        }
-        else if (startDate && endDate) {
+        } else if (startDate && endDate) {
             fromDateIST = moment.tz(startDate, "YYYY-MM-DD", "Asia/Kolkata").startOf("day");
             toDateIST = moment.tz(endDate, "YYYY-MM-DD", "Asia/Kolkata").endOf("day");
-        }
-        else if (year) {
-            fromDateIST = moment.tz(`${year}-01-01`, "Asia/Kolkata").startOf("year");
-            toDateIST = moment.tz(`${year}-12-31`, "Asia/Kolkata").endOf("year");
-        }
-        else {
+        } else if (year) {
+            fromDateIST = moment.tz(`${year}-01-01`, "YYYY-MM-DD", "Asia/Kolkata").startOf("year");
+            toDateIST = moment.tz(`${year}-12-31`, "YYYY-MM-DD", "Asia/Kolkata").endOf("year");
+        } else {
             return res.status(400).json({
                 success: false,
-                message: "Provide month OR startDate+endDate OR year"
+                message: "Provide month OR startDate+endDate OR year",
             });
         }
 
@@ -2682,104 +2651,133 @@ export const exportAttendanceCSV = async (req, res) => {
         const toUTC = toDateIST.clone().utc().toDate();
 
         /* --------------------------------------------------
-           Aggregation (Attendance → Employee → User)
+           Aggregation (Optimized + Sorted)
         -------------------------------------------------- */
 
-        const records = await Attendance.aggregate([
-            {
-                $match: {
-                    companyId: new mongoose.Types.ObjectId(companyId),
-                    date: { $gte: fromUTC, $lte: toUTC }
-                }
-            },
+        const records = await Attendance.aggregate(
+            [
+                {
+                    $match: {
+                        companyId: new mongoose.Types.ObjectId(companyId),
+                        date: { $gte: fromUTC, $lte: toUTC },
+                    },
+                },
 
-            /* Join Employee */
-            {
-                $lookup: {
-                    from: "employees",
-                    let: { empId: "$employeeId" },
-                    pipeline: [
-                        { $match: { $expr: { $eq: ["$_id", "$$empId"] } } },
-                        {
-                            $project: {
-                                user_name: 1,
-                                empCode: 1,
-                                userId: 1
-                            }
-                        }
-                    ],
-                    as: "employee"
-                }
-            },
-            { $unwind: { path: "$employee", preserveNullAndEmptyArrays: true } },
+                /* Join Employee */
+                {
+                    $lookup: {
+                        from: "employees",
+                        let: { empId: "$employeeId" },
+                        pipeline: [
+                            { $match: { $expr: { $eq: ["$_id", "$$empId"] } } },
+                            {
+                                $project: {
+                                    user_name: 1,
+                                    empCode: 1,
+                                    userId: 1,
+                                },
+                            },
+                        ],
+                        as: "employee",
+                    },
+                },
+                { $unwind: { path: "$employee", preserveNullAndEmptyArrays: true } },
 
-            /* Join User */
-            {
-                $lookup: {
-                    from: "users",
-                    let: { uid: "$employee.userId" },
-                    pipeline: [
-                        { $match: { $expr: { $eq: ["$_id", "$$uid"] } } },
-                        {
-                            $project: {
-                                email: 1,
-                                phone: 1,
-                                name: 1
-                            }
-                        }
-                    ],
-                    as: "user"
-                }
-            },
-            { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+                /* Join User */
+                {
+                    $lookup: {
+                        from: "users",
+                        let: { uid: "$employee.userId" },
+                        pipeline: [
+                            { $match: { $expr: { $eq: ["$_id", "$$uid"] } } },
+                            {
+                                $project: {
+                                    email: 1,
+                                    phone: 1,
+                                    name: 1,
+                                },
+                            },
+                        ],
+                        as: "user",
+                    },
+                },
+                { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
 
-            /* Flatten */
-            {
-                $addFields: {
-                    employeeName: "$employee.user_name",
-                    employeeCode: "$employee.empCode",
-                    employeeEmail: "$user.email",
-                    employeePhone: "$user.phone"
-                }
-            },
+                /* Flatten */
+                {
+                    $addFields: {
+                        employeeName: "$employee.user_name",
+                        employeeCode: "$employee.empCode",
+                        employeeEmail: "$user.email",
+                        employeePhone: "$user.phone",
+                    },
+                },
 
-            {
-                $project: {
-                    employee: 0,
-                    user: 0
-                }
-            }
-        ], { allowDiskUse: true });
+                /* ✅ SORTING (IMPORTANT) */
+                {
+                    $sort: {
+                        employeeCode: 1,
+                        date: 1,
+                    },
+                },
+
+                {
+                    $project: {
+                        employee: 0,
+                        user: 0,
+                    },
+                },
+            ],
+            { allowDiskUse: true }
+        );
 
         if (!records.length) {
             return res.status(404).json({
                 success: false,
-                message: "No attendance data found"
+                message: "No attendance data found",
             });
         }
 
         /* --------------------------------------------------
-           Format CSV
+           Format CSV Data
         -------------------------------------------------- */
 
-        const formattedData = records.map(row => {
+        const formattedData = records.map((row) => {
+            const isAuto = row.isAutoMarked === true;
 
-            const totalBreakMinutes = row.breaks?.reduce((acc, b) => {
-                if (b.start && b.end) {
-                    const start = moment(b.start).tz("Asia/Kolkata");
-                    const end = moment(b.end).tz("Asia/Kolkata");
-                    return acc + end.diff(start, "minutes");
-                }
-                return acc;
-            }, 0) || 0;
+            /* Break Calculation */
+            const totalBreakMinutes =
+                row.breaks?.reduce((acc, b) => {
+                    if (b.start && b.end) {
+                        const start = moment(b.start).tz("Asia/Kolkata");
+                        const end = moment(b.end).tz("Asia/Kolkata");
+                        return acc + end.diff(start, "minutes");
+                    }
+                    return acc;
+                }, 0) || 0;
+
+            /* ✅ Correct Work Calculation */
+            const totalMinutes = !isAuto
+                ? Number(row.workSummary?.totalMinutes || 0)
+                : 0;
+
+            const overtime = !isAuto
+                ? Number(row.workSummary?.overtimeMinutes || 0)
+                : 0;
+
+            const late = !isAuto
+                ? Number(row.workSummary?.lateMinutes || 0)
+                : 0;
+
+            const earlyLeave = !isAuto
+                ? Number(row.workSummary?.earlyLeaveMinutes || 0)
+                : 0;
 
             return {
                 EmployeeCode: row.employeeCode || "N/A",
-
                 EmployeeName: row.employeeName || "N/A",
                 EmployeeEmail: row.employeeEmail || "N/A",
                 EmployeePhone: row.employeePhone || "N/A",
-
 
                 Date: moment(row.date).tz("Asia/Kolkata").format("DD-MMM-YYYY"),
                 Day: moment(row.date).tz("Asia/Kolkata").format("dddd"),
@@ -2790,13 +2788,20 @@ export const exportAttendanceCSV = async (req, res) => {
                 ShiftStart: row.shift?.startTime || "",
                 ShiftEnd: row.shift?.endTime || "",
 
-                PunchIn: row.punchIn ? moment(row.punchIn).tz("Asia/Kolkata").format("hh:mm A") : "",
-                PunchOut: row.punchOut ? moment(row.punchOut).tz("Asia/Kolkata").format("hh:mm A") : "",
+                PunchIn: row.punchIn
+                    ? moment(row.punchIn).tz("Asia/Kolkata").format("hh:mm A")
+                    : "",
 
-                TotalWorkMinutes: row.workSummary?.totalMinutes || 0,
-                OvertimeMinutes: row.workSummary?.overtimeMinutes || 0,
-                LateMinutes: row.workSummary?.lateMinutes || 0,
-                EarlyLeaveMinutes: row.workSummary?.earlyLeaveMinutes || 0,
+                PunchOut: row.punchOut
+                    ? moment(row.punchOut).tz("Asia/Kolkata").format("hh:mm A")
+                    : "",
+
+                /* ✅ FIXED VALUES */
+                TotalWorkMinutes: Number(totalMinutes.toFixed(2)),
+                TotalHours: Number((totalMinutes / 60).toFixed(2)),
+                OvertimeMinutes: Number(overtime.toFixed(2)),
+                LateMinutes: Number(late.toFixed(2)),
+                EarlyLeaveMinutes: Number(earlyLeave.toFixed(2)),
 
                 BreakMinutes: totalBreakMinutes,
 
@@ -2804,8 +2809,8 @@ export const exportAttendanceCSV = async (req, res) => {
                 LocationVerified: row.geoLocation?.verified ? "Yes" : "No",
 
                 Remarks: row.remarks || "",
-                AutoMarked: row.isAutoMarked ? "Yes" : "No",
-                Suspicious: row.isSuspicious ? "Yes" : "No"
+                AutoMarked: isAuto ? "Yes" : "No",
+                Suspicious: row.isSuspicious ? "Yes" : "No",
             };
         });
 
@@ -2816,25 +2821,24 @@ export const exportAttendanceCSV = async (req, res) => {
         const parser = new Parser();
         const csv = parser.parse(formattedData);
 
-        const fileName =
-            `attendance_${fromDateIST.format("YYYYMMDD")}_${toDateIST.format("YYYYMMDD")}.csv`;
+        const fileName = `attendance_${fromDateIST.format(
+            "YYYYMMDD"
+        )}_${toDateIST.format("YYYYMMDD")}.csv`;
 
         res.header("Content-Type", "text/csv");
         res.header("Content-Disposition", `attachment; filename=${fileName}`);
 
         return res.status(200).send(csv);
-
     } catch (error) {
         console.error("CSV Export Error:", error);
+
         return res.status(500).json({
             success: false,
             message: "CSV Export Failed",
-            error: error.message
+            error: error.message,
         });
     }
 };
-
-
 
 
 export const exportCompanyAttendanceToExcel = async (req, res) => {
