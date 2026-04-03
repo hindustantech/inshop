@@ -118,15 +118,7 @@ router.get(
     getEmployeeAttendanceSummary
 );
 
-/**
- * Get Employee Attendance Summary
- * GET /api/attendance/employee-summary
- */
-// router.get(
-//     "/employee-summary",
-//     authMiddleware,
-//     getEmployeeAttendanceSummary
-// );
+
 
 /**
  * Get Today Attendance
