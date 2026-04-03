@@ -1669,307 +1669,213 @@ const formatMinutes = (minutes) => {
 ================================================= */
 
 
+/* ============================
+   Utils
+============================ */
+
+const getDaysInMonth = (year, month) =>
+    new Date(year, month, 0).getDate();
+
+/* ============================
+   Controller
+============================ */
+
+export const getCompanyAttendanceSummary = async (req, res) => {
+    try {
+        const { companyId, month, year, format } = req.query;
+
+        if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid companyId"
+            });
+        }
+
+        const start = new Date(year, month - 1, 1);
+        const end = new Date(year, month, 0);
+        end.setHours(23, 59, 59, 999);
+
+        const totalDays = getDaysInMonth(year, month);
+
+        /* ============================
+           AGGREGATION
+        ============================ */
+
+        const employees = await Employee.aggregate([
+            {
+                $match: {
+                    companyId: new mongoose.Types.ObjectId(companyId),
+                    employmentStatus: "active"
+                }
+            },
+
+            {
+                $lookup: {
+                    from: "attendances",
+                    let: { empId: "$_id" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$employeeId", "$$empId"] },
+                                        { $gte: ["$date", start] },
+                                        { $lte: ["$date", end] }
+                                    ]
+                                }
+                            }
+                        }
+                    ],
+                    as: "attendance"
+                }
+            },
+
+            {
+                $addFields: {
+                    workingDays: {
+                        $size: {
+                            $filter: {
+                                input: "$attendance",
+                                as: "att",
+                                cond: { $eq: ["$$att.status", "present"] }
+                            }
+                        }
+                    },
+
+                    exceptionDays: {
+                        $size: {
+                            $filter: {
+                                input: "$attendance",
+                                as: "att",
+                                cond: { $eq: ["$$att.isAutoMarked", true] }
+                            }
+                        }
+                    },
+
+                    totalMinutes: {
+                        $sum: "$attendance.workSummary.totalMinutes"
+                    }
+                }
+            },
+
+            {
+                $addFields: {
+                    absentDays: {
+                        $subtract: [
+                            totalDays,
+                            { $size: "$attendance" }
+                        ]
+                    },
+
+                    avgMinutes: {
+                        $cond: [
+                            { $gt: ["$workingDays", 0] },
+                            { $divide: ["$totalMinutes", "$workingDays"] },
+                            0
+                        ]
+                    }
+                }
+            },
+
+            {
+                $project: {
+                    empCode: 1,
+                    name: "$user_name",
+                    totalDays: { $literal: totalDays },
+                    workingDays: 1,
+                    absentDays: 1,
+                    exceptionDays: 1,
+                    totalHours: {
+                        $round: [{ $divide: ["$totalMinutes", 60] }, 2]
+                    },
+                    avgHours: {
+                        $round: [{ $divide: ["$avgMinutes", 60] }, 2]
+                    }
+                }
+            },
+
+            /* ✅ STRICT SORT */
+            {
+                $sort: { empCode: 1 }
+            }
+        ]);
+
+        /* ============================
+           ADD SR NO
+        ============================ */
+
+        const finalData = employees.map((emp, index) => ({
+            "Sr No": index + 1,
+            "Employee Code": emp.empCode,
+            "Employee Name": emp.name || "-",
+            "Total Days": emp.totalDays,
+            "Working Days": emp.workingDays,
+            "Absent Days": emp.absentDays,
+            "Exception Days": emp.exceptionDays,
+            "Total Working Hours": emp.totalHours.toFixed(2),
+            "Avg Working Hours": emp.avgHours.toFixed(2)
+        }));
+
+        /* ============================
+           CSV EXPORT
+        ============================ */
+
+        if (format === "csv") {
+            const parser = new Parser({
+                fields: [
+                    "Sr No",
+                    "Employee Code",
+                    "Employee Name",
+                    "Total Days",
+                    "Working Days",
+                    "Absent Days",
+                    "Exception Days",
+                    "Total Working Hours",
+                    "Avg Working Hours"
+                ]
+            });
+
+            const csv = parser.parse(finalData);
+
+            const fileName = `company_attendance_${month}_${year}.csv`;
+
+            res.setHeader("Content-Type", "text/csv");
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${fileName}"`
+            );
+
+            return res.status(200).send(csv);
+        }
+
+        /* ============================
+           JSON RESPONSE
+        ============================ */
+
+        return res.status(200).json({
+            success: true,
+            meta: {
+                companyId,
+                month,
+                year,
+                totalEmployees: finalData.length
+            },
+            data: finalData
+        });
+
+    } catch (error) {
+        console.error("Company Summary Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
 /* =================================================
    GET: Employee Attendance Summary + CSV
 ================================================= */
 
-// export const getEmployeeAttendanceSummary = async (req, res) => {
-
-//     try {
-
-//         /* ============================
-//            1. Auth
-//         ============================ */
-
-//         const userId = req.query.userId;
-
-//         if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
-//             return res.status(401).json({
-//                 success: false,
-//                 message: "Unauthorized"
-//             });
-//         }
-
-
-//         /* ============================
-//            2. Params
-//         ============================ */
-
-//         const month = Number(req.query.month);
-//         const year = Number(req.query.year);
-//         const format = req.query.format; // csv | json
-
-//         if (!month || !year || month < 1 || month > 12 || year < 2000) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "Invalid month/year"
-//             });
-//         }
-
-
-//         /* ============================
-//            3. Block Future Months
-//         ============================ */
-
-//         const today = new Date();
-//         today.setHours(0, 0, 0, 0);
-
-//         if (
-//             year > today.getFullYear() ||
-//             (year === today.getFullYear() && month > today.getMonth() + 1)
-//         ) {
-//             return res.status(400).json({
-//                 success: false,
-//                 message: "Future month not allowed"
-//             });
-//         }
-
-
-//         /* ============================
-//            4. Employee
-//         ============================ */
-
-//         const employee = await Employee.findOne({
-//             userId,
-//             employmentStatus: "active"
-//         })
-//             .select("_id empCode")
-//             .lean();
-
-//         if (!employee) {
-//             return res.status(404).json({
-//                 success: false,
-//                 message: "Employee not found"
-//             });
-//         }
-
-
-//         /* ============================
-//            5. Date Range
-//         ============================ */
-
-//         const { start, end } = buildMonthRange(year, month);
-
-
-//         /* ============================
-//            6. Attendance
-//         ============================ */
-
-//         const records = await Attendance.find({
-//             employeeId: employee._id,
-//             date: { $gte: start, $lte: end }
-//         })
-//             .sort({ date: -1 })
-//             .lean();
-
-
-//         /* ============================
-//            7. Build Lookup Map
-//         ============================ */
-
-//         const map = new Map();
-
-//         records.forEach(r => {
-//             const key = r.date.toISOString().split("T")[0];
-//             map.set(key, r);
-//         });
-
-
-//         /* ============================
-//            8. Calculate Loop Range
-//         ============================ */
-
-//         const isCurrentMonth =
-//             today.getFullYear() === year &&
-//             today.getMonth() + 1 === month;
-
-//         const lastDay = isCurrentMonth
-//             ? today.getDate() // till today
-//             : new Date(year, month, 0).getDate(); // full month
-
-
-//         const todayKey = today.toISOString().split("T")[0];
-//         const yesterdayKey = new Date(today.getTime() - 86400000)
-//             .toISOString()
-//             .split("T")[0];
-
-
-//         /* ============================
-//            9. Build Report
-//         ============================ */
-
-//         let presentDays = 0;
-//         let absentDays = 0;
-//         let totalMinutes = 0;
-
-//         const report = [];
-
-
-//         for (let i = lastDay; i >= 1; i--) {
-
-//             const date = new Date(year, month - 1, i);
-//             date.setHours(0, 0, 0, 0);
-
-//             const key = date.toISOString().split("T")[0];
-
-//             let label = date.toLocaleDateString("en-IN", {
-//                 day: "2-digit",
-//                 month: "short"
-//             });
-
-//             if (key === todayKey) label = "Today";
-//             if (key === yesterdayKey) label = "Yesterday";
-
-//             const rec = map.get(key);
-
-
-//             /* ---------- No Record ---------- */
-//             if (!rec) {
-
-//                 // Today without punch → Pending
-//                 if (key === todayKey) {
-
-//                     report.push({
-//                         Date: "Today",
-//                         TimeIn: "Pending",
-//                         TimeOut: "-",
-//                         TotalHours: "-"
-//                     });
-
-//                     continue;
-//                 }
-
-//                 // Past day → Absent
-//                 absentDays++;
-
-//                 report.push({
-//                     Date: label,
-//                     TimeIn: "Absent",
-//                     TimeOut: "-",
-//                     TotalHours: "-"
-//                 });
-
-//                 continue;
-//             }
-
-
-//             /* ---------- Holiday / Week Off ---------- */
-
-//             if (
-//                 rec.status === "holiday" ||
-//                 rec.status === "week_off"
-//             ) {
-
-//                 report.push({
-//                     Date: label,
-//                     TimeIn: rec.status === "holiday" ? "Holiday" : "Week Off",
-//                     TimeOut: "-",
-//                     TotalHours: "-"
-//                 });
-
-//                 continue;
-//             }
-
-
-//             /* ---------- Present ---------- */
-
-//             if (rec.status === "present") presentDays++;
-
-//             const minutes = rec.workSummary?.totalMinutes || 0;
-
-//             totalMinutes += minutes;
-
-//             report.push({
-//                 Date: label,
-//                 TimeIn: formatTime(rec.punchIn),
-//                 TimeOut: rec.punchOut
-//                     ? formatTime(rec.punchOut)
-//                     : "-",
-//                 TotalHours: formatMinutes(minutes).fixed(2)
-//             });
-//         }
-
-
-//         /* ============================
-//            10. CSV Export
-//         ============================ */
-
-//         if (format === "csv") {
-
-//             const parser = new Parser({
-//                 fields: ["Date", "TimeIn", "TimeOut", "TotalHours"]
-//             });
-
-//             const csv = parser.parse(report);
-
-//             const fileName =
-//                 `attendance_${employee.empCode}_${month}_${year}.csv`;
-
-
-//             res.setHeader("Content-Type", "text/csv");
-//             res.setHeader(
-//                 "Content-Disposition",
-//                 `attachment; filename="${fileName}"`
-//             );
-
-//             return res.status(200).send(csv);
-//         }
-
-
-//         /* ============================
-//            11. Summary
-//         ============================ */
-
-//         const avgMinutes = presentDays
-//             ? Math.round(totalMinutes / presentDays)
-//             : 0;
-
-
-//         /* ============================
-//            12. JSON Response
-//         ============================ */
-
-//         return res.status(200).json({
-
-//             success: true,
-
-//             meta: {
-//                 employeeId: employee._id,
-//                 empCode: employee.empCode,
-//                 month,
-//                 year
-//             },
-
-//             summary: {
-//                 avgPerDay: formatMinutes(avgMinutes),
-//                 presentDays,
-//                 absentDays,
-//                 totalShownDays: lastDay
-//             },
-
-//             records: report
-//         });
-
-//     } catch (error) {
-
-//         console.error("Attendance Summary Error:", error);
-
-//         return res.status(500).json({
-//             success: false,
-//             message: "Internal server error"
-//         });
-//     }
-// };
-
-
-/* ============================
-   Utils (Clean + Reusable)
-============================ */
-
-// const formatTime = (date) => {
-//     if (!date) return "-";
-//     return moment(date).tz("Asia/Kolkata").format("hh:mm A");
-// };
 
 const formatMinutesToHours = (minutes = 0) => {
     const hours = minutes / 60;
