@@ -1878,10 +1878,16 @@ export const getCompanyAttendanceSummary = async (req, res) => {
 
 
 const formatMinutesToHours = (minutes = 0) => {
-    const hours = minutes / 60;
-    return hours.toFixed(2); // ✅ FIXED
-};
+    if (!minutes || isNaN(minutes)) return "00:00";
 
+    const hrs = Math.floor(minutes / 60);
+    const mins = Math.floor(minutes % 60);
+
+    const formattedHours = String(hrs).padStart(2, "0");
+    const formattedMinutes = String(mins).padStart(2, "0");
+
+    return `${formattedHours}:${formattedMinutes}`;
+};
 
 
 /* ============================
