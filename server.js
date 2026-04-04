@@ -56,6 +56,7 @@ import ShopVisit from './routes/ShopVisti.js';
 import './cron/banner.scheduler.js'
 import categoryAdvertisment from './routes/Attandance/categoryAdvertisment.js'
 import advertisment from './routes/Attandance/Advertisement.Routes.js'
+import './cron/markDailyAbsent.js'
 dotenv.config();
 
 await connectDB();
