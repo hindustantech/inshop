@@ -1806,7 +1806,7 @@ export const getCompanyAttendanceSummary = async (req, res) => {
 
         const finalData = employees.map((emp, index) => ({
             "Sr No": index + 1,
-            "Employee Code": emp.empCode,
+            "Employee Coe": emp.empCode,
             "Employee Name": emp.name || "-",
             "Total Days": emp.totalDays,
             "Working Days": emp.workingDays,
