@@ -11,6 +11,11 @@ const employeeSchema = new mongoose.Schema({
         index: true
     },
 
+    shift: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Shift",
+        index: true
+    },
     userId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -19,7 +24,11 @@ const employeeSchema = new mongoose.Schema({
     user_name: {
         type: String,
     },
-
+    weeklyOff: [{
+        type: String,
+        enum: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+        default: "Sunday"
+    }],
     empCode: {
         type: String,
 
@@ -30,8 +39,10 @@ const employeeSchema = new mongoose.Schema({
     jobInfo: {
         designation: String,
         department: String,
+        department_code: String,
+        grade: String,
+        grade_code: String,
         joiningDate: Date,
-
         reportingManager: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User"
@@ -71,19 +82,17 @@ const employeeSchema = new mongoose.Schema({
             type: [Number], // [longitude, latitude]
             required: true
         },
-        radius: {
-            type: Number 
-        },
         locationtype: {
             type: String,
-            enum: ['current', 'employee']
+            enum:['current','employee']
+        },
+        radius: {
+            type: Number // meters
         },
         manual: {
-            type: String,
+            type: String,  
         }
-    }
-
-    ,
+    },
     employmentStatus: {
         type: String,
         enum: ["active", "suspended", "terminated", "resigned"],

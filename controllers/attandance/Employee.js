@@ -116,166 +116,188 @@ export const createEmployee = async (req, res) => {
 
     try {
         /* ---------------------------------------------
-           1. Authorization
+           1. Auth & Role Validation
         ---------------------------------------------- */
         const companyId = req.user?._id || req.user?.id;
-        const userRole = req.user?.role || req.user?.type;
+        const role = req.user?.role || req.user?.type;
 
-        if (!companyId) {
-            return res.status(401).json({
-                success: false,
-                message: "Unauthorized",
-            });
-        }
+        if (!companyId) throw new Error("Unauthorized");
 
-        if (!['partner', 'admin', 'super_admin'].includes(userRole)) {
-            return res.status(403).json({
-                success: false,
-                message: "Access denied",
-            });
+        const allowedRoles = ["partner", "admin", "super_admin"];
+        if (!allowedRoles.includes(role)) {
+            throw new Error("Access denied");
         }
 
         /* ---------------------------------------------
-           2. Validation
+           2. Input Validation
         ---------------------------------------------- */
         const {
             userId,
-            role,
+            shift,
             empCode,
             user_name,
             jobInfo,
+            weeklyOff,
+            salaryStructure,
+            bankDetails,
+            officeLocation
+        } = req.body;
+
+        if (!userId) throw new Error("userId is required");
+
+        /* ---------------------------------------------
+           3. Dependency Validation
+        ---------------------------------------------- */
+        const user = await User.findById(userId).session(session);
+        if (!user) throw new Error("User not found");
+
+        if (shift) {
+            const shiftExists = await Shift.findById(shift).session(session);
+            if (!shiftExists) throw new Error("Shift not found");
+        }
+
+        /* ---------------------------------------------
+           4. Duplicate Employee Check
+        ---------------------------------------------- */
+        const existingEmployee = await Employee.findOne({
+            companyId,
+            userId
+        }).session(session);
+
+        if (existingEmployee) {
+            throw new Error("Employee already exists");
+        }
+
+        /* ---------------------------------------------
+           5. Subscription Validation (USING FEATURE SERVICE)
+        ---------------------------------------------- */
+        const subscription = await getActiveSubscription(companyId, session);
+
+        // Use the feature service to validate subscription
+        const subscriptionStatus = validateSubscription(subscription);
+        if (!subscriptionStatus.valid) {
+            throw new Error(subscriptionStatus.message);
+        }
+
+        // Check if can create employee using the service
+        const canCreate = canCreateEmployee(subscription);
+        if (!canCreate) {
+            const remaining = getRemainingEmployeeSlots(subscription);
+            if (remaining === 0) {
+                throw new Error("Employee limit reached. Please upgrade your plan to add more employees.");
+            }
+            throw new Error("Cannot create employee due to subscription restrictions");
+        }
+
+        // Get real-time employee count (additional safety check)
+        const currentCount = await Employee.countDocuments({
+            companyId,
+            employmentStatus: "active"
+        }).session(session);
+
+        const employeeLimit = getEmployeeLimit(subscription);
+
+        if (currentCount >= employeeLimit) {
+            throw new Error(`Employee limit of ${employeeLimit} reached. Please upgrade your plan.`);
+        }
+
+        // Check if nearing limit for warning (optional)
+        const nearingLimit = isNearingEmployeeLimit(subscription, 80);
+        if (nearingLimit) {
+            // You can add a warning header or log this
+            console.warn(`Company ${companyId} is nearing employee limit: ${currentCount}/${employeeLimit}`);
+        }
+
+        /* ---------------------------------------------
+           6. Create Employee
+        ---------------------------------------------- */
+        const employeeData = {
+            userId,
+            companyId,
+            empCode,
+            user_name,
+            jobInfo,
+            shift,
+            weeklyOff,
             salaryStructure,
             bankDetails,
             officeLocation,
-        } = req.body;
-
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: "userId is required",
-            });
-        }
-
-        /* ---------------------------------------------
-           3. Check User Exists
-        ---------------------------------------------- */
-        const user = await User.findById(userId).session(session);
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found",
-            });
-        }
-
-        /* ---------------------------------------------
-           4. Prevent Duplicate Employee
-        ---------------------------------------------- */
-        const alreadyExists = await Employee.findOne({
-            companyId,
-            userId,
-        }).session(session);
-
-        if (alreadyExists) {
-            return res.status(409).json({
-                success: false,
-                message: "Employee already exists",
-            });
-        }
-
-        /* ---------------------------------------------
-           5. Generate Employee Code
-        ---------------------------------------------- */
-
-        /* ---------------------------------------------
-           6. Build Employee Object
-        ---------------------------------------------- */
-        const employeePayload = {
-            companyId,
-            userId,
-            empCode,
-            user_name,
-            role: role || "employee",
-
-            jobInfo: {
-                designation: jobInfo?.designation,
-                department: jobInfo?.department,
-                joiningDate: jobInfo?.joiningDate || new Date(),
-                reportingManager: jobInfo?.reportingManager,
-            },
-
-            salaryStructure: {
-                basic: salaryStructure?.basic || 0,
-                hra: salaryStructure?.hra || 0,
-                da: salaryStructure?.da || 0,
-                bonus: salaryStructure?.bonus || 0,
-                perDay: salaryStructure?.perDay || 0,
-                perHour: salaryStructure?.perHour || 0,
-                overtimeRate: salaryStructure?.overtimeRate || 0,
-            },
-
-            bankDetails: {
-                accountNo: bankDetails?.accountNo,
-                ifsc: bankDetails?.ifsc,
-                bankName: bankDetails?.bankName,
-            },
-
-            officeLocation: officeLocation
-                ? {
-                    type: "Point",
-                    coordinates: officeLocation.coordinates,
-                    radius: officeLocation.radius || 100,
-                    manual: officeLocation.manual ,
-                    locationtype: officeLocation.locationtype || 'IND',
-                }
-                : undefined,
-
-            employmentStatus: "active",
+            employmentStatus: "active"
         };
 
+        const [employee] = await Employee.create([employeeData], { session });
+
         /* ---------------------------------------------
-           7. Save Employee
+           7. Update Usage Tracking
         ---------------------------------------------- */
-        const employee = await Employee.create(
-            [employeePayload],
+        // Use direct update instead of subscription.save()
+        await Subscription.updateOne(
+            { _id: subscription._id },
+            { $inc: { 'usage.employeesUsed': 1 } },
             { session }
         );
+
+        // Update local subscription object for response
+        subscription.usage.employeesUsed = (subscription.usage?.employeesUsed || 0) + 1;
 
         /* ---------------------------------------------
            8. Commit Transaction
         ---------------------------------------------- */
         await session.commitTransaction();
-        session.endSession();
 
-        return res.status(201).json({
+        // Prepare response with subscription info
+        const response = {
             success: true,
             message: "Employee created successfully",
-            data: employee[0],
-        });
-    } catch (error) {
-        /* ---------------------------------------------
-           Rollback
-        ---------------------------------------------- */
-        await session.abortTransaction();
-        session.endSession();
+            data: employee,
+            subscription: {
+                employeesUsed: subscription.usage?.employeesUsed || 0,
+                employeeLimit: getEmployeeLimit(subscription),
+                remainingSlots: getRemainingEmployeeSlots(subscription),
+                nearingLimit: isNearingEmployeeLimit(subscription, 80)
+            }
+        };
 
-        console.error("CreateEmployee Error:", error);
-
-        /* ---------------------------------------------
-           Duplicate Key Handling
-        ---------------------------------------------- */
-        if (error.code === 11000) {
-            return res.status(409).json({
-                success: false,
-                message: "Duplicate employee detected",
-            });
+        // Add warning if nearing limit
+        if (isNearingEmployeeLimit(subscription, 80)) {
+            response.warning = `You have used ${subscription.usage?.employeesUsed || 0} out of ${getEmployeeLimit(subscription)} employee slots. Consider upgrading your plan.`;
         }
 
-        return res.status(500).json({
+        return res.status(201).json(response);
+
+    } catch (error) {
+        // Only abort transaction if session is still active and transaction is in progress
+        if (session && session.inTransaction()) {
+            await session.abortTransaction();
+        }
+
+        // Handle specific error cases
+        let statusCode = 400;
+        let errorResponse = {
             success: false,
-            message: "Internal server error",
-            error: error.message,
-        });
+            message: error.message
+        };
+
+        if (error.message.includes("limit reached")) {
+            statusCode = 403;
+            errorResponse.code = "EMPLOYEE_LIMIT_REACHED";
+        } else if (error.message.includes("subscription")) {
+            statusCode = 403;
+            errorResponse.code = "SUBSCRIPTION_ERROR";
+        } else if (error.message.includes("Unauthorized") || error.message.includes("Access denied")) {
+            statusCode = 401;
+            errorResponse.code = "UNAUTHORIZED";
+        } else if (error.message.includes("not found")) {
+            statusCode = 404;
+            errorResponse.code = "NOT_FOUND";
+        }
+
+        return res.status(statusCode).json(errorResponse);
+    } finally {
+        // Always end the session
+        if (session) {
+            session.endSession();
+        }
     }
 };
 
