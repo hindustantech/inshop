@@ -137,60 +137,18 @@ function normalizeDate(d) {
 
 
 
-/* ===============================================================
-   HELPER — count how many days in [start, end] are week-off days
-   for each employee, based on their weeklyOff array in Employee model
-=============================================================== */
-const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-const buildWeekOffMap = async (companyId, start, end) => {
-    const employees = await Employee.find(
-        { companyId, employmentStatus: "active" },
-        { _id: 1, weeklyOff: 1 }
-    ).lean();
-
-    const map = new Map(); // Map<employeeId string, weekOffCount>
-
-    for (const emp of employees) {
-        const weeklyOffDays = emp.weeklyOff?.length ? emp.weeklyOff : ["Sunday"];
-
-        // Convert day names → JS day numbers (0=Sun … 6=Sat)
-        const offDayNumbers = new Set(
-            weeklyOffDays
-                .map(d => DAY_NAMES.indexOf(d))
-                .filter(n => n !== -1)
-        );
-
-        // Walk every calendar date in range and count off-days
-        let count = 0;
-        const cursor = new Date(start);
-        while (cursor <= end) {
-            if (offDayNumbers.has(cursor.getDay())) count++;
-            cursor.setDate(cursor.getDate() + 1);
-        }
-
-        map.set(emp._id.toString(), count);
-    }
-
-    return map; // { "empObjectId": 4, ... }
-};
+// services/attendance.company.export.service.js
 
 
-/* ===============================================================
-   CORE EXPORT FUNCTION
-=============================================================== */
 export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDate }) => {
     const { start, end } = resolveDateRange(fromDate, toDate);
 
+    // Calculate total calendar days in the range (for totalDays accuracy)
     const msPerDay = 1000 * 60 * 60 * 24;
     const totalCalendarDays = Math.round((end - start) / msPerDay) + 1;
 
-    // Build weekoff map BEFORE pipeline (JS loop is accurate, pipeline can't do this)
-    const weekOffMap = await buildWeekOffMap(companyId, start, end);
-
     const pipeline = [
-
-        /* ── 1. MATCH ─────────────────────────────────────────── */
+        // ── MATCH ──
         {
             $match: {
                 companyId: new mongoose.Types.ObjectId(companyId),
@@ -198,7 +156,7 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
             }
         },
 
-        /* ── 2. JOIN EMPLOYEE ──────────────────────────────────── */
+        // ── JOIN EMPLOYEE ──
         {
             $lookup: {
                 from: "employees",
@@ -209,7 +167,7 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
         },
         { $unwind: "$employee" },
 
-        /* ── 3. COMPUTE BREAK MINUTES ──────────────────────────── */
+        // ── BREAK CALCULATION ──
         {
             $addFields: {
                 breakMinutes: {
@@ -229,8 +187,6 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
                 }
             }
         },
-
-        /* ── 4. NET WORK MINUTES (gross - breaks, floor 0) ─────── */
         {
             $addFields: {
                 netWorkMinutes: {
@@ -239,7 +195,7 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
             }
         },
 
-        /* ── 5. GROUP BY EMPLOYEE ──────────────────────────────── */
+        // ── GROUP ──
         {
             $group: {
                 _id: "$employeeId",
@@ -249,45 +205,31 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
                 department: { $first: "$employee.jobInfo.department" },
                 designation: { $first: "$employee.jobInfo.designation" },
 
-                // Total docs that exist in DB for this employee in range
-                recordedDays: { $sum: 1 },
+                recordedDays: { $sum: 1 }, // days that have ANY record
 
-                // Non-working days (records exist for these)
                 holidayDays: {
                     $sum: { $cond: [{ $eq: ["$status", "holiday"] }, 1, 0] }
+                },
+                weekOffDays: {
+                    $sum: { $cond: [{ $eq: ["$status", "week_off"] }, 1, 0] }
                 },
                 leaveDays: {
                     $sum: { $cond: [{ $eq: ["$status", "leave"] }, 1, 0] }
                 },
 
-                // week_off recorded in attendance (may be 0 if company doesn't create these records)
-                weekOffRecorded: {
-                    $sum: { $cond: [{ $eq: ["$status", "week_off"] }, 1, 0] }
-                },
-
-                // Working days that have a record (any status except holiday/leave/week_off)
-                workingRecordedDays: {
-                    $sum: {
-                        $cond: [
-                            { $not: { $in: ["$status", ["holiday", "week_off", "leave"]] } },
-                            1,
-                            0
-                        ]
-                    }
-                },
-
-                // Present: approved + not auto-marked + both punches + worked > 0
-                presentDays: {
+                // Exception: auto-marked OR not approved (but NOT holiday/leave/weekoff)
+                exceptionDays: {
                     $sum: {
                         $cond: [
                             {
                                 $and: [
                                     { $not: { $in: ["$status", ["leave", "holiday", "week_off"]] } },
-                                    { $eq: ["$approvalStatus", "approved"] },
-                                    { $eq: ["$isAutoMarked", false] },
-                                    { $ne: ["$punchIn", null] },
-                                    { $ne: ["$punchOut", null] },
-                                    { $gt: ["$workSummary.totalMinutes", 0] }
+                                    {
+                                        $or: [
+                                            { $eq: ["$isAutoMarked", true] },
+                                            { $ne: ["$approvalStatus", "approved"] }
+                                        ]
+                                    }
                                 ]
                             },
                             1, 0
@@ -295,8 +237,8 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
                     }
                 },
 
-                // Absent from record: approved + not auto-marked + status=absent OR missing punch
-                absentFromRecord: {
+                // Absent: approved, not auto-marked, no punch or status=absent
+                absentDays: {
                     $sum: {
                         $cond: [
                             {
@@ -318,19 +260,18 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
                     }
                 },
 
-                // Exception: auto-marked OR not approved (but not holiday/leave/week_off)
-                exceptionDays: {
+                // Present: approved, not auto-marked, both punches exist, worked > 0 mins
+                presentDays: {
                     $sum: {
                         $cond: [
                             {
                                 $and: [
                                     { $not: { $in: ["$status", ["leave", "holiday", "week_off"]] } },
-                                    {
-                                        $or: [
-                                            { $eq: ["$isAutoMarked", true] },
-                                            { $ne: ["$approvalStatus", "approved"] }
-                                        ]
-                                    }
+                                    { $eq: ["$approvalStatus", "approved"] },
+                                    { $eq: ["$isAutoMarked", false] },
+                                    { $ne: ["$punchIn", null] },
+                                    { $ne: ["$punchOut", null] },
+                                    { $gt: ["$workSummary.totalMinutes", 0] }
                                 ]
                             },
                             1, 0
@@ -338,7 +279,6 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
                     }
                 },
 
-                // Total net worked minutes (only approved, not auto-marked, both punches)
                 totalWorkedMinutes: {
                     $sum: {
                         $cond: [
@@ -359,133 +299,199 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
             }
         },
 
-        /* ── 6. PROJECT (shape output) ─────────────────────────── */
+        // ── PROJECT (compute absentDays for missing days too) ──
         {
             $project: {
-                _id: 1, // keep for JS merge step below
+                _id: 0,
                 empCode: 1,
                 employeeName: 1,
                 department: 1,
                 designation: 1,
+
+                // totalDays = full calendar range, not just records found
+                totalDays: { $literal: totalCalendarDays },
+
                 holidayDays: 1,
+                weekOffDays: 1,
                 leaveDays: 1,
-                weekOffRecorded: 1,
-                workingRecordedDays: 1,
                 presentDays: 1,
-                absentFromRecord: 1,
                 exceptionDays: 1,
-                totalWorkedMinutes: 1
+
+                // absentDays = days with absent record + days with NO record at all
+                absentDays: {
+                    $add: [
+                        "$absentDays",
+                        {
+                            $subtract: [
+                                totalCalendarDays,
+                                "$recordedDays"  // days that never got a record created
+                            ]
+                        }
+                    ]
+                },
+
+                totalWorkedHours: {
+                    $round: [{ $divide: ["$totalWorkedMinutes", 60] }, 2]
+                },
+                averageWorkingHours: {
+                    $cond: [
+                        { $eq: ["$presentDays", 0] },
+                        0,
+                        {
+                            $round: [
+                                { $divide: [{ $divide: ["$totalWorkedMinutes", 60] }, "$presentDays"] },
+                                2
+                            ]
+                        }
+                    ]
+                }
             }
         },
 
         { $sort: { empCode: 1 } }
     ];
 
-    const rawResults = await Attendance.aggregate(pipeline, { allowDiskUse: true });
-
-    /* ── 7. MERGE weekOffMap + COMPUTE FINAL COUNTS IN JS ──────── */
-    return rawResults.map(row => {
-        const empId = row._id.toString();
-
-        // weekOffDays: prefer calculated from employee.weeklyOff array (accurate)
-        // fall back to recorded attendance week_off docs if employee not in map
-        const weekOffDays = weekOffMap.has(empId)
-            ? weekOffMap.get(empId)
-            : row.weekOffRecorded;
-
-        /*
-         * missingWorkingDays = days in range with NO attendance record at all
-         *                      that are also NOT a holiday / weekoff / leave
-         *
-         * Formula:
-         *   totalCalendarDays
-         *   - holidayDays           (non-working, has record)
-         *   - weekOffDays           (non-working, from employee.weeklyOff)
-         *   - leaveDays             (non-working, has record)
-         *   - workingRecordedDays   (working days that DO have a record)
-         *   ──────────────────────────────────────────────────────
-         *   = working days with NO record → treat as absent
-         */
-        const missingWorkingDays = Math.max(
-            totalCalendarDays
-            - row.holidayDays
-            - weekOffDays
-            - row.leaveDays
-            - row.workingRecordedDays,
-            0
-        );
-
-        // Final absent = (absent/missing-punch records) + (days with no record at all)
-        const absentDays = row.absentFromRecord + missingWorkingDays;
-
-        const totalWorkedHours = Math.round((row.totalWorkedMinutes / 60) * 100) / 100;
-        const averageWorkingHours = row.presentDays > 0
-            ? Math.round((totalWorkedHours / row.presentDays) * 100) / 100
-            : 0;
-
-        return {
-            empCode: row.empCode ?? "",
-            employeeName: row.employeeName ?? "",
-            department: row.department ?? "",
-            designation: row.designation ?? "",
-            totalDays: totalCalendarDays,
-            holidayDays: row.holidayDays,
-            weekOffDays,
-            leaveDays: row.leaveDays,
-            presentDays: row.presentDays,
-            absentDays,
-            exceptionDays: row.exceptionDays,
-            totalWorkedHours,
-            averageWorkingHours
-        };
-    });
+    return await Attendance.aggregate(pipeline, { allowDiskUse: true });
 };
 
-
-/* ===============================================================
-   CSV FIELD DEFINITIONS
-=============================================================== */
 export const AttendanceSummaryFields = [
     "empCode",
     "employeeName",
     "department",
     "designation",
+
     "totalDays",
+
     "holidayDays",
     "weekOffDays",
     "leaveDays",
+
     "presentDays",
     "absentDays",
     "exceptionDays",
+
     "totalWorkedHours",
     "averageWorkingHours"
 ];
 
+export const mapAttendanceSummary = (record) => ({
+    empCode: record.empCode ?? "",
+    employeeName: record.employeeName ?? "",
+    department: record.department ?? "",
+    designation: record.designation ?? "",
 
-/* ===============================================================
-   CSV EXPORT CONTROLLER
-=============================================================== */
-export const exportAttendanceAsExcel = async (req, res) => {
+    totalDays: record.totalDays ?? 0,
+
+    holidayDays: record.holidayDays ?? 0,
+    weekOffDays: record.weekOffDays ?? 0,
+    leaveDays: record.leaveDays ?? 0,
+
+    presentDays: record.presentDays ?? 0,
+    absentDays: record.absentDays ?? 0,
+    exceptionDays: record.exceptionDays ?? 0,
+
+    totalWorkedHours: record.totalWorkedHours ?? 0,
+    averageWorkingHours: record.averageWorkingHours ?? 0
+});
+// Export as CSV
+
+export const exportAttendanceAsCSV = async (req, res) => {
     try {
-        const data = await exportCompanyAttendanceSummary({
+        const raw = await exportCompanyAttendanceSummary({
             companyId: req.user._id,
             fromDate: req.query.fromDate,
             toDate: req.query.toDate
         });
 
-        if (!data.length) {
-            return res.status(404).json({ success: false, message: "No data found" });
+        if (!raw.length) {
+            return res.status(404).json({
+                success: false,
+                message: "No data found"
+            });
         }
 
-        const parser = new Parser({ fields: AttendanceSummaryFields });
+        const data = raw.map(mapAttendanceSummary);
+
+        const parser = new Parser({
+            fields: AttendanceSummaryFields
+        });
+
         const csv = parser.parse(data);
 
         res.setHeader("Content-Type", "text/csv");
-        res.setHeader("Content-Disposition", "attachment; filename=attendance_summary.csv");
+        res.setHeader(
+            "Content-Disposition",
+            "attachment; filename=attendance_summary.csv"
+        );
+
         res.status(200).send(csv);
 
     } catch (err) {
         console.error("Attendance Export Error:", err);
+        res.status(500).json({
+            success: false,
+            message: err.message
+        });
+    }
+};
+// Export as Excel
+export const exportAttendanceAsExcel = async (req, res) => {
+    try {
+        const raw = await exportCompanyAttendanceSummary({
+            companyId: req.user._id,
+            fromDate: req.query.fromDate,
+            toDate: req.query.toDate
+        });
+
+        if (!raw.length) {
+            return res.status(404).json({ success: false, message: "No data found" });
+        }
+
+        const data = raw.map(mapAttendanceSummary);
+
+        const wb = XLSX.utils.book_new();
+
+        const worksheetData = data.map(r => ({
+            "Employee Code": r.empCode,
+            "Employee Name": r.employeeName,
+            "Department": r.department,
+            "Designation": r.designation,
+            "Total Days": r.totalDays,
+            "Present Days": r.presentDays,
+            "Absent Days": r.absentDays,
+            "Total Worked (Hours)": r.totalWorkedHours,
+            "Average Working (Hours)": r.averageWorkingHours
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(worksheetData);
+
+        ws["!cols"] = [
+            { wch: 15 },
+            { wch: 25 },
+            { wch: 20 },
+            { wch: 20 },
+            { wch: 10 },
+            { wch: 12 },
+            { wch: 12 },
+            { wch: 18 },
+            { wch: 20 }
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, "Attendance Summary");
+
+        const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+        res.setHeader(
+            "Content-Type",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename=attendance_summary.xlsx`
+        );
+
+        res.send(buffer);
+    } catch (err) {
         res.status(500).json({ success: false, message: err.message });
     }
 };
