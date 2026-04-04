@@ -2094,7 +2094,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
             },
 
             summary: {
-                avgPerDayHours: avgHours, // ✅ FIXED
+                avgPerDay: avgHours, // ✅ FIXED
                 presentDays,
                 absentDays,
                 totalDays: lastDay
