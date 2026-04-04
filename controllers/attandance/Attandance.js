@@ -140,9 +140,6 @@ function normalizeDate(d) {
 // services/attendance.company.export.service.js
 
 
-import mongoose from "mongoose";
-import Attendance from "../models/Attendance.js";
-import { resolveDateRange } from "../utils/dateHelper.js";
 
 export const exportCompanyAttendanceSummary = async ({
     companyId,
