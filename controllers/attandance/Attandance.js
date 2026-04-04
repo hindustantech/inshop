@@ -465,7 +465,7 @@ export const AttendanceSummaryFields = [
 /* ===============================================================
    CSV EXPORT CONTROLLER
 =============================================================== */
-export const exportAttendanceAsCSV = async (req, res) => {
+export const exportAttendanceAsExcel = async (req, res) => {
     try {
         const data = await exportCompanyAttendanceSummary({
             companyId: req.user._id,
