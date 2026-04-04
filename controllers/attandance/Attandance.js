@@ -1669,25 +1669,37 @@ const formatMinutes = (minutes) => {
 ================================================= */
 
 
+
 /* ============================
-   Utils
+   UTIL
 ============================ */
 
 const getDaysInMonth = (year, month) =>
     new Date(year, month, 0).getDate();
 
 /* ============================
-   Controller
+   CONTROLLER
 ============================ */
 
 export const getCompanyAttendanceSummary = async (req, res) => {
     try {
         const { companyId, month, year, format } = req.query;
 
+        /* ============================
+           VALIDATION
+        ============================ */
+
         if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
             return res.status(400).json({
                 success: false,
-                message: "Invalid companyId"
+                message: "Invalid companyId",
+            });
+        }
+
+        if (!month || !year) {
+            return res.status(400).json({
+                success: false,
+                message: "month and year are required",
             });
         }
 
@@ -1698,17 +1710,20 @@ export const getCompanyAttendanceSummary = async (req, res) => {
         const totalDays = getDaysInMonth(year, month);
 
         /* ============================
-           AGGREGATION
+           AGGREGATION PIPELINE
         ============================ */
 
         const employees = await Employee.aggregate([
             {
                 $match: {
                     companyId: new mongoose.Types.ObjectId(companyId),
-                    employmentStatus: "active"
-                }
+                    employmentStatus: "active",
+                },
             },
 
+            /* ============================
+               JOIN ATTENDANCE
+            ============================ */
             {
                 $lookup: {
                     from: "attendances",
@@ -1720,100 +1735,160 @@ export const getCompanyAttendanceSummary = async (req, res) => {
                                     $and: [
                                         { $eq: ["$employeeId", "$$empId"] },
                                         { $gte: ["$date", start] },
-                                        { $lte: ["$date", end] }
-                                    ]
-                                }
-                            }
-                        }
+                                        { $lte: ["$date", end] },
+                                    ],
+                                },
+                            },
+                        },
                     ],
-                    as: "attendance"
-                }
+                    as: "attendance",
+                },
             },
 
+            /* ============================
+               CALCULATIONS
+            ============================ */
             {
                 $addFields: {
-                    workingDays: {
+                    /* PRESENT DAYS */
+                    presentDays: {
                         $size: {
                             $filter: {
                                 input: "$attendance",
                                 as: "att",
-                                cond: { $eq: ["$$att.status", "present"] }
-                            }
-                        }
+                                cond: { $eq: ["$$att.status", "present"] },
+                            },
+                        },
                     },
 
+                    /* EXCEPTION DAYS (AUTO MARKED PRESENT ONLY) */
                     exceptionDays: {
                         $size: {
                             $filter: {
                                 input: "$attendance",
                                 as: "att",
-                                cond: { $eq: ["$$att.isAutoMarked", true] }
-                            }
-                        }
+                                cond: {
+                                    $and: [
+                                        { $eq: ["$$att.isAutoMarked", true] },
+                                        { $eq: ["$$att.status", "present"] },
+                                    ],
+                                },
+                            },
+                        },
                     },
 
+                    /* TOTAL WORK MINUTES */
                     totalMinutes: {
-                        $sum: "$attendance.workSummary.totalMinutes"
-                    }
-                }
+                        $sum: {
+                            $map: {
+                                input: "$attendance",
+                                as: "att",
+                                in: {
+                                    $ifNull: ["$$att.workSummary.totalMinutes", 0],
+                                },
+                            },
+                        },
+                    },
+                },
             },
 
+            /* ============================
+               ABSENT + AVERAGE FIX
+            ============================ */
             {
                 $addFields: {
+                    /* ✅ CORRECT ABSENT */
                     absentDays: {
-                        $subtract: [
-                            totalDays,
-                            { $size: "$attendance" }
-                        ]
+                        $subtract: [totalDays, "$presentDays"],
                     },
 
+                    /* ✅ AVG MINUTES */
                     avgMinutes: {
                         $cond: [
-                            { $gt: ["$workingDays", 0] },
-                            { $divide: ["$totalMinutes", "$workingDays"] },
-                            0
-                        ]
-                    }
-                }
+                            { $gt: ["$presentDays", 0] },
+                            { $divide: ["$totalMinutes", "$presentDays"] },
+                            0,
+                        ],
+                    },
+                },
             },
 
+            /* ============================
+               FINAL SHAPE
+            ============================ */
             {
                 $project: {
                     empCode: 1,
-                    name: "$user_name",
+                    empCodeNumber: {
+                        $convert: {
+                            input: "$empCode",
+                            to: "int",
+                            onError: 0,
+                            onNull: 0,
+                        },
+                    },
+
+                    employeeName: {
+                        $ifNull: ["$user_name", "-"],
+                    },
+
                     totalDays: { $literal: totalDays },
-                    workingDays: 1,
+                    presentDays: 1,
                     absentDays: 1,
                     exceptionDays: 1,
+
                     totalHours: {
-                        $round: [{ $divide: ["$totalMinutes", 60] }, 2]
+                        $round: [
+                            {
+                                $divide: [
+                                    { $ifNull: ["$totalMinutes", 0] },
+                                    60
+                                ]
+                            },
+                            2
+                        ]
                     },
+
                     avgHours: {
-                        $round: [{ $divide: ["$avgMinutes", 60] }, 2]
+                        $round: [
+                            {
+                                $divide: [
+                                    { $ifNull: ["$avgMinutes", 0] },
+                                    60
+                                ]
+                            },
+                            2
+                        ]
                     }
-                }
+                },
             },
 
-            /* ✅ STRICT SORT */
+            /* ============================
+               SORT (FIXED)
+            ============================ */
             {
-                $sort: { empCode: 1 }
-            }
+                $sort: {
+                    empCodeNumber: 1,
+                },
+            },
         ]);
 
         /* ============================
-           ADD SR NO
+           FINAL RESPONSE FORMAT
         ============================ */
 
         const finalData = employees.map((emp, index) => ({
             "Sr No": index + 1,
-            "Employee Coe": emp.empCode,
-            "Employee Name": emp.name || "-",
+            "Employee Code": emp.empCode,
+            "Employee Name": emp.employeeName,
+
             "Total Days": emp.totalDays,
-            "Working Days": emp.workingDays,
+            "Present Days": emp.presentDays,
             "Absent Days": emp.absentDays,
             "Exception Days": emp.exceptionDays,
-            "Total Working Hours": emp.totalHours.toFixed(2),
-            "Avg Working Hours": emp.avgHours.toFixed(2)
+
+            "Total Working Hours": Number(emp.totalHours).toFixed(2),
+            "Avg Working Hours": Number(emp.avgHours).toFixed(2),
         }));
 
         /* ============================
@@ -1827,17 +1902,17 @@ export const getCompanyAttendanceSummary = async (req, res) => {
                     "Employee Code",
                     "Employee Name",
                     "Total Days",
-                    "Working Days",
+                    "Present Days",
                     "Absent Days",
                     "Exception Days",
                     "Total Working Hours",
-                    "Avg Working Hours"
-                ]
+                    "Avg Working Hours",
+                ],
             });
 
             const csv = parser.parse(finalData);
 
-            const fileName = `company_attendance_${month}_${year}.csv`;
+            const fileName = `attendance_summary_${month}_${year}.csv`;
 
             res.setHeader("Content-Type", "text/csv");
             res.setHeader(
@@ -1858,17 +1933,16 @@ export const getCompanyAttendanceSummary = async (req, res) => {
                 companyId,
                 month,
                 year,
-                totalEmployees: finalData.length
+                totalEmployees: finalData.length,
             },
-            data: finalData
+            data: finalData,
         });
-
     } catch (error) {
-        console.error("Company Summary Error:", error);
+        console.error("Attendance Summary Error:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Internal server error"
+            message: "Internal server error",
         });
     }
 };
