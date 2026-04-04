@@ -140,20 +140,15 @@ function normalizeDate(d) {
 // services/attendance.company.export.service.js
 
 
-
-export const exportCompanyAttendanceSummary = async ({
-    companyId,
-    fromDate,
-    toDate
-}) => {
-
+export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDate }) => {
     const { start, end } = resolveDateRange(fromDate, toDate);
 
-    const pipeline = [
+    // Calculate total calendar days in the range (for totalDays accuracy)
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const totalCalendarDays = Math.round((end - start) / msPerDay) + 1;
 
-        /* ===============================
-           MATCH
-        =============================== */
+    const pipeline = [
+        // ── MATCH ──
         {
             $match: {
                 companyId: new mongoose.Types.ObjectId(companyId),
@@ -161,9 +156,7 @@ export const exportCompanyAttendanceSummary = async ({
             }
         },
 
-        /* ===============================
-           JOIN EMPLOYEE
-        =============================== */
+        // ── JOIN EMPLOYEE ──
         {
             $lookup: {
                 from: "employees",
@@ -174,9 +167,7 @@ export const exportCompanyAttendanceSummary = async ({
         },
         { $unwind: "$employee" },
 
-        /* ===============================
-           BREAK CALCULATION
-        =============================== */
+        // ── BREAK CALCULATION ──
         {
             $addFields: {
                 breakMinutes: {
@@ -187,12 +178,7 @@ export const exportCompanyAttendanceSummary = async ({
                             in: {
                                 $cond: [
                                     { $and: ["$$b.start", "$$b.end"] },
-                                    {
-                                        $divide: [
-                                            { $subtract: ["$$b.end", "$$b.start"] },
-                                            1000 * 60
-                                        ]
-                                    },
+                                    { $divide: [{ $subtract: ["$$b.end", "$$b.start"] }, 60000] },
                                     0
                                 ]
                             }
@@ -201,21 +187,15 @@ export const exportCompanyAttendanceSummary = async ({
                 }
             }
         },
-
         {
             $addFields: {
                 netWorkMinutes: {
-                    $max: [
-                        { $subtract: ["$workSummary.totalMinutes", "$breakMinutes"] },
-                        0
-                    ]
+                    $max: [{ $subtract: ["$workSummary.totalMinutes", "$breakMinutes"] }, 0]
                 }
             }
         },
 
-        /* ===============================
-           GROUP (STRICT CLASSIFICATION)
-        =============================== */
+        // ── GROUP ──
         {
             $group: {
                 _id: "$employeeId",
@@ -225,20 +205,19 @@ export const exportCompanyAttendanceSummary = async ({
                 department: { $first: "$employee.jobInfo.department" },
                 designation: { $first: "$employee.jobInfo.designation" },
 
-                totalDays: { $sum: 1 },
+                recordedDays: { $sum: 1 }, // days that have ANY record
 
                 holidayDays: {
                     $sum: { $cond: [{ $eq: ["$status", "holiday"] }, 1, 0] }
                 },
-
                 weekOffDays: {
                     $sum: { $cond: [{ $eq: ["$status", "week_off"] }, 1, 0] }
                 },
-
                 leaveDays: {
                     $sum: { $cond: [{ $eq: ["$status", "leave"] }, 1, 0] }
                 },
 
+                // Exception: auto-marked OR not approved (but NOT holiday/leave/weekoff)
                 exceptionDays: {
                     $sum: {
                         $cond: [
@@ -253,12 +232,12 @@ export const exportCompanyAttendanceSummary = async ({
                                     }
                                 ]
                             },
-                            1,
-                            0
+                            1, 0
                         ]
                     }
                 },
 
+                // Absent: approved, not auto-marked, no punch or status=absent
                 absentDays: {
                     $sum: {
                         $cond: [
@@ -267,7 +246,6 @@ export const exportCompanyAttendanceSummary = async ({
                                     { $not: { $in: ["$status", ["leave", "holiday", "week_off"]] } },
                                     { $eq: ["$approvalStatus", "approved"] },
                                     { $eq: ["$isAutoMarked", false] },
-
                                     {
                                         $or: [
                                             { $eq: ["$status", "absent"] },
@@ -277,12 +255,12 @@ export const exportCompanyAttendanceSummary = async ({
                                     }
                                 ]
                             },
-                            1,
-                            0
+                            1, 0
                         ]
                     }
                 },
 
+                // Present: approved, not auto-marked, both punches exist, worked > 0 mins
                 presentDays: {
                     $sum: {
                         $cond: [
@@ -291,14 +269,12 @@ export const exportCompanyAttendanceSummary = async ({
                                     { $not: { $in: ["$status", ["leave", "holiday", "week_off"]] } },
                                     { $eq: ["$approvalStatus", "approved"] },
                                     { $eq: ["$isAutoMarked", false] },
-
                                     { $ne: ["$punchIn", null] },
                                     { $ne: ["$punchOut", null] },
                                     { $gt: ["$workSummary.totalMinutes", 0] }
                                 ]
                             },
-                            1,
-                            0
+                            1, 0
                         ]
                     }
                 },
@@ -311,7 +287,6 @@ export const exportCompanyAttendanceSummary = async ({
                                     { $not: { $in: ["$status", ["leave", "holiday", "week_off"]] } },
                                     { $eq: ["$approvalStatus", "approved"] },
                                     { $eq: ["$isAutoMarked", false] },
-
                                     { $ne: ["$punchIn", null] },
                                     { $ne: ["$punchOut", null] }
                                 ]
@@ -324,44 +299,47 @@ export const exportCompanyAttendanceSummary = async ({
             }
         },
 
-        /* ===============================
-           PROJECT
-        =============================== */
+        // ── PROJECT (compute absentDays for missing days too) ──
         {
             $project: {
                 _id: 0,
-
                 empCode: 1,
                 employeeName: 1,
                 department: 1,
                 designation: 1,
 
-                totalDays: 1,
+                // totalDays = full calendar range, not just records found
+                totalDays: { $literal: totalCalendarDays },
 
                 holidayDays: 1,
                 weekOffDays: 1,
                 leaveDays: 1,
-
                 presentDays: 1,
-                absentDays: 1,
                 exceptionDays: 1,
+
+                // absentDays = days with absent record + days with NO record at all
+                absentDays: {
+                    $add: [
+                        "$absentDays",
+                        {
+                            $subtract: [
+                                totalCalendarDays,
+                                "$recordedDays"  // days that never got a record created
+                            ]
+                        }
+                    ]
+                },
 
                 totalWorkedHours: {
                     $round: [{ $divide: ["$totalWorkedMinutes", 60] }, 2]
                 },
-
                 averageWorkingHours: {
                     $cond: [
                         { $eq: ["$presentDays", 0] },
                         0,
                         {
                             $round: [
-                                {
-                                    $divide: [
-                                        { $divide: ["$totalWorkedMinutes", 60] },
-                                        "$presentDays"
-                                    ]
-                                },
+                                { $divide: [{ $divide: ["$totalWorkedMinutes", 60] }, "$presentDays"] },
                                 2
                             ]
                         }
@@ -375,7 +353,6 @@ export const exportCompanyAttendanceSummary = async ({
 
     return await Attendance.aggregate(pipeline, { allowDiskUse: true });
 };
-
 export const AttendanceSummaryFields = [
     "empCode",
     "employeeName",
