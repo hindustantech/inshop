@@ -110,18 +110,22 @@ export const getCompanyByUser = async (req, res) => {
 /* ---------------------------------------------
    CREATE EMPLOYEE (ENTERPRISE LEVEL)
 ---------------------------------------------- */
+
 export const createEmployee = async (req, res) => {
     const session = await mongoose.startSession();
-    session.startTransaction();
 
     try {
+        session.startTransaction();
+
         /* ---------------------------------------------
            1. Auth & Role Validation
         ---------------------------------------------- */
         const companyId = req.user?._id || req.user?.id;
         const role = req.user?.role || req.user?.type;
 
-        if (!companyId) throw new Error("Unauthorized");
+        if (!companyId) {
+            throw new Error("Unauthorized");
+        }
 
         const allowedRoles = ["partner", "admin", "super_admin"];
         if (!allowedRoles.includes(role)) {
@@ -143,17 +147,23 @@ export const createEmployee = async (req, res) => {
             officeLocation
         } = req.body;
 
-        if (!userId) throw new Error("userId is required");
+        if (!userId) {
+            throw new Error("userId is required");
+        }
 
         /* ---------------------------------------------
            3. Dependency Validation
         ---------------------------------------------- */
         const user = await User.findById(userId).session(session);
-        if (!user) throw new Error("User not found");
+        if (!user) {
+            throw new Error("User not found");
+        }
 
         if (shift) {
             const shiftExists = await Shift.findById(shift).session(session);
-            if (!shiftExists) throw new Error("Shift not found");
+            if (!shiftExists) {
+                throw new Error("Shift not found");
+            }
         }
 
         /* ---------------------------------------------
@@ -169,47 +179,7 @@ export const createEmployee = async (req, res) => {
         }
 
         /* ---------------------------------------------
-           5. Subscription Validation (USING FEATURE SERVICE)
-        ---------------------------------------------- */
-        const subscription = await getActiveSubscription(companyId, session);
-
-        // Use the feature service to validate subscription
-        const subscriptionStatus = validateSubscription(subscription);
-        if (!subscriptionStatus.valid) {
-            throw new Error(subscriptionStatus.message);
-        }
-
-        // Check if can create employee using the service
-        const canCreate = canCreateEmployee(subscription);
-        if (!canCreate) {
-            const remaining = getRemainingEmployeeSlots(subscription);
-            if (remaining === 0) {
-                throw new Error("Employee limit reached. Please upgrade your plan to add more employees.");
-            }
-            throw new Error("Cannot create employee due to subscription restrictions");
-        }
-
-        // Get real-time employee count (additional safety check)
-        const currentCount = await Employee.countDocuments({
-            companyId,
-            employmentStatus: "active"
-        }).session(session);
-
-        const employeeLimit = getEmployeeLimit(subscription);
-
-        if (currentCount >= employeeLimit) {
-            throw new Error(`Employee limit of ${employeeLimit} reached. Please upgrade your plan.`);
-        }
-
-        // Check if nearing limit for warning (optional)
-        const nearingLimit = isNearingEmployeeLimit(subscription, 80);
-        if (nearingLimit) {
-            // You can add a warning header or log this
-            console.warn(`Company ${companyId} is nearing employee limit: ${currentCount}/${employeeLimit}`);
-        }
-
-        /* ---------------------------------------------
-           6. Create Employee
+           5. Create Employee
         ---------------------------------------------- */
         const employeeData = {
             userId,
@@ -228,76 +198,46 @@ export const createEmployee = async (req, res) => {
         const [employee] = await Employee.create([employeeData], { session });
 
         /* ---------------------------------------------
-           7. Update Usage Tracking
-        ---------------------------------------------- */
-        // Use direct update instead of subscription.save()
-        await Subscription.updateOne(
-            { _id: subscription._id },
-            { $inc: { 'usage.employeesUsed': 1 } },
-            { session }
-        );
-
-        // Update local subscription object for response
-        subscription.usage.employeesUsed = (subscription.usage?.employeesUsed || 0) + 1;
-
-        /* ---------------------------------------------
-           8. Commit Transaction
+           6. Commit Transaction
         ---------------------------------------------- */
         await session.commitTransaction();
 
-        // Prepare response with subscription info
-        const response = {
+        return res.status(201).json({
             success: true,
             message: "Employee created successfully",
-            data: employee,
-            subscription: {
-                employeesUsed: subscription.usage?.employeesUsed || 0,
-                employeeLimit: getEmployeeLimit(subscription),
-                remainingSlots: getRemainingEmployeeSlots(subscription),
-                nearingLimit: isNearingEmployeeLimit(subscription, 80)
-            }
-        };
-
-        // Add warning if nearing limit
-        if (isNearingEmployeeLimit(subscription, 80)) {
-            response.warning = `You have used ${subscription.usage?.employeesUsed || 0} out of ${getEmployeeLimit(subscription)} employee slots. Consider upgrading your plan.`;
-        }
-
-        return res.status(201).json(response);
+            data: employee
+        });
 
     } catch (error) {
-        // Only abort transaction if session is still active and transaction is in progress
-        if (session && session.inTransaction()) {
+        if (session.inTransaction()) {
             await session.abortTransaction();
         }
 
-        // Handle specific error cases
+        /* ---------------------------------------------
+           Centralized Error Mapping
+        ---------------------------------------------- */
         let statusCode = 400;
-        let errorResponse = {
-            success: false,
-            message: error.message
-        };
+        let code = "BAD_REQUEST";
 
-        if (error.message.includes("limit reached")) {
-            statusCode = 403;
-            errorResponse.code = "EMPLOYEE_LIMIT_REACHED";
-        } else if (error.message.includes("subscription")) {
-            statusCode = 403;
-            errorResponse.code = "SUBSCRIPTION_ERROR";
-        } else if (error.message.includes("Unauthorized") || error.message.includes("Access denied")) {
+        if (error.message.includes("Unauthorized") || error.message.includes("Access denied")) {
             statusCode = 401;
-            errorResponse.code = "UNAUTHORIZED";
+            code = "UNAUTHORIZED";
         } else if (error.message.includes("not found")) {
             statusCode = 404;
-            errorResponse.code = "NOT_FOUND";
+            code = "NOT_FOUND";
+        } else if (error.message.includes("already exists")) {
+            statusCode = 409;
+            code = "DUPLICATE_RESOURCE";
         }
 
-        return res.status(statusCode).json(errorResponse);
+        return res.status(statusCode).json({
+            success: false,
+            message: error.message,
+            code
+        });
+
     } finally {
-        // Always end the session
-        if (session) {
-            session.endSession();
-        }
+        session.endSession();
     }
 };
 
