@@ -1297,10 +1297,12 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 
 
+
+
 export const getEmployeeSimpleMonthlySummary = async (req, res) => {
     try {
         /* =====================================
-           1. AUTH & VALIDATION
+           1. AUTH
         ===================================== */
         const companyId = req.user._id;
 
@@ -1312,9 +1314,10 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         }
 
         /* =====================================
-           2. DATE RANGE SETUP
+           2. DATE RANGE
         ===================================== */
         const { startDate, endDate } = req.query;
+
         const today = new Date();
 
         const start = startDate
@@ -1334,6 +1337,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
            3. AGGREGATION
         ===================================== */
         const report = await Employee.aggregate([
+
             {
                 $match: {
                     companyId: new mongoose.Types.ObjectId(companyId),
@@ -1380,12 +1384,20 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
+            /* 🔥 CRITICAL FIX: normalize array */
+            {
+                $addFields: {
+                    attendance: { $ifNull: ["$attendance", []] }
+                }
+            },
+
             /* =====================================
-               4. CORE CALCULATIONS
+               4. CALCULATIONS
             ===================================== */
             {
                 $addFields: {
-                    /* ===== VALID ATTENDANCE (CRITICAL FIX) ===== */
+
+                    /* ===== VALID ATTENDANCE ===== */
                     validAttendance: {
                         $filter: {
                             input: "$attendance",
@@ -1396,7 +1408,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                                     { $ne: ["$$a.punchOut", null] },
                                     { $eq: ["$$a.status", "present"] },
                                     { $eq: ["$$a.approvalStatus", "approved"] },
-                                    { $gt: ["$$a.workSummary.totalMinutes", 0] }
+                                    { $gt: [{ $ifNull: ["$$a.workSummary.totalMinutes", 0] }, 0] }
                                 ]
                             }
                         }
@@ -1468,39 +1480,64 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    /* ===== TIME CALCULATIONS ===== */
+                    /* ===== SAFE SUM (IMPORTANT) ===== */
                     totalMinutes: {
-                        $sum: "$attendance.workSummary.totalMinutes"
+                        $sum: {
+                            $map: {
+                                input: "$attendance",
+                                as: "a",
+                                in: { $ifNull: ["$$a.workSummary.totalMinutes", 0] }
+                            }
+                        }
                     },
 
                     payableMinutes: {
-                        $sum: "$attendance.workSummary.payableMinutes"
+                        $sum: {
+                            $map: {
+                                input: "$attendance",
+                                as: "a",
+                                in: { $ifNull: ["$$a.workSummary.payableMinutes", 0] }
+                            }
+                        }
                     },
 
                     overtimeMinutes: {
-                        $sum: "$attendance.workSummary.overtimeMinutes"
+                        $sum: {
+                            $map: {
+                                input: "$attendance",
+                                as: "a",
+                                in: { $ifNull: ["$$a.workSummary.overtimeMinutes", 0] }
+                            }
+                        }
                     },
 
                     markedDays: {
                         $size: "$attendance"
                     },
 
-                    /* ===== VALID CALCULATIONS ===== */
+                    /* ===== VALID METRICS ===== */
                     validWorkingDays: {
-                        $size: "$validAttendance"
+                        $size: { $ifNull: ["$validAttendance", []] }
                     },
 
                     validTotalMinutes: {
-                        $sum: "$validAttendance.workSummary.totalMinutes"
+                        $sum: {
+                            $map: {
+                                input: { $ifNull: ["$validAttendance", []] },
+                                as: "v",
+                                in: { $ifNull: ["$$v.workSummary.totalMinutes", 0] }
+                            }
+                        }
                     }
                 }
             },
 
             /* =====================================
-               5. DERIVED CALCULATIONS
+               5. DERIVED
             ===================================== */
             {
                 $addFields: {
+
                     autoAbsentDays: {
                         $max: [
                             {
@@ -1538,7 +1575,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         $round: [{ $divide: ["$overtimeMinutes", 60] }, 2]
                     },
 
-                    /* ===== FINAL AVG HOURS (FIXED) ===== */
+                    /* 🔥 FINAL AVG FIX */
                     avgHours: {
                         $cond: [
                             { $gt: ["$validWorkingDays", 0] },
@@ -1560,17 +1597,16 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
             /* =====================================
-               6. FINAL OUTPUT
+               6. OUTPUT
             ===================================== */
             {
                 $project: {
                     _id: 1,
                     userId: "$user._id",
 
-                    /* NAME FROM EMPLOYEE TABLE */
                     name: { $ifNull: ["$user_name", "Unknown"] },
-
                     empCode: 1,
+
                     email: "$user.email",
                     phone: "$user.phone",
 
@@ -1606,7 +1642,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         totalMinutes: 1,
                         totalHours: 1,
 
-                        /* IMPORTANT NEW METRICS */
                         validWorkingDays: 1,
                         avgHours: 1,
 
@@ -1644,7 +1679,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             totalValidDays += t.validWorkingDays || 0;
         });
 
-        /* COMPANY AVG HOURS */
         if (totalValidDays > 0) {
             companySummary.avgHours = Math.round(
                 (companySummary.totalHours / totalValidDays) * 100
@@ -1677,7 +1711,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         });
     }
 };
-
 
 
 
