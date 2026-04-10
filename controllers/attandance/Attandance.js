@@ -146,7 +146,7 @@ const resolveDateRange = (fromDate, toDate) => {
     };
 
     const start = parseLocal(fromDate); // e.g. 2025-03-01 → UTC 2025-03-01T00:00:00Z
-    const end   = parseLocal(toDate);   // e.g. 2025-03-31 → UTC 2025-03-31T00:00:00Z
+    const end = parseLocal(toDate);   // e.g. 2025-03-31 → UTC 2025-03-31T00:00:00Z
 
     // Set end to 23:59:59.999 UTC so $lte catches all records that day
     end.setUTCHours(23, 59, 59, 999);
@@ -267,10 +267,10 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
             $group: {
                 _id: "$employeeId",
 
-                empCode:        { $first: "$employee.empCode" },
-                employeeName:   { $first: "$employee.user_name" },
-                department:     { $first: "$employee.jobInfo.department" },
-                designation:    { $first: "$employee.jobInfo.designation" },
+                empCode: { $first: "$employee.empCode" },
+                employeeName: { $first: "$employee.user_name" },
+                department: { $first: "$employee.jobInfo.department" },
+                designation: { $first: "$employee.jobInfo.designation" },
 
                 recordedDays: { $sum: 1 },
 
@@ -303,7 +303,7 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
                                     { $not: { $in: ["$status", ["leave", "holiday", "week_off"]] } },
                                     { $eq: ["$approvalStatus", "approved"] },
                                     { $eq: ["$isAutoMarked", false] },
-                                    { $ne: ["$punchIn",  null] },
+                                    { $ne: ["$punchIn", null] },
                                     { $ne: ["$punchOut", null] },
                                     { $gt: ["$workSummary.totalMinutes", 0] }
                                 ]
@@ -332,7 +332,7 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
                                             { $eq: ["$isAutoMarked", false] },
                                             {
                                                 $or: [
-                                                    { $eq: ["$punchIn",  null] },
+                                                    { $eq: ["$punchIn", null] },
                                                     { $eq: ["$punchOut", null] }
                                                 ]
                                             }
@@ -373,7 +373,7 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
                                     { $not: { $in: ["$status", ["leave", "holiday", "week_off"]] } },
                                     { $eq: ["$approvalStatus", "approved"] },
                                     { $eq: ["$isAutoMarked", false] },
-                                    { $ne: ["$punchIn",  null] },
+                                    { $ne: ["$punchIn", null] },
                                     { $ne: ["$punchOut", null] }
                                 ]
                             },
@@ -438,24 +438,24 @@ export const exportCompanyAttendanceSummary = async ({ companyId, fromDate, toDa
             0
         );
 
-        const absentDays        = row.absentFromRecord + missingWorkingDays;
-        const totalWorkedHours  = Math.round((row.totalWorkedMinutes / 60) * 100) / 100;
+        const absentDays = row.absentFromRecord + missingWorkingDays;
+        const totalWorkedHours = Math.round((row.totalWorkedMinutes / 60) * 100) / 100;
         const averageWorkingHours = row.presentDays > 0
             ? Math.round((totalWorkedHours / row.presentDays) * 100) / 100
             : 0;
 
         return {
-            empCode:              row.empCode       ?? "",
-            employeeName:         row.employeeName  ?? "",
-            department:           row.department    ?? "",
-            designation:          row.designation   ?? "",
-            totalDays:            totalCalendarDays,
-            holidayDays:          row.holidayDays,
+            empCode: row.empCode ?? "",
+            employeeName: row.employeeName ?? "",
+            department: row.department ?? "",
+            designation: row.designation ?? "",
+            totalDays: totalCalendarDays,
+            holidayDays: row.holidayDays,
             weekOffDays,
-            leaveDays:            row.leaveDays,
-            presentDays:          row.presentDays,
+            leaveDays: row.leaveDays,
+            presentDays: row.presentDays,
             absentDays,
-            exceptionDays:        row.exceptionDays,
+            exceptionDays: row.exceptionDays,
             totalWorkedHours,
             averageWorkingHours
         };
@@ -506,7 +506,7 @@ export const exportAttendanceAsCSV = async (req, res) => {
         }
 
         const parser = new Parser({ fields: AttendanceSummaryFields });
-        const csv    = parser.parse(data);
+        const csv = parser.parse(data);
 
         res.setHeader("Content-Type", "text/csv");
         res.setHeader(
@@ -1297,11 +1297,12 @@ export const getCompanyTodayAttendance = async (req, res) => {
 
 
 
+
 export const getEmployeeSimpleMonthlySummary = async (req, res) => {
     try {
 
         /* =====================================
-           1. AUTH
+           1. AUTH & VALIDATION
         ===================================== */
 
         const companyId = req.user._id;
@@ -1315,7 +1316,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
 
         /* =====================================
-           2. DATE RANGE
+           2. DATE RANGE SETUP
         ===================================== */
 
         const { startDate, endDate } = req.query;
@@ -1331,6 +1332,9 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             : new Date();
 
         end.setHours(23, 59, 59, 999);
+
+        // Calculate total calendar days
+        const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
 
         /* =====================================
@@ -1349,7 +1353,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-            /* ---------- USER JOIN ---------- */
+            /* ---------- USER JOIN (for email & phone only) ---------- */
             {
                 $lookup: {
                     from: "users",
@@ -1366,7 +1370,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-            /* ---------- ATTENDANCE JOIN ---------- */
+            /* ---------- ATTENDANCE JOIN (date range) ---------- */
             {
                 $lookup: {
                     from: "attendances",
@@ -1382,6 +1386,9 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                                     ]
                                 }
                             }
+                        },
+                        {
+                            $sort: { date: 1 }
                         }
                     ],
                     as: "attendance"
@@ -1389,9 +1396,11 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-            /* ---------- COUNTS ---------- */
+            /* ---------- CALCULATE ATTENDANCE METRICS ---------- */
             {
                 $addFields: {
+
+                    /* Present Days */
                     presentDays: {
                         $size: {
                             $filter: {
@@ -1407,6 +1416,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
+                    /* Half Days */
                     halfDays: {
                         $size: {
                             $filter: {
@@ -1417,6 +1427,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
+                    /* Leave Days */
                     leaveDays: {
                         $size: {
                             $filter: {
@@ -1427,24 +1438,94 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
+                    /* Absent Days (marked explicitly) */
+                    absentDays: {
+                        $size: {
+                            $filter: {
+                                input: "$attendance",
+                                as: "a",
+                                cond: { $eq: ["$$a.status", "absent"] }
+                            }
+                        }
+                    },
+
+                    /* Holiday Days */
+                    holidayDays: {
+                        $size: {
+                            $filter: {
+                                input: "$attendance",
+                                as: "a",
+                                cond: { $eq: ["$$a.status", "holiday"] }
+                            }
+                        }
+                    },
+
+                    /* Week Off Days */
+                    weekOffDays: {
+                        $size: {
+                            $filter: {
+                                input: "$attendance",
+                                as: "a",
+                                cond: { $eq: ["$$a.status", "week_off"] }
+                            }
+                        }
+                    },
+
+                    /* Total Minutes Worked */
                     totalMinutes: {
                         $sum: "$attendance.workSummary.totalMinutes"
                     },
 
+                    /* Payable Minutes */
+                    payableMinutes: {
+                        $sum: "$attendance.workSummary.payableMinutes"
+                    },
+
+                    /* Overtime Minutes */
                     overtimeMinutes: {
                         $sum: "$attendance.workSummary.overtimeMinutes"
+                    },
+
+                    /* Count Marked Days */
+                    markedDays: {
+                        $size: "$attendance"
                     }
                 }
             },
 
 
-            /* ---------- DERIVED ---------- */
+            /* ---------- CALCULATE AUTO-ABSENT & DERIVED FIELDS ---------- */
             {
                 $addFields: {
+
+                    /* Auto-calculated Absent (missing dates from range) */
+                    autoAbsentDays: {
+                        $max: [
+                            {
+                                $subtract: [
+                                    totalDays,
+                                    {
+                                        $add: [
+                                            "$presentDays",
+                                            "$halfDays",
+                                            "$leaveDays",
+                                            "$absentDays",
+                                            "$holidayDays",
+                                            "$weekOffDays"
+                                        ]
+                                    }
+                                ]
+                            },
+                            0
+                        ]
+                    },
+
+                    /* Working Days (present + half day) */
                     workingDays: {
                         $add: ["$presentDays", "$halfDays"]
                     },
 
+                    /* Total Hours (converted from minutes) */
                     totalHours: {
                         $round: [
                             { $divide: ["$totalMinutes", 60] },
@@ -1452,6 +1533,15 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         ]
                     },
 
+                    /* Payable Hours */
+                    payableHours: {
+                        $round: [
+                            { $divide: ["$payableMinutes", 60] },
+                            2
+                        ]
+                    },
+
+                    /* Overtime Hours */
                     overtimeHours: {
                         $round: [
                             { $divide: ["$overtimeMinutes", 60] },
@@ -1462,25 +1552,30 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
 
-            /* ---------- FINAL FORMAT ---------- */
+            /* ---------- FINAL PROJECTION ---------- */
             {
                 $project: {
-                    _id: 0,
+                    _id: 1,
                     userId: "$user._id",
 
-                    /* FROM EMPLOYEE TABLE - CORRECTED FIELD REFERENCES */
+                    /* NAME - Always from Employee Table (user_name) */
                     name: {
-                        $ifNull: ["$user_name", "$user.name", "Unknown"]
-                    }, // First try user_name from employee, then user.name, fallback
+                        $ifNull: ["$user_name", "Unknown"]
+                    },
 
+                    /* Employee Code */
                     empCode: 1,
 
+                    /* Contact Info from User Table */
                     email: "$user.email",
                     phone: "$user.phone",
 
+                    /* Job Info */
                     department: "$jobInfo.department",
                     designation: "$jobInfo.designation",
+                    grade: "$jobInfo.grade",
 
+                    /* Joining Date */
                     joiningDate: {
                         $dateToString: {
                             format: "%Y-%m-%d",
@@ -1489,90 +1584,94 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
+                    /* Attendance Summary */
                     summary: {
                         presentDays: "$presentDays",
                         halfDays: "$halfDays",
                         leaveDays: "$leaveDays",
+                        absentDays: "$absentDays",
+                        autoAbsentDays: "$autoAbsentDays",
+                        totalAbsentDays: {
+                            $add: ["$absentDays", "$autoAbsentDays"]
+                        },
+                        holidayDays: "$holidayDays",
+                        weekOffDays: "$weekOffDays",
                         workingDays: "$workingDays",
-                        // absentDays: 0 // temporary placeholder
+                        markedDays: "$markedDays",
+                        totalDays: totalDays
                     },
 
+                    /* Time Summary */
                     timeSummary: {
+                        totalMinutes: "$totalMinutes",
                         totalHours: "$totalHours",
+                        payableMinutes: "$payableMinutes",
+                        payableHours: "$payableHours",
+                        overtimeMinutes: "$overtimeMinutes",
                         overtimeHours: "$overtimeHours"
                     }
                 }
             },
 
-            { $sort: { name: 1 } }
+            /* Sort by employee name */
+            {
+                $sort: { name: 1 }
+            }
 
         ]);
 
 
         /* =====================================
-           4. SIMPLE AUTO-ABSENT LOGIC
-        ===================================== */
-
-        const totalDays =
-            Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
-
-
-        report.forEach(emp => {
-
-            const s = emp.summary;
-
-            const marked =
-                (s.presentDays || 0) +
-                (s.halfDays || 0) +
-                (s.leaveDays || 0);
-
-            // let absent = totalDays - marked;
-
-            // if (absent < 0) absent = 0;
-
-            // override
-            // s.absentDays = absent;
-
-        });
-
-
-        /* =====================================
-           5. COMPANY SUMMARY
+           4. COMPANY-WIDE SUMMARY
         ===================================== */
 
         const companySummary = {
             totalEmployees: report.length,
-            totalPresent: 0,
-            // totalAbsent: 0,
-            totalLeave: 0,
+            totalPresentDays: 0,
+            totalHalfDays: 0,
+            totalLeaveDays: 0,
+            totalAbsentDays: 0,
+            totalAutoAbsentDays: 0,
+            totalHolidayDays: 0,
+            totalWeekOffDays: 0,
             totalWorkingDays: 0,
+            totalMarkedDays: 0,
             totalHours: 0,
+            totalPayableHours: 0,
             totalOvertime: 0
         };
-
 
         report.forEach(emp => {
             const s = emp.summary;
             const t = emp.timeSummary;
 
-            companySummary.totalPresent += s.presentDays || 0;
-            // companySummary.totalAbsent += s.absentDays || 0;
-            companySummary.totalLeave += s.leaveDays || 0;
+            companySummary.totalPresentDays += s.presentDays || 0;
+            companySummary.totalHalfDays += s.halfDays || 0;
+            companySummary.totalLeaveDays += s.leaveDays || 0;
+            companySummary.totalAbsentDays += s.absentDays || 0;
+            companySummary.totalAutoAbsentDays += s.autoAbsentDays || 0;
+            companySummary.totalHolidayDays += s.holidayDays || 0;
+            companySummary.totalWeekOffDays += s.weekOffDays || 0;
             companySummary.totalWorkingDays += s.workingDays || 0;
+            companySummary.totalMarkedDays += s.markedDays || 0;
             companySummary.totalHours += t.totalHours || 0;
+            companySummary.totalPayableHours += t.payableHours || 0;
             companySummary.totalOvertime += t.overtimeHours || 0;
         });
 
-
+        // Round totals to 2 decimal places
         companySummary.totalHours =
             Math.round(companySummary.totalHours * 100) / 100;
+
+        companySummary.totalPayableHours =
+            Math.round(companySummary.totalPayableHours * 100) / 100;
 
         companySummary.totalOvertime =
             Math.round(companySummary.totalOvertime * 100) / 100;
 
 
         /* =====================================
-           6. RESPONSE
+           5. RESPONSE
         ===================================== */
 
         return res.status(200).json({
@@ -1580,11 +1679,13 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             data: {
                 period: {
                     start: start.toISOString().split("T")[0],
-                    end: end.toISOString().split("T")[0]
+                    end: end.toISOString().split("T")[0],
+                    totalDays: totalDays
                 },
                 summary: companySummary,
-                report
-            }
+                report: report
+            },
+            message: "Monthly summary generated successfully"
         });
 
 
@@ -1597,7 +1698,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         });
     }
 };
-
 
 
 
