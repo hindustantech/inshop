@@ -1316,7 +1316,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         }
 
         /* =====================================
-           2. DATE RANGE (KEEP SAME)
+           2. DATE RANGE
         ===================================== */
         const { startDate, endDate } = req.query;
 
@@ -1336,7 +1336,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
         /* =====================================
-           3. FETCH EMPLOYEES ONLY
+           3. EMPLOYEE FETCH ONLY
         ===================================== */
         const report = await Employee.aggregate([
             {
@@ -1362,7 +1362,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             },
 
             /* =====================================
-               4. OUTPUT (SAME STRUCTURE)
+               4. SAFE PROJECTION (NO 0 VALUES)
             ===================================== */
             {
                 $project: {
@@ -1387,35 +1387,30 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
-                    /* ==============================
-                       SAME SUMMARY STRUCTURE
-                    ============================== */
+                    /* ===== SAME STRUCTURE ===== */
                     summary: {
-                        presentDays: 0,
-                        halfDays: 0,
-                        leaveDays: 0,
-                        absentDays: 0,
-                        autoAbsentDays: totalDays,
-                        totalAbsentDays: totalDays,
-                        holidayDays: 0,
-                        weekOffDays: 0,
-                        workingDays: 0,
-                        markedDays: 0,
-                        totalDays: totalDays
+                        presentDays: { $literal: 0 },
+                        halfDays: { $literal: 0 },
+                        leaveDays: { $literal: 0 },
+                        absentDays: { $literal: 0 },
+                        autoAbsentDays: { $literal: totalDays },
+                        totalAbsentDays: { $literal: totalDays },
+                        holidayDays: { $literal: 0 },
+                        weekOffDays: { $literal: 0 },
+                        workingDays: { $literal: 0 },
+                        markedDays: { $literal: 0 },
+                        totalDays: { $literal: totalDays }
                     },
 
-                    /* ==============================
-                       SAME TIME STRUCTURE
-                    ============================== */
                     timeSummary: {
-                        totalMinutes: 0,
-                        totalHours: 0,
-                        validWorkingDays: 0,
-                        avgHours: 0,
-                        payableMinutes: 0,
-                        payableHours: 0,
-                        overtimeMinutes: 0,
-                        overtimeHours: 0
+                        totalMinutes: { $literal: 0 },
+                        totalHours: { $literal: 0 },
+                        validWorkingDays: { $literal: 0 },
+                        avgHours: { $literal: 0 },
+                        payableMinutes: { $literal: 0 },
+                        payableHours: { $literal: 0 },
+                        overtimeMinutes: { $literal: 0 },
+                        overtimeHours: { $literal: 0 }
                     }
                 }
             },
@@ -1424,7 +1419,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         ]);
 
         /* =====================================
-           5. COMPANY SUMMARY (SAFE DEFAULT)
+           5. COMPANY SUMMARY (SAFE)
         ===================================== */
         const companySummary = {
             totalEmployees: report.length,
