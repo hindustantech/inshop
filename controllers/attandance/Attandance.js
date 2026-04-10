@@ -1316,7 +1316,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         }
 
         /* =====================================
-           2. DATE RANGE
+           2. DATE RANGE (KEEP SAME)
         ===================================== */
         const { startDate, endDate } = req.query;
 
@@ -1336,7 +1336,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
         /* =====================================
-           3. AGGREGATION
+           3. FETCH EMPLOYEES ONLY
         ===================================== */
         const report = await Employee.aggregate([
             {
@@ -1346,7 +1346,6 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            /* ---------- USER JOIN ---------- */
             {
                 $lookup: {
                     from: "users",
@@ -1362,242 +1361,8 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                 }
             },
 
-            /* ---------- ATTENDANCE ---------- */
-            {
-                $lookup: {
-                    from: "attendances",
-                    let: { empId: "$_id" },
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $and: [
-                                        { $eq: ["$employeeId", "$$empId"] },
-                                        { $gte: ["$date", start] },
-                                        { $lte: ["$date", end] }
-                                    ]
-                                }
-                            }
-                        },
-                        { $sort: { date: 1 } }
-                    ],
-                    as: "attendance"
-                }
-            },
-
-            /* ✅ FIX 1: Always array */
-            {
-                $addFields: {
-                    attendance: { $ifNull: ["$attendance", []] }
-                }
-            },
-
             /* =====================================
-               4. CALCULATIONS
-            ===================================== */
-            {
-                $addFields: {
-
-                    /* VALID ATTENDANCE */
-                    validAttendance: {
-                        $filter: {
-                            input: "$attendance",
-                            as: "a",
-                            cond: {
-                                $and: [
-                                    { $ne: ["$$a.punchIn", null] },
-                                    { $ne: ["$$a.punchOut", null] },
-                                    { $eq: ["$$a.status", "present"] },
-                                    { $eq: ["$$a.approvalStatus", "approved"] },
-                                    { $gt: [{ $ifNull: ["$$a.workSummary.totalMinutes", 0] }, 0] }
-                                ]
-                            }
-                        }
-                    },
-
-                    /* STATUS COUNTS */
-                    presentDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendance",
-                                as: "a",
-                                cond: {
-                                    $and: [
-                                        { $eq: ["$$a.status", "present"] },
-                                        { $eq: ["$$a.approvalStatus", "approved"] }
-                                    ]
-                                }
-                            }
-                        }
-                    },
-
-                    halfDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendance",
-                                as: "a",
-                                cond: { $eq: ["$$a.status", "half_day"] }
-                            }
-                        }
-                    },
-
-                    leaveDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendance",
-                                as: "a",
-                                cond: { $eq: ["$$a.status", "leave"] }
-                            }
-                        }
-                    },
-
-                    absentDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendance",
-                                as: "a",
-                                cond: { $eq: ["$$a.status", "absent"] }
-                            }
-                        }
-                    },
-
-                    holidayDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendance",
-                                as: "a",
-                                cond: { $eq: ["$$a.status", "holiday"] }
-                            }
-                        }
-                    },
-
-                    weekOffDays: {
-                        $size: {
-                            $filter: {
-                                input: "$attendance",
-                                as: "a",
-                                cond: { $eq: ["$$a.status", "week_off"] }
-                            }
-                        }
-                    },
-
-                    /* SAFE SUM */
-                    totalMinutes: {
-                        $sum: {
-                            $map: {
-                                input: "$attendance",
-                                as: "a",
-                                in: { $ifNull: ["$$a.workSummary.totalMinutes", 0] }
-                            }
-                        }
-                    },
-
-                    payableMinutes: {
-                        $sum: {
-                            $map: {
-                                input: "$attendance",
-                                as: "a",
-                                in: { $ifNull: ["$$a.workSummary.payableMinutes", 0] }
-                            }
-                        }
-                    },
-
-                    overtimeMinutes: {
-                        $sum: {
-                            $map: {
-                                input: "$attendance",
-                                as: "a",
-                                in: { $ifNull: ["$$a.workSummary.overtimeMinutes", 0] }
-                            }
-                        }
-                    },
-
-                    markedDays: {
-                        $size: "$attendance"
-                    },
-
-                    /* VALID METRICS */
-                    validWorkingDays: {
-                        $size: { $ifNull: ["$validAttendance", []] }
-                    },
-
-                    validTotalMinutes: {
-                        $sum: {
-                            $map: {
-                                input: { $ifNull: ["$validAttendance", []] },
-                                as: "v",
-                                in: { $ifNull: ["$$v.workSummary.totalMinutes", 0] }
-                            }
-                        }
-                    }
-                }
-            },
-
-            /* =====================================
-               5. DERIVED
-            ===================================== */
-            {
-                $addFields: {
-
-                    autoAbsentDays: {
-                        $max: [
-                            {
-                                $subtract: [
-                                    totalDays,
-                                    {
-                                        $add: [
-                                            "$presentDays",
-                                            "$halfDays",
-                                            "$leaveDays",
-                                            "$absentDays",
-                                            "$holidayDays",
-                                            "$weekOffDays"
-                                        ]
-                                    }
-                                ]
-                            },
-                            0
-                        ]
-                    },
-
-                    workingDays: {
-                        $add: ["$presentDays", "$halfDays"]
-                    },
-
-                    totalHours: {
-                        $round: [{ $divide: ["$totalMinutes", 60] }, 2]
-                    },
-
-                    payableHours: {
-                        $round: [{ $divide: ["$payableMinutes", 60] }, 2]
-                    },
-
-                    overtimeHours: {
-                        $round: [{ $divide: ["$overtimeMinutes", 60] }, 2]
-                    },
-
-                    avgHours: {
-                        $cond: [
-                            { $gt: ["$validWorkingDays", 0] },
-                            {
-                                $round: [
-                                    {
-                                        $divide: [
-                                            { $divide: ["$validTotalMinutes", 60] },
-                                            "$validWorkingDays"
-                                        ]
-                                    },
-                                    2
-                                ]
-                            },
-                            0
-                        ]
-                    }
-                }
-            },
-
-            /* =====================================
-               6. OUTPUT (SAFE)
+               4. OUTPUT (SAME STRUCTURE)
             ===================================== */
             {
                 $project: {
@@ -1622,34 +1387,35 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
                         }
                     },
 
+                    /* ==============================
+                       SAME SUMMARY STRUCTURE
+                    ============================== */
                     summary: {
-                        presentDays: { $ifNull: ["$presentDays", 0] },
-                        halfDays: { $ifNull: ["$halfDays", 0] },
-                        leaveDays: { $ifNull: ["$leaveDays", 0] },
-                        absentDays: { $ifNull: ["$absentDays", 0] },
-                        autoAbsentDays: { $ifNull: ["$autoAbsentDays", 0] },
-                        totalAbsentDays: {
-                            $add: [
-                                { $ifNull: ["$absentDays", 0] },
-                                { $ifNull: ["$autoAbsentDays", 0] }
-                            ]
-                        },
-                        holidayDays: { $ifNull: ["$holidayDays", 0] },
-                        weekOffDays: { $ifNull: ["$weekOffDays", 0] },
-                        workingDays: { $ifNull: ["$workingDays", 0] },
-                        markedDays: { $ifNull: ["$markedDays", 0] },
+                        presentDays: 0,
+                        halfDays: 0,
+                        leaveDays: 0,
+                        absentDays: 0,
+                        autoAbsentDays: totalDays,
+                        totalAbsentDays: totalDays,
+                        holidayDays: 0,
+                        weekOffDays: 0,
+                        workingDays: 0,
+                        markedDays: 0,
                         totalDays: totalDays
                     },
 
+                    /* ==============================
+                       SAME TIME STRUCTURE
+                    ============================== */
                     timeSummary: {
-                        totalMinutes: { $ifNull: ["$totalMinutes", 0] },
-                        totalHours:{ $ifNull: ["$avgHours", 0] },
-                        validWorkingDays: { $ifNull: ["$validWorkingDays", 0] },
-                        avgHours:{ $ifNull: ["$totalHours", 0] },
-                        payableMinutes: { $ifNull: ["$payableMinutes", 0] },
-                        payableHours: { $ifNull: ["$payableHours", 0] },
-                        overtimeMinutes: { $ifNull: ["$overtimeMinutes", 0] },
-                        overtimeHours: { $ifNull: ["$overtimeHours", 0] }
+                        totalMinutes: 0,
+                        totalHours: 0,
+                        validWorkingDays: 0,
+                        avgHours: 0,
+                        payableMinutes: 0,
+                        payableHours: 0,
+                        overtimeMinutes: 0,
+                        overtimeHours: 0
                     }
                 }
             },
@@ -1658,7 +1424,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
         ]);
 
         /* =====================================
-           7. COMPANY SUMMARY (SAFE)
+           5. COMPANY SUMMARY (SAFE DEFAULT)
         ===================================== */
         const companySummary = {
             totalEmployees: report.length,
@@ -1668,25 +1434,8 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
             avgHours: 0
         };
 
-        let totalValidDays = 0;
-
-        report.forEach(emp => {
-            const t = emp?.timeSummary ?? {};
-
-            companySummary.totalHours += t.totalHours ?? 0;
-            companySummary.totalPayableHours += t.payableHours ?? 0;
-            companySummary.totalOvertime += t.overtimeHours ?? 0;
-
-            totalValidDays += t.validWorkingDays ?? 0;
-        });
-
-        if (totalValidDays > 0) {
-            companySummary.avgHours =
-                Math.round((companySummary.totalHours / totalValidDays) * 100) / 100;
-        }
-
         /* =====================================
-           8. RESPONSE
+           6. RESPONSE (UNCHANGED)
         ===================================== */
         return res.status(200).json({
             success: true,
@@ -1704,6 +1453,7 @@ export const getEmployeeSimpleMonthlySummary = async (req, res) => {
 
     } catch (error) {
         console.error("Monthly Summary Error:", error);
+
         return res.status(500).json({
             success: false,
             message: "Monthly report failed",
