@@ -57,7 +57,7 @@ import './cron/banner.scheduler.js'
 import categoryAdvertisment from './routes/Attandance/categoryAdvertisment.js'
 import advertisment from './routes/Attandance/Advertisement.Routes.js'
 import './cron/markDailyAbsent.js'
-
+import ExportRoutes from './routes/Attandance/Export/attendanceRoutes.js'
 dotenv.config();
 
 await connectDB();
