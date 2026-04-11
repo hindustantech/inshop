@@ -3088,12 +3088,7 @@ const resolveCompanyId = (req) => {
     return id;
 };
 
-const buildDateRange = (start, end) => {
-    const dates = [];
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1))
-        dates.push(new Date(d));
-    return dates;
-};
+
 
 const buildAttendanceMap = (records) => {
     const map = new Map();
