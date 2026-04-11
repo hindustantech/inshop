@@ -1971,15 +1971,15 @@ const formatMinutesToHours = (minutes = 0) => {
    Controller
 ============================ */
 
-const buildMonthRange = (year, month) => {
-    const start = new Date(year, month - 1, 1);
-    start.setHours(0, 0, 0, 0);
+// const buildMonthRange = (year, month) => {
+//     const start = new Date(year, month - 1, 1);
+//     start.setHours(0, 0, 0, 0);
 
-    const end = new Date(year, month, 0);
-    end.setHours(23, 59, 59, 999);
+//     const end = new Date(year, month, 0);
+//     end.setHours(23, 59, 59, 999);
 
-    return { start, end };
-};
+//     return { start, end };
+// };
 
 /* ============================
    Controller
