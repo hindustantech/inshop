@@ -88,6 +88,8 @@ app.use(
   express.static(path.join(process.cwd(), "exports"))
 );
 
+app.use('/api/ExportRoutes', ExportRoutes);
+
 app.use('/admin', adminRouter);
 app.use('/api/usermanagement', usermanagement);
 app.use('/api/adRoute', adroute);
