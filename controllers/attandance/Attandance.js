@@ -1971,6 +1971,20 @@ const formatMinutesToHours = (minutes = 0) => {
    Controller
 ============================ */
 
+const buildMonthRange = (year, month) => {
+    const start = new Date(year, month - 1, 1);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(year, month, 0);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+};
+
+/* ============================
+   Controller
+============================ */
+
 export const getEmployeeAttendanceSummary = async (req, res) => {
     try {
         /* ============================
@@ -2035,7 +2049,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
             .lean();
 
         /* ============================
-           6. Map Optimization (O(1))
+           6. Map Optimization
         ============================ */
         const map = new Map();
         records.forEach(r => {
@@ -2085,7 +2099,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                     EmpCode: employee.empCode,
                     TimeIn: "Absent",
                     TimeOut: "-",
-                    TotalHours: "0.00"
+                    TotalHours: "00:00"
                 });
                 continue;
             }
@@ -2098,22 +2112,29 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                     EmpCode: employee.empCode,
                     TimeIn: rec.status === "holiday" ? "Holiday" : "Week Off",
                     TimeOut: "-",
-                    TotalHours: "0.00"
+                    TotalHours: "00:00"
                 });
                 continue;
             }
 
-            /* ---------- Present Logic ---------- */
-            if (rec.status === "present") {
-                presentDays++;
+            /* ---------- VALID WORK CHECK (CRITICAL FIX) ---------- */
+            const isValidWork =
+                rec.status === "present" &&
+                rec.punchIn &&
+                rec.punchOut &&
+                rec.workSummary?.totalMinutes > 0 &&
+                !rec.isAutoMarked;
 
-                // ❗ IMPORTANT FIX: Ignore auto-mark in avg if needed
-                if (!rec.isAutoMarked) {
-                    totalMinutes += rec.workSummary?.totalMinutes || 0;
-                }
+            if (isValidWork) {
+                presentDays++;
+                totalMinutes += rec.workSummary.totalMinutes;
+            } else if (rec.status !== "present") {
+                absentDays++;
             }
 
-            const minutes = rec.workSummary?.totalMinutes || 0;
+            const minutes = isValidWork
+                ? rec.workSummary.totalMinutes
+                : 0;
 
             report.push({
                 Date: label,
@@ -2135,7 +2156,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         const avgHours = formatMinutesToHours(avgMinutes);
 
         /* ============================
-           10. CSV Export (Enhanced)
+           10. CSV Export
         ============================ */
         if (format === "csv") {
             const parser = new Parser({
@@ -2177,7 +2198,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
             },
 
             summary: {
-                avgPerDay: avgHours, // ✅ FIXED
+                avgPerDay: avgHours, // ✅ Corrected
                 presentDays,
                 absentDays,
                 totalDays: lastDay
