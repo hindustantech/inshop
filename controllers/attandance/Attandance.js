@@ -1973,41 +1973,7 @@ const formatMinutesToHours = (minutes = 0) => {
    Controller
 ============================ */
 
-import mongoose from "mongoose";
-import { Parser } from "json2csv";
-import Employee from "../../models/Employee.js";
-import Attendance from "../../models/Attendance.js";
 
-/* ============================
-   Utils
-============================ */
-const formatTime = (date) => {
-    if (!date) return "-";
-    return new Date(date).toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true
-    });
-};
-
-const formatMinutesToHours = (minutes) => {
-    if (!minutes || minutes <= 0) return "00:00";
-
-    const hrs = Math.floor(minutes / 60);
-    const mins = Math.floor(minutes % 60);
-
-    return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-};
-
-const buildMonthRange = (year, month) => {
-    const start = new Date(year, month - 1, 1);
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(year, month, 0);
-    end.setHours(23, 59, 59, 999);
-
-    return { start, end };
-};
 
 /* ============================
    Controller
