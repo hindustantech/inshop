@@ -1973,6 +1973,45 @@ const formatMinutesToHours = (minutes = 0) => {
    Controller
 ============================ */
 
+import mongoose from "mongoose";
+import { Parser } from "json2csv";
+import Employee from "../../models/Employee.js";
+import Attendance from "../../models/Attendance.js";
+
+/* ============================
+   Utils
+============================ */
+const formatTime = (date) => {
+    if (!date) return "-";
+    return new Date(date).toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+    });
+};
+
+const formatMinutesToHours = (minutes) => {
+    if (!minutes || minutes <= 0) return "00:00";
+
+    const hrs = Math.floor(minutes / 60);
+    const mins = Math.floor(minutes % 60);
+
+    return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+};
+
+const buildMonthRange = (year, month) => {
+    const start = new Date(year, month - 1, 1);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(year, month, 0);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+};
+
+/* ============================
+   Controller
+============================ */
 export const getEmployeeAttendanceSummary = async (req, res) => {
     try {
         /* ============================
@@ -2008,7 +2047,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
             userId,
             employmentStatus: "active"
         })
-            .select("_id empCode user_name weeklyOff")
+            .select("_id empCode user_name weeklyOff createdAt") // 👈 IMPORTANT
             .lean();
 
         if (!employee) {
@@ -2041,34 +2080,38 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         ============================ */
         const map = new Map();
         records.forEach(r => {
-            const key = r.date.toISOString().split("T")[0];
+            const key = new Date(r.date).toISOString().split("T")[0];
             map.set(key, r);
         });
 
         /* ============================
-           7. Helper Function: Check if Date is Past
+           7. Joining Date Logic (FIX)
         ============================ */
-        const isPastDate = (date) => {
-            const checkDate = new Date(date);
-            checkDate.setHours(0, 0, 0, 0);
-            return checkDate < today;
+        const joiningDate = employee.createdAt
+            ? new Date(employee.createdAt)
+            : null;
+
+        if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
+
+        const isBeforeJoining = (date) => {
+            if (!joiningDate) return false;
+            return date < joiningDate;
         };
 
         /* ============================
-           8. Helper Function: Check if Weekend/Weekly Off
+           8. Helpers
         ============================ */
+        const isPastDate = (date) => {
+            return date < today;
+        };
+
         const isWeeklyOff = (date) => {
             const dayOfWeek = [
-                "Sunday",
-                "Monday",
-                "Tuesday",
-                "Wednesday",
-                "Thursday",
-                "Friday",
-                "Saturday"
+                "Sunday", "Monday", "Tuesday",
+                "Wednesday", "Thursday", "Friday", "Saturday"
             ][date.getDay()];
 
-            return employee.weeklyOff && employee.weeklyOff.includes(dayOfWeek);
+            return employee.weeklyOff?.includes(dayOfWeek);
         };
 
         /* ============================
@@ -2089,7 +2132,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         const report = [];
 
         /* ============================
-           10. Main Loop - CORRECTED LOGIC
+           10. Main Loop
         ============================ */
         for (let i = lastDay; i >= 1; i--) {
             const date = new Date(year, month - 1, i);
@@ -2103,13 +2146,26 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 month: "short"
             });
 
-            /* ========================================
-               NO RECORD FOUND - Check if Past Date
-            ======================================== */
+            /* ============================
+               🚨 BEFORE JOINING (FIXED)
+            ============================ */
+            if (isBeforeJoining(date)) {
+                report.push({
+                    Date: label,
+                    EmpName: employee.user_name || "-",
+                    EmpCode: employee.empCode,
+                    TimeIn: "-",
+                    TimeOut: "-",
+                    TotalHours: "00:00"
+                });
+                continue;
+            }
+
+            /* ============================
+               NO RECORD
+            ============================ */
             if (!rec) {
-                // If it's a PAST date (before today)
                 if (isPastDate(date)) {
-                    // If it's a weekly off/weekend - show "-"
                     if (isWeeklyOff(date)) {
                         report.push({
                             Date: label,
@@ -2119,9 +2175,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                             TimeOut: "-",
                             TotalHours: "00:00"
                         });
-                    }
-                    // Otherwise mark as ABSENT
-                    else {
+                    } else {
                         absentDays++;
                         report.push({
                             Date: label,
@@ -2132,9 +2186,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                             TotalHours: "00:00"
                         });
                     }
-                }
-                // If it's a FUTURE date (hasn't occurred yet) - show "-"
-                else {
+                } else {
                     report.push({
                         Date: label,
                         EmpName: employee.user_name || "-",
@@ -2147,11 +2199,9 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 continue;
             }
 
-            /* ========================================
-               RECORD FOUND - Check Status
-            ======================================== */
-
-            /* ---------- Holiday / Weekoff ---------- */
+            /* ============================
+               STATUS HANDLING
+            ============================ */
             if (["holiday", "week_off"].includes(rec.status)) {
                 report.push({
                     Date: label,
@@ -2164,7 +2214,6 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 continue;
             }
 
-            /* ---------- Leave ---------- */
             if (rec.status === "leave") {
                 report.push({
                     Date: label,
@@ -2177,9 +2226,6 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 continue;
             }
 
-            /* ========================================
-               CHECK VALID WORK (Has Valid Punch Data)
-            ======================================== */
             const hasValidPunch =
                 rec.punchIn &&
                 rec.punchOut &&
@@ -2190,9 +2236,6 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 hasValidPunch &&
                 !rec.isAutoMarked;
 
-            /* ========================================
-               PRESENT with Valid Punch
-            ======================================== */
             if (isValidWork) {
                 presentDays++;
                 totalMinutes += rec.workSummary.totalMinutes;
@@ -2205,13 +2248,8 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                     TimeOut: formatTime(rec.punchOut),
                     TotalHours: formatMinutesToHours(rec.workSummary.totalMinutes)
                 });
-            }
-            /* ========================================
-               PRESENT but Missing Punch Data = ABSENT
-            ======================================== */
-            else if (rec.status === "present" && !hasValidPunch) {
+            } else if (rec.status === "present" && !hasValidPunch) {
                 absentDays++;
-
                 report.push({
                     Date: label,
                     EmpName: employee.user_name || "-",
@@ -2220,31 +2258,24 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                     TimeOut: "-",
                     TotalHours: "00:00"
                 });
-            }
-            /* ========================================
-               Other Status (half_day, pending_approval, etc)
-            ======================================== */
-            else {
-                const minutes =
-                    hasValidPunch ? rec.workSummary.totalMinutes : 0;
+            } else {
+                const minutes = hasValidPunch
+                    ? rec.workSummary.totalMinutes
+                    : 0;
 
                 report.push({
                     Date: label,
                     EmpName: employee.user_name || "-",
                     EmpCode: employee.empCode,
-                    TimeIn: rec.punchIn
-                        ? formatTime(rec.punchIn)
-                        : "-",
-                    TimeOut: rec.punchOut
-                        ? formatTime(rec.punchOut)
-                        : "-",
+                    TimeIn: rec.punchIn ? formatTime(rec.punchIn) : "-",
+                    TimeOut: rec.punchOut ? formatTime(rec.punchOut) : "-",
                     TotalHours: formatMinutesToHours(minutes)
                 });
             }
         }
 
         /* ============================
-           11. Summary Calculation
+           11. Summary
         ============================ */
         const avgMinutes = presentDays
             ? totalMinutes / presentDays
@@ -2257,14 +2288,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         ============================ */
         if (format === "csv") {
             const parser = new Parser({
-                fields: [
-                    "Date",
-                    "EmpName",
-                    "EmpCode",
-                    "TimeIn",
-                    "TimeOut",
-                    "TotalHours"
-                ]
+                fields: ["Date", "EmpName", "EmpCode", "TimeIn", "TimeOut", "TotalHours"]
             });
 
             const csv = parser.parse(report);
@@ -2272,20 +2296,16 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
             const fileName = `attendance_${employee.empCode}_${month}_${year}.csv`;
 
             res.setHeader("Content-Type", "text/csv");
-            res.setHeader(
-                "Content-Disposition",
-                `attachment; filename="${fileName}"`
-            );
+            res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
 
             return res.status(200).send(csv);
         }
 
         /* ============================
-           13. Final Response
+           13. Response
         ============================ */
         return res.status(200).json({
             success: true,
-
             meta: {
                 employeeId: employee._id,
                 empCode: employee.empCode,
@@ -2293,14 +2313,12 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 month,
                 year
             },
-
             summary: {
                 avgPerDay: avgHours,
                 presentDays,
                 absentDays,
                 totalDays: lastDay
             },
-
             records: report
         });
 
@@ -2313,7 +2331,6 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         });
     }
 };
-
 /**
  * @desc   Get Monthly Attendance Summary (Payroll)
  * @route  GET /api/attendance/summary
