@@ -2008,7 +2008,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
             userId,
             employmentStatus: "active"
         })
-            .select("_id empCode user_name")
+            .select("_id empCode user_name weeklyOff")
             .lean();
 
         if (!employee) {
@@ -2046,7 +2046,33 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         });
 
         /* ============================
-           7. Loop Setup
+           7. Helper Function: Check if Date is Past
+        ============================ */
+        const isPastDate = (date) => {
+            const checkDate = new Date(date);
+            checkDate.setHours(0, 0, 0, 0);
+            return checkDate < today;
+        };
+
+        /* ============================
+           8. Helper Function: Check if Weekend/Weekly Off
+        ============================ */
+        const isWeeklyOff = (date) => {
+            const dayOfWeek = [
+                "Sunday",
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday"
+            ][date.getDay()];
+
+            return employee.weeklyOff && employee.weeklyOff.includes(dayOfWeek);
+        };
+
+        /* ============================
+           9. Loop Setup
         ============================ */
         const isCurrentMonth =
             today.getFullYear() === year &&
@@ -2063,7 +2089,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         const report = [];
 
         /* ============================
-           8. Main Loop
+           10. Main Loop - CORRECTED LOGIC
         ============================ */
         for (let i = lastDay; i >= 1; i--) {
             const date = new Date(year, month - 1, i);
@@ -2077,20 +2103,53 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 month: "short"
             });
 
-            /* ---------- No Record ---------- */
+            /* ========================================
+               NO RECORD FOUND - Check if Past Date
+            ======================================== */
             if (!rec) {
-                absentDays++;
-
-                report.push({
-                    Date: label,
-                    EmpName: employee.user_name || "-",
-                    EmpCode: employee.empCode,
-                    TimeIn: "Absent",
-                    TimeOut: "-",
-                    TotalHours: "00:00"
-                });
+                // If it's a PAST date (before today)
+                if (isPastDate(date)) {
+                    // If it's a weekly off/weekend - show "-"
+                    if (isWeeklyOff(date)) {
+                        report.push({
+                            Date: label,
+                            EmpName: employee.user_name || "-",
+                            EmpCode: employee.empCode,
+                            TimeIn: "Week Off",
+                            TimeOut: "-",
+                            TotalHours: "00:00"
+                        });
+                    }
+                    // Otherwise mark as ABSENT
+                    else {
+                        absentDays++;
+                        report.push({
+                            Date: label,
+                            EmpName: employee.user_name || "-",
+                            EmpCode: employee.empCode,
+                            TimeIn: "Absent",
+                            TimeOut: "-",
+                            TotalHours: "00:00"
+                        });
+                    }
+                }
+                // If it's a FUTURE date (hasn't occurred yet) - show "-"
+                else {
+                    report.push({
+                        Date: label,
+                        EmpName: employee.user_name || "-",
+                        EmpCode: employee.empCode,
+                        TimeIn: "-",
+                        TimeOut: "-",
+                        TotalHours: "00:00"
+                    });
+                }
                 continue;
             }
+
+            /* ========================================
+               RECORD FOUND - Check Status
+            ======================================== */
 
             /* ---------- Holiday / Weekoff ---------- */
             if (["holiday", "week_off"].includes(rec.status)) {
@@ -2105,37 +2164,87 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
                 continue;
             }
 
-            /* ---------- VALID WORK CHECK (CRITICAL FIX) ---------- */
-            const isValidWork =
-                rec.status === "present" &&
+            /* ---------- Leave ---------- */
+            if (rec.status === "leave") {
+                report.push({
+                    Date: label,
+                    EmpName: employee.user_name || "-",
+                    EmpCode: employee.empCode,
+                    TimeIn: "Leave",
+                    TimeOut: "-",
+                    TotalHours: "00:00"
+                });
+                continue;
+            }
+
+            /* ========================================
+               CHECK VALID WORK (Has Valid Punch Data)
+            ======================================== */
+            const hasValidPunch =
                 rec.punchIn &&
                 rec.punchOut &&
-                rec.workSummary?.totalMinutes > 0 &&
+                rec.workSummary?.totalMinutes > 0;
+
+            const isValidWork =
+                rec.status === "present" &&
+                hasValidPunch &&
                 !rec.isAutoMarked;
 
+            /* ========================================
+               PRESENT with Valid Punch
+            ======================================== */
             if (isValidWork) {
                 presentDays++;
                 totalMinutes += rec.workSummary.totalMinutes;
-            } else if (rec.status !== "present") {
-                absentDays++;
+
+                report.push({
+                    Date: label,
+                    EmpName: employee.user_name || "-",
+                    EmpCode: employee.empCode,
+                    TimeIn: formatTime(rec.punchIn),
+                    TimeOut: formatTime(rec.punchOut),
+                    TotalHours: formatMinutesToHours(rec.workSummary.totalMinutes)
+                });
             }
+            /* ========================================
+               PRESENT but Missing Punch Data = ABSENT
+            ======================================== */
+            else if (rec.status === "present" && !hasValidPunch) {
+                absentDays++;
 
-            const minutes = isValidWork
-                ? rec.workSummary.totalMinutes
-                : 0;
+                report.push({
+                    Date: label,
+                    EmpName: employee.user_name || "-",
+                    EmpCode: employee.empCode,
+                    TimeIn: "Absent",
+                    TimeOut: "-",
+                    TotalHours: "00:00"
+                });
+            }
+            /* ========================================
+               Other Status (half_day, pending_approval, etc)
+            ======================================== */
+            else {
+                const minutes =
+                    hasValidPunch ? rec.workSummary.totalMinutes : 0;
 
-            report.push({
-                Date: label,
-                EmpName: employee.user_name || "-",
-                EmpCode: employee.empCode,
-                TimeIn: formatTime(rec.punchIn),
-                TimeOut: rec.punchOut ? formatTime(rec.punchOut) : "-",
-                TotalHours: formatMinutesToHours(minutes)
-            });
+                report.push({
+                    Date: label,
+                    EmpName: employee.user_name || "-",
+                    EmpCode: employee.empCode,
+                    TimeIn: rec.punchIn
+                        ? formatTime(rec.punchIn)
+                        : "-",
+                    TimeOut: rec.punchOut
+                        ? formatTime(rec.punchOut)
+                        : "-",
+                    TotalHours: formatMinutesToHours(minutes)
+                });
+            }
         }
 
         /* ============================
-           9. Summary (FIXED)
+           11. Summary Calculation
         ============================ */
         const avgMinutes = presentDays
             ? totalMinutes / presentDays
@@ -2144,7 +2253,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         const avgHours = formatMinutesToHours(avgMinutes);
 
         /* ============================
-           10. CSV Export
+           12. CSV Export
         ============================ */
         if (format === "csv") {
             const parser = new Parser({
@@ -2172,7 +2281,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
         }
 
         /* ============================
-           11. Final Response
+           13. Final Response
         ============================ */
         return res.status(200).json({
             success: true,
@@ -2186,7 +2295,7 @@ export const getEmployeeAttendanceSummary = async (req, res) => {
             },
 
             summary: {
-                avgPerDay: avgHours, // ✅ Corrected
+                avgPerDay: avgHours,
                 presentDays,
                 absentDays,
                 totalDays: lastDay
