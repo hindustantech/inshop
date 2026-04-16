@@ -2,7 +2,7 @@
 
 import express from "express";
 import authMiddleware from "../middlewares/authMiddleware.js";
-import { getUserPlanAccess } from "../controllers/userPlan.controller";
+import { getUserPlanAccess } from "../controllers/userPlan.controller.js";
 
 const router = express.Router();
 
