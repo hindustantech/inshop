@@ -90,7 +90,7 @@ app.use(
 );
 
 app.use('/api/ExportRoutes', ExportRoutes);
-app.use('/api/activeUserplanplan
+app.use('/api/activeUserplan', activeUserplan);
 app.use('/admin', adminRouter);
 app.use('/api/usermanagement', usermanagement);
 app.use('/api/adRoute', adroute);
