@@ -1685,7 +1685,7 @@ export const createCoupon = async (req, res) => {
 
     // Add special users if provided
     if (parsedSpecialUsers && Array.isArray(parsedSpecialUsers)) {
-      couponData.is_spacial_copun = parsedSpecialUsers;
+      couponData.is_spacial_copun_user  = parsedSpecialUsers;
     }
 
     // Add location if provided
