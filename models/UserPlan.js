@@ -48,6 +48,7 @@ const userPlanSchema = new Schema(
 
         expiresAt: {
             type: Date, // null = lifetime
+            default: null,
         },
 
         couponsAllowed: {

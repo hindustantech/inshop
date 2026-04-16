@@ -1,5 +1,5 @@
 import Coupon from '../models/coupunModel.js';
-
+import BuyPlan from '../models/buyPlan.js';
 import User from '../models/userModel.js';
 import UserCoupon from '../models/UserCoupon.js';
 import Salses from '../models/Sales.js'
@@ -1685,7 +1685,7 @@ export const createCoupon = async (req, res) => {
 
     // Add special users if provided
     if (parsedSpecialUsers && Array.isArray(parsedSpecialUsers)) {
-      couponData.is_spacial_copun_user = parsedSpecialUsers;
+      couponData.is_spacial_copun = parsedSpecialUsers;
     }
 
     // Add location if provided

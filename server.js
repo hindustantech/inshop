@@ -58,6 +58,7 @@ import categoryAdvertisment from './routes/Attandance/categoryAdvertisment.js'
 import advertisment from './routes/Attandance/Advertisement.Routes.js'
 import './cron/markDailyAbsent.js'
 import ExportRoutes from './routes/Attandance/Export/attendanceRoutes.js'
+import activeUserplan from './routes/userPlan.route.js'
 dotenv.config();
 
 await connectDB();
@@ -89,7 +90,7 @@ app.use(
 );
 
 app.use('/api/ExportRoutes', ExportRoutes);
-
+app.use('/api/activeUserplanplan
 app.use('/admin', adminRouter);
 app.use('/api/usermanagement', usermanagement);
 app.use('/api/adRoute', adroute);
