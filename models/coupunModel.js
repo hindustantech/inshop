@@ -272,7 +272,7 @@ const couponSchema = new mongoose.Schema({
     required: false,
     default: null
   },
-  googlreMapLink: {
+  googleMapLink: {
     type: String,
     required: false,
     default: null
