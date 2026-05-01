@@ -424,21 +424,63 @@ export const generateAttendanceCSV = async (req, res) => {
 /**
  * Alternative method to generate CSV in the exact matrix format with dates as headers
  */
+/* =====================================================
+   HELPERS - FIXED VERSION
+===================================================== */
 
+const formatDate = (date) => {
+    if (!date) return "-";
+    return new Date(date).toLocaleDateString("en-IN");
+};
 
+const formatDateTime = (date) => {
+    if (!date) return "-";
+    return new Date(date).toLocaleString("en-IN");
+};
 
+// Helper to format minutes to hh:mm
+const formatHoursToHHMM = (totalMinutes) => {
+    if (!totalMinutes || totalMinutes <= 0) return "00:00";
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+};
+
+// Helper to format time string with AM/PM
+const formatTimeWithAMPM = (date) => {
+    if (!date) return null;
+    const d = new Date(date);
+    return d.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
+};
+
+// Convert time string to minutes considering AM/PM
+const timeStrToMinutes12Hour = (timeStr) => {
+    if (!timeStr) return 0;
+
+    // If time already has AM/PM
+    if (timeStr.includes('AM') || timeStr.includes('PM')) {
+        const [time, period] = timeStr.split(' ');
+        let [hours, minutes] = time.split(':').map(Number);
+
+        if (period === 'PM' && hours !== 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+
+        return hours * 60 + minutes;
+    }
+
+    // If time is in 24hr format (e.g., "18:00")
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+};
 
 const resolveCompanyId = (req) => {
     let id = req.user._id || req.user?.id;
     if ((req.user?.role || req.user?.type) === "user") id = req.user?.companyId;
     return id;
-};
-
-const buildDateRange = (start, end) => {
-    const dates = [];
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1))
-        dates.push(new Date(d));
-    return dates;
 };
 
 const buildAttendanceMap = (records) => {
@@ -449,32 +491,43 @@ const buildAttendanceMap = (records) => {
     return map;
 };
 
-/** Returns { code, label, punchIn, punchOut, hours } for one day */
-const resolveDayStatus = (attendance, isWeeklyOff, shiftStart = "09:00", shiftEnd = "18:00", graceIn = 10, graceOut = 10) => {
-    if (isWeeklyOff) return { code: "WO", label: "Week Off", punchIn: "—", punchOut: "—", hours: "0.00" };
-    if (!attendance) return { code: "A", label: "Absent", punchIn: "—", punchOut: "—", hours: "0.00" };
+// FIXED: Format time with AM/PM
+// const formatTime = (date) => {
+//     if (!date) return null;
+//     return formatTimeWithAMPM(date);
+// };
+
+/** Returns { code, label, punchIn, punchOut, hours } for one day - FIXED VERSION */
+const resolveDayStatus = (attendance, isWeeklyOff, shiftStart = "09:00 AM", shiftEnd = "06:00 PM", graceIn = 10, graceOut = 10) => {
+    // REMOVE WEEK OFF - treat as regular day with no attendance
+    // Commented out week off handling - now shows as absent if no attendance
+    // if (isWeeklyOff) return { code: "WO", label: "Week Off", punchIn: "—", punchOut: "—", hours: "00:00" };
+
+    if (!attendance) return { code: "A", label: "Absent", punchIn: "—", punchOut: "—", hours: "00:00" };
 
     const pi = formatTime(attendance.punchIn);
     const po = formatTime(attendance.punchOut);
-    const hrs = ((attendance.workSummary?.totalMinutes || 0) / 60).toFixed(2);
+    const totalMinutes = attendance.workSummary?.totalMinutes || 0;
+    const hrs = formatHoursToHHMM(totalMinutes);
 
     switch (attendance.status) {
-        case "leave": return { code: "L", label: "Leave", punchIn: "—", punchOut: "—", hours: "0.00" };
-        case "holiday": return { code: "H", label: "Holiday", punchIn: "—", punchOut: "—", hours: "0.00" };
-        case "week_off": return { code: "WO", label: "Week Off", punchIn: "—", punchOut: "—", hours: "0.00" };
+        case "leave": return { code: "L", label: "Leave", punchIn: "—", punchOut: "—", hours: "00:00" };
+        case "holiday": return { code: "H", label: "Holiday", punchIn: "—", punchOut: "—", hours: "00:00" };
+        case "week_off": return { code: "A", label: "Absent", punchIn: "—", punchOut: "—", hours: "00:00" }; // Treat week off as absent
         case "half_day": return { code: "HD", label: "Half Day", punchIn: pi || "—", punchOut: po || "—", hours: hrs };
-        case "absent": return { code: "A", label: "Absent", punchIn: "—", punchOut: "—", hours: "0.00" };
+        case "absent": return { code: "A", label: "Absent", punchIn: "—", punchOut: "—", hours: "00:00" };
         default: {
             // Present – detect late / early leave
             let tag = "P";
             if (pi) {
-                const inMin = timeStrToMinutes(pi);
-                if (inMin - timeStrToMinutes(shiftStart) > graceIn) tag = "PL"; // Present Late
+                const inMin = timeStrToMinutes12Hour(pi);
+                const shiftInMin = timeStrToMinutes12Hour(shiftStart);
+                if (inMin - shiftInMin > graceIn) tag = "PL"; // Present Late
             }
             if (po) {
-                const outMin = timeStrToMinutes(po);
-                const shiftOut = timeStrToMinutes(shiftEnd);
-                if (shiftOut - outMin > graceOut) tag = tag === "PL" ? "PLE" : "PE"; // Early Exit
+                const outMin = timeStrToMinutes12Hour(po);
+                const shiftOutMin = timeStrToMinutes12Hour(shiftEnd);
+                if (shiftOutMin - outMin > graceOut) tag = tag === "PL" ? "PLE" : "PE"; // Early Exit
             }
             const labels = { P: "Present", PL: "Late", PE: "Early Exit", PLE: "Late+Early" };
             return { code: tag, label: labels[tag] || "Present", punchIn: pi || "—", punchOut: po || "—", hours: hrs };
@@ -494,6 +547,7 @@ const STATUS_FILL = {
     WO: "FFD0E4F7", // blue
     H: "FFB7E1CD", // teal-green
 };
+
 const STATUS_FONT = {
     A: "FF9C0006", L: "FF6A0DAD", WO: "FF1155CC", H: "FF137333",
     PL: "FF7D6608", PE: "FF7D4604", PLE: "FF7D4604",
@@ -503,8 +557,19 @@ const HEADER_BG = "FF1F3864"; // dark navy
 const SUBHEAD_BG = "FF2F5496"; // medium blue
 const ALT_ROW_BG = "FFF2F6FC";
 
+// Helper to build date range
+const buildDateRange = (start, end) => {
+    const dates = [];
+    const current = new Date(start);
+    while (current <= end) {
+        dates.push(new Date(current));
+        current.setDate(current.getDate() + 1);
+    }
+    return dates;
+};
+
 /* ─────────────────────────────────────────
-   MATRIX EXPORT
+   MATRIX EXPORT - FIXED VERSION
    One row per employee, dates as columns.
    Each cell shows: IN / OUT / HRS / CODE
 ───────────────────────────────────────── */
@@ -568,6 +633,7 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
             c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SUBHEAD_BG } };
             c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
         });
+
         dateRange.forEach((date, i) => {
             const c = dateRow.getCell(5 + i);
             const day = date.toLocaleDateString("en-IN", { weekday: "short" });
@@ -580,13 +646,13 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
         });
         dateRow.height = 40;
 
-        // ── Row 3: Legend ──
+        // ── Row 3: Legend (Removed WO - Week Off) ──
         const legendRow = ws.getRow(3);
         const legends = [
             { code: "P", label: "Present" }, { code: "PL", label: "Late" },
             { code: "PE", label: "Early Exit" }, { code: "HD", label: "Half Day" },
             { code: "A", label: "Absent" }, { code: "L", label: "Leave" },
-            { code: "WO", label: "Week Off" }, { code: "H", label: "Holiday" },
+            { code: "H", label: "Holiday" },
         ];
         legendRow.getCell(1).value = "LEGEND →";
         legendRow.getCell(1).font = { name: "Arial", bold: true, size: 8 };
@@ -605,13 +671,15 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
         ws.getColumn(2).width = 12;
         ws.getColumn(3).width = 22;
         ws.getColumn(4).width = 18;
-        dateRange.forEach((_, i) => { ws.getColumn(5 + i).width = 9; });
+        dateRange.forEach((_, i) => { ws.getColumn(5 + i).width = 12; }); // Increased width for AM/PM time
 
         // ── Data rows ──
         employees.forEach((emp, empIdx) => {
-            const weeklyOff = emp.weeklyOff?.length ? emp.weeklyOff : ["Sunday"];
-            const shiftStart = emp.shift?.startTime || "09:00";
-            const shiftEnd = emp.shift?.endTime || "18:00";
+            // Removed weeklyOff check - shiftStart/End now in 12hr format
+            const shiftStart = emp.shift?.startTime ?
+                formatTimeWithAMPM(new Date(`2024-01-01 ${emp.shift.startTime}`)) : "09:00 AM";
+            const shiftEnd = emp.shift?.endTime ?
+                formatTimeWithAMPM(new Date(`2024-01-01 ${emp.shift.endTime}`)) : "06:00 PM";
             const graceIn = emp.shift?.gracePeriod?.lateEntry ?? 10;
             const graceOut = emp.shift?.gracePeriod?.earlyExit ?? 10;
 
@@ -620,6 +688,11 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
             const isAlt = empIdx % 2 === 0;
 
             dataRow.height = 20;
+            if (isAlt) {
+                dataRow.eachCell((cell) => {
+                    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: ALT_ROW_BG } };
+                });
+            }
 
             // Fixed cells
             const fixedVals = [
@@ -632,7 +705,6 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
                 const cell = ws.getCell(rowNum, ci + 1);
                 cell.value = val;
                 cell.font = { name: "Arial", size: 9, bold: ci <= 1 };
-                cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: isAlt ? ALT_ROW_BG : "FFFFFFFF" } };
                 cell.alignment = { horizontal: ci === 2 ? "left" : "center", vertical: "middle" };
                 cell.border = { right: { style: "thin", color: { argb: "FFCCCCCC" } } };
             });
@@ -640,28 +712,33 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
             // Date cells
             dateRange.forEach((date, di) => {
                 const dateKey = date.toISOString().split("T")[0];
-                const dayName = date.toLocaleDateString("en-IN", { weekday: "long" });
                 const att = attMap.get(`${emp._id}_${dateKey}`);
-                const isWO = weeklyOff.includes(dayName);
 
-                const { code, label, punchIn, punchOut, hours } = resolveDayStatus(att, isWO, shiftStart, shiftEnd, graceIn, graceOut);
+                // Ignore week off - pass false for isWeeklyOff
+                const { code, label, punchIn, punchOut, hours } = resolveDayStatus(
+                    att, false, shiftStart, shiftEnd, graceIn, graceOut
+                );
 
                 const cell = ws.getCell(rowNum, 5 + di);
-                // Show: code on top, then IN/OUT below
-                cell.value = code;
-                cell.font = {
-                    name: "Arial", size: 9, bold: true,
-                    color: { argb: STATUS_FONT[code] || "FF000000" },
+                // Show: IN / OUT / HRS with AM/PM format
+                cell.value = {
+                    richText: [
+                        { font: { bold: true, size: 7, color: { argb: STATUS_FONT[code] || "FF000000" } }, text: `${code}\n` },
+                        { font: { size: 7 }, text: `${punchIn}\n${punchOut}\n${hours}` }
+                    ]
                 };
-                cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: STATUS_FILL[code] || "FFFFFFFF" } };
-                cell.alignment = { horizontal: "center", vertical: "middle" };
-                // Add tooltip via comment
+                cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+
+                // Tooltip with details
                 cell.note = {
                     texts: [
                         { font: { bold: true, size: 9 }, text: `${label}\n` },
                         { font: { size: 9 }, text: `In:  ${punchIn}\nOut: ${punchOut}\nHrs: ${hours}` },
                     ],
                 };
+
+                // Cell styling
+                cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: STATUS_FILL[code] || "FFFFFFFF" } };
                 cell.border = {
                     top: { style: "hair", color: { argb: "FFCCCCCC" } },
                     left: { style: "hair", color: { argb: "FFCCCCCC" } },
@@ -675,8 +752,7 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
         ws.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: 4 } };
 
         /* ══════════════════════════════
-           SHEET 2 – DETAIL (punch times)
-           Flat list with all details
+           SHEET 2 – DETAIL (punch times) - FIXED
         ══════════════════════════════ */
         const wsDetail = wb.addWorksheet("Daily Detail");
         wsDetail.views = [{ state: "frozen", ySplit: 2 }];
@@ -702,15 +778,16 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
 
         wsDetail.columns = [
             { width: 5 }, { width: 12 }, { width: 22 }, { width: 18 }, { width: 20 },
-            { width: 13 }, { width: 11 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 14 }, { width: 25 },
+            { width: 13 }, { width: 11 }, { width: 12 }, { width: 12 }, { width: 10 }, { width: 14 }, { width: 25 },
         ];
 
         let detailRowNum = 3;
         let seq = 1;
         for (const emp of employees) {
-            const weeklyOff = emp.weeklyOff?.length ? emp.weeklyOff : ["Sunday"];
-            const shiftStart = emp.shift?.startTime || "09:00";
-            const shiftEnd = emp.shift?.endTime || "18:00";
+            const shiftStart = emp.shift?.startTime ?
+                formatTimeWithAMPM(new Date(`2024-01-01 ${emp.shift.startTime}`)) : "09:00 AM";
+            const shiftEnd = emp.shift?.endTime ?
+                formatTimeWithAMPM(new Date(`2024-01-01 ${emp.shift.endTime}`)) : "06:00 PM";
             const graceIn = emp.shift?.gracePeriod?.lateEntry ?? 10;
             const graceOut = emp.shift?.gracePeriod?.earlyExit ?? 10;
             const shiftName = emp.shift?.shiftName || `Default (${shiftStart}–${shiftEnd})`;
@@ -719,14 +796,16 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
                 const dateKey = date.toISOString().split("T")[0];
                 const dayName = date.toLocaleDateString("en-IN", { weekday: "long" });
                 const att = attMap.get(`${emp._id}_${dateKey}`);
-                const isWO = weeklyOff.includes(dayName);
-                const { code, label, punchIn, punchOut, hours } = resolveDayStatus(att, isWO, shiftStart, shiftEnd, graceIn, graceOut);
+                const { code, label, punchIn, punchOut, hours } = resolveDayStatus(
+                    att, false, shiftStart, shiftEnd, graceIn, graceOut
+                );
 
                 const row = wsDetail.getRow(detailRowNum++);
                 row.height = 15;
                 const isAlt = seq % 2 === 0;
                 const vals = [seq++, emp.empCode || "—", emp.user_name || "N/A", emp.jobInfo?.department || "N/A",
                     shiftName, dateKey, dayName.slice(0, 3), punchIn, punchOut, hours, label, att?.remarks || ""];
+
                 vals.forEach((v, i) => {
                     const c = row.getCell(i + 1);
                     c.value = v;
@@ -734,6 +813,7 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
                     c.alignment = { horizontal: i <= 1 || i >= 5 ? "center" : "left", vertical: "middle" };
                     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: isAlt ? ALT_ROW_BG : "FFFFFFFF" } };
                 });
+
                 // Status cell colour
                 const statusCell = row.getCell(11);
                 statusCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: STATUS_FILL[code] || "FFFFFFFF" } };
@@ -754,7 +834,6 @@ export const generateAttendanceMatrixCSV = async (req, res) => {
         return res.status(500).json({ success: false, message: "Failed to generate matrix report", error: err.message });
     }
 };
-
 
 
 /**
