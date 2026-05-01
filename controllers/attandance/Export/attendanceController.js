@@ -1241,25 +1241,25 @@ export const generateAttendanceSummaryCSV = async (req, res) => {
     }
 };
 // Helper function to format time from Date object
-// export function formatTime(date) {
-//     if (!date) return "N/A";
+export function formatTime(date) {
+    if (!date) return "N/A";
 
-//     try {
-//         const d = new Date(date);
+    try {
+        const d = new Date(date);
 
-//         return new Intl.DateTimeFormat("en-IN", {
-//             timeZone: "Asia/Kolkata",
-//             hour: "2-digit",
-//             minute: "2-digit",
-//             second: "2-digit",
-//             hour12: true, // 24-hour format
-//         }).format(d);
+        return new Intl.DateTimeFormat("en-IN", {
+            timeZone: "Asia/Kolkata",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: true, // 24-hour format
+        }).format(d);
 
-//     } catch (error) {
-//         console.error("formatTime error:", error);
-//         return "Invalid Date";
-//     }
-// }
+    } catch (error) {
+        console.error("formatTime error:", error);
+        return "Invalid Date";
+    }
+}
 
 // Helper function to format working hours
 function formatWorkingHours(minutes) {

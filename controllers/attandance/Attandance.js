@@ -1642,21 +1642,21 @@ export const getAttendance = async (req, res) => {
 /* ================================
    Helper: Format Time (IST)
 ================================ */
-const formatTime = (date) => {
-    if (!date) return "-";
+// const formatTime = (date) => {
+//     if (!date) return "-";
 
-    try {
-        return new Date(date).toLocaleTimeString("en-IN", {
-            timeZone: "Asia/Kolkata",   // Force IST
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true
-        });
-    } catch (err) {
-        console.error("formatTime error:", err);
-        return "-";
-    }
-};
+//     try {
+//         return new Date(date).toLocaleTimeString("en-IN", {
+//             timeZone: "Asia/Kolkata",   // Force IST
+//             hour: "2-digit",
+//             minute: "2-digit",
+//             hour12: true
+//         });
+//     } catch (err) {
+//         console.error("formatTime error:", err);
+//         return "-";
+//     }
+// };
 
 
 /* ================================
@@ -3176,7 +3176,7 @@ const formatHoursToHHMM = (totalMinutes) => {
 const formatTimeWithAMPM = (date) => {
     if (!date) return null;
     const d = new Date(date);
-    return d.toLocaleTimeString('en-US', {
+    return d.toLocaleTimeString('en-IN', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true
