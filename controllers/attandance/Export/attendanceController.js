@@ -1347,3 +1347,5 @@ function formatWorkingHours(minutes) {
     const mins = minutes % 60;
     return `${hours}:${mins.toString().padStart(2, '0')}`;
 }
+
+

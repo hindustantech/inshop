@@ -1642,21 +1642,21 @@ export const getAttendance = async (req, res) => {
 /* ================================
    Helper: Format Time (IST)
 ================================ */
-// const formatTime = (date) => {
-//     if (!date) return "-";
+const formatTime = (date) => {
+    if (!date) return "-";
 
-//     try {
-//         return new Date(date).toLocaleTimeString("en-IN", {
-//             timeZone: "Asia/Kolkata",   // Force IST
-//             hour: "2-digit",
-//             minute: "2-digit",
-//             hour12: true
-//         });
-//     } catch (err) {
-//         console.error("formatTime error:", err);
-//         return "-";
-//     }
-// };
+    try {
+        return new Date(date).toLocaleTimeString("en-IN", {
+            timeZone: "Asia/Kolkata",   // Force IST
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true
+        });
+    } catch (err) {
+        console.error("formatTime error:", err);
+        return "-";
+    }
+};
 
 
 /* ================================
@@ -3566,10 +3566,10 @@ const buildAttendanceMap = (records) => {
 };
 
 // FIXED: Format time with AM/PM
-const formatTime = (date) => {
-    if (!date) return null;
-    return formatTimeWithAMPM(date);
-};
+// const formatTime = (date) => {
+//     if (!date) return null;
+//     return formatTimeWithAMPM(date);
+// };
 
 /** Returns { code, label, punchIn, punchOut, hours } for one day - FIXED VERSION */
 const resolveDayStatus = (attendance, isWeeklyOff, shiftStart = "09:00 AM", shiftEnd = "06:00 PM", graceIn = 10, graceOut = 10) => {
