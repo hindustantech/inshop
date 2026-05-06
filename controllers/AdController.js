@@ -1496,17 +1496,30 @@ export const addOrUpdateAds = async (req, res) => {
       }
 
       // Permission check
+      // if (
+      //   userType !== 'super_admin' &&
+      //   coupon.createdby.toString() !== userId &&
+      //   coupon.ownerId.toString() !== userId
+      // ) {
+      //   return res.status(403).json({
+      //     success: false,
+      //     message: 'You do not have permission to update this coupon'
+      //   });
+      // }
+
+      const allowedUserTypes = ["super_admin", "admin", "manager"];
+
       if (
-        userType !== 'super_admin' &&
-        coupon.createdby.toString() !== userId &&
-        coupon.ownerId.toString() !== userId
+        !allowedUserTypes.includes(userType) &&
+        coupon.createdby?.toString() !== userId.toString() &&
+        coupon.ownerId?.toString() !== userId.toString()
       ) {
         return res.status(403).json({
           success: false,
-          message: 'You do not have permission to update this coupon'
+          message: "You do not have permission to update this coupon"
         });
       }
-
+      
       updatedDocument = await Coupon.findByIdAndUpdate(
         couponId,
         { $set: { promotion: validAdIds } },
